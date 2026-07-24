@@ -14037,11 +14037,11 @@ if MOBILE and Pages.Buttons then
     -- it is the one button that cannot be removed: deleting it on a device with
     -- no keyboard would leave no way to reopen the menu at all.
     -- S._floatRegisterEntry({
-        cfgId = "ui:menu",
-        label = "Menu",
-        isToggle = true,
-        trigger = function() S._SetMenuVisible(not Main.Visible) end,
-    })
+--         cfgId = "ui:menu",
+--         label = "Menu",
+--         isToggle = true,
+--         trigger = function() S._SetMenuVisible(not Main.Visible) end,
+--     })
 
     local secFloat = mkSection(Pages.Buttons, "Floating Buttons", 1)
 
