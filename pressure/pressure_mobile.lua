@@ -1494,23 +1494,39 @@ FootRight.TextXAlignment = Enum.TextXAlignment.Right
 -- content between them, mid-tween showing a jarring half-clipped flash of
 -- Sidebar/ContentArea. Hiding them outright avoids all of that.
 local isMinimized = false
-	end
-end)
 
 local function mkPage(name)
-	local sf = Instance.new("Frame")
-	sf.Name = name
-	sf.Parent = ContentArea
-	sf.BackgroundTransparency = 1
-	sf.BorderSizePixel = 0
-	sf.Size = UDim2.new(1, 0, 0, 0)
-	sf.AutomaticSize = Enum.AutomaticSize.Y
-	sf.Visible = false
-	local l = Instance.new("UIListLayout")
-	l.Parent = sf; l.SortOrder = Enum.SortOrder.LayoutOrder; l.Padding = UDim.new(0, MOBILE and 10 or 12)
-	Pad(sf, MOBILE and 6 or 8, MOBILE and 14 or 12, MOBILE and 6 or 6, MOBILE and 6 or 8)
-	Pages[name] = sf
-	return sf
+    local sf = Instance.new("Frame")
+    sf.Name = name
+    sf.Parent = ContentArea
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel = 0
+    sf.Position = UDim2.new(0, 0, 0, 0)
+    sf.Size = UDim2.new(1, 0, 1, 0)
+    sf.AutomaticSize = Enum.AutomaticSize.None
+    sf.Visible = false
+    -- Tab header, shown ONLY while searching so the combined multi-tab results list is labelled by
+    -- which tab each group of settings came from (applySearch appends the match count, e.g.
+    -- "COMBAT  ·  4"). Styled as a subtle pill so it separates the groups instead of blending into
+    -- the section titles. Hidden during normal single-tab browsing.
+    local hdr = Instance.new("TextLabel")
+    hdr.Name = "SearchHdr"
+    hdr.Parent = sf
+    hdr.LayoutOrder = -1
+    hdr.BackgroundColor3 = T.Elev; pcall(function() hdr:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    hdr.BackgroundTransparency = 0.25
+    hdr.BorderSizePixel = 0
+    hdr.Size = UDim2.new(1, 0, 0, 24)
+    hdr.Font = FB
+    hdr.TextSize = 12
+    hdr.TextColor3 = T.Tx2; pcall(function() hdr:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+    hdr.TextXAlignment = Enum.TextXAlignment.Left
+    hdr.Text = string.upper(name)
+    hdr.Visible = false
+    Corner(hdr, 6)
+    Pad(hdr, 0, 0, 10, 10)
+    Pages[name] = sf
+    return sf
 end
 
 local TAB_DEFS = {
@@ -2349,8 +2365,7 @@ do
 		end
 		-- A config saved before the menu button existed (or one where it was
 		-- somehow dropped) must not strand the user without a way in.
-					createButton("ui:menu")
-		end
+		createButton("ui:menu")
 		for id in pairs(S._bindRegistry or {}) do repaintChips(id) end
 		if S._refreshFloatTab then pcall(S._refreshFloatTab) end
 	end
@@ -2418,6 +2433,110 @@ do
 		end
 	end))
 end
+
+-- (Removed three unused refactor leftovers — mkSubTabBtn, disconnectAll,
+-- styleSubTabActive — which had no callers in this hub and pushed the main
+-- chunk past Luau's 200-register ceiling. Pressure has no sub-tabs.)
+
+do
+local pageLayoutQueued = false
+local pageLayoutSearchMode = false
+local function relayoutPage(page)
+    local pageWidth = math.max(ContentArea.AbsoluteSize.X, 320)
+    local areaHeight = math.max(ContentArea.AbsoluteSize.Y, 260)
+    local inset, gap, top = 6, 8, 6
+    local header = page:FindFirstChild("SearchHdr")
+    local subBar = page:FindFirstChild("SubTabBar") or page:FindFirstChild("VisualsSubTabBar")
+
+    if header and header.Visible then
+        header.Position = UDim2.fromOffset(inset, top)
+        header.Size = UDim2.new(1, -(inset * 2), 0, 24)
+        top = top + 24 + gap
+    end
+    if subBar and subBar.Visible then
+        local subBarHeight = tonumber(subBar:GetAttribute("LayoutHeight")) or 30
+        subBar.Position = UDim2.fromOffset(inset, top)
+        subBar.Size = UDim2.new(1, -(inset * 2), 0, subBarHeight)
+        top = top + subBarHeight + gap
+    end
+
+    -- Section cards: mm2 tags them with an "Inner" frame; pressure's mkSection
+    -- puts the UIListLayout directly on the card, so accept either marker.
+    local cards = {}
+    for _, child in ipairs(page:GetChildren()) do
+        if child:IsA("Frame") and child.Visible and child ~= subBar and (child:FindFirstChild("Inner") or child:FindFirstChildOfClass("UIListLayout")) then
+            table.insert(cards, child)
+        end
+    end
+    table.sort(cards, function(a, b)
+        if a.LayoutOrder == b.LayoutOrder then return a.Name < b.Name end
+        return a.LayoutOrder < b.LayoutOrder
+    end)
+
+    local columns = 1
+    if #cards >= 2 and pageWidth >= 560 then columns = 2 end
+    if #cards >= 4 and pageWidth >= 760 then columns = 3 end
+    columns = math.max(1, math.min(columns, #cards))
+    local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
+    local columnWidth = math.floor(usableWidth / columns)
+    local heights = {}
+    for i = 1, columns do heights[i] = top end
+
+    for _, card in ipairs(cards) do
+        card.AnchorPoint = Vector2.zero
+        card.Size = UDim2.new(0, columnWidth, 0, 0)
+        local targetColumn = 1
+        for i = 2, columns do
+            if heights[i] < heights[targetColumn] then targetColumn = i end
+        end
+        card.Position = UDim2.fromOffset(inset + (targetColumn - 1) * (columnWidth + gap), heights[targetColumn])
+        local height = math.max(card.AbsoluteSize.Y, 42)
+        heights[targetColumn] = heights[targetColumn] + height + gap
+    end
+
+    local bottom = top
+    for i = 1, columns do bottom = math.max(bottom, heights[i]) end
+    local requiredHeight = math.max(pageLayoutSearchMode and 0 or areaHeight, bottom + inset - gap)
+    page.Size = UDim2.new(1, 0, 0, requiredHeight)
+end
+local function refreshPageLayouts()
+    -- Stay "queued" for the whole pass: relayoutPage writes Position/Size to every card,
+    -- which re-fires each card's AbsoluteSize watcher. Clearing the flag only after we're
+    -- done makes those self-triggered signals no-ops instead of re-entrant task.defer calls
+    -- stacking inside the same Deferred-signal drain.
+    ContentArea.ScrollingEnabled = true
+    for _, page in pairs(Pages) do relayoutPage(page) end
+    pageLayoutQueued = false
+end
+local function queuePageLayout()
+    if pageLayoutQueued then return end
+    pageLayoutQueued = true
+    task.defer(function()
+        RunService.Heartbeat:Wait()
+        refreshPageLayouts()
+    end)
+end
+local function watchPageChild(child)
+    if not child:IsA("GuiObject") then return end
+    tc(child:GetPropertyChangedSignal("Visible"):Connect(queuePageLayout))
+    tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+end
+for _, page in pairs(Pages) do
+    for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
+    tc(page.ChildAdded:Connect(function(child)
+        watchPageChild(child)
+        queuePageLayout()
+    end))
+end
+tc(ContentArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+S._RefreshPageLayout = function(searching)
+    pageLayoutSearchMode = searching == true
+    ContentArea.CanvasPosition = Vector2.zero
+    queuePageLayout()
+end
+queuePageLayout()
+end
+
 
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")

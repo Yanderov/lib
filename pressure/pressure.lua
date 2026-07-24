@@ -1490,8 +1490,6 @@ FootRight.TextXAlignment = Enum.TextXAlignment.Right
 -- content between them, mid-tween showing a jarring half-clipped flash of
 -- Sidebar/ContentArea. Hiding them outright avoids all of that.
 local isMinimized = false
-	end
-end)
 
 local function mkPage(name)
     local sf = Instance.new("Frame")
@@ -2363,8 +2361,7 @@ do
 		end
 		-- A config saved before the menu button existed (or one where it was
 		-- somehow dropped) must not strand the user without a way in.
-					createButton("ui:menu")
-		end
+		createButton("ui:menu")
 		for id in pairs(S._bindRegistry or {}) do repaintChips(id) end
 		if S._refreshFloatTab then pcall(S._refreshFloatTab) end
 	end
@@ -2433,34 +2430,9 @@ do
 	end))
 end
 
--- Shared subtab helpers; optional width overrides support three-column bars.
-local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
-    btn.Name = text
-    btn.Parent = bar
-    btn.LayoutOrder = order
-    btn.Size = UDim2.new(widthScale or 0.5, gapOffset or -4, 1, 0)
-    btn.AutoButtonColor = false
-    btn.BorderSizePixel = 0
-    btn.Font = FM
-    btn.TextSize = 13
-    btn.Text = text
-    Corner(btn, 6)
-    return Stroke(btn, T.Bd, 1, 0.4)
-end
--- Deduped: Blink and InvisibleFE each declared their own identical "disconnect every connection in
--- this list" closure. One shared helper, called as `conns = disconnectAll(conns)`.
-local function disconnectAll(conns)
-    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-    return {}
-end
-local function styleSubTabActive(btn, stroke, active)
-    btn.BackgroundColor3 = active and T.ActiveBg or T.Elev
-    btn.TextColor3 = active and T.White or T.Tx2
-    pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", active and "ActiveBg" or "Elev") end)
-    pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", active and "White" or "Tx2") end)
-    stroke.Color = active and T.Accent or T.Bd
-    pcall(function() stroke:SetAttribute("ThemeColorRole_Color", active and "Accent" or "Bd") end)
-end
+-- (Removed three unused refactor leftovers — mkSubTabBtn, disconnectAll,
+-- styleSubTabActive — which had no callers in this hub and pushed the main
+-- chunk past Luau's 200-register ceiling. Pressure has no sub-tabs.)
 
 do
 local pageLayoutQueued = false
@@ -2483,6 +2455,83 @@ local function relayoutPage(page)
         subBar.Size = UDim2.new(1, -(inset * 2), 0, subBarHeight)
         top = top + subBarHeight + gap
     end
+
+    -- Section cards: mm2 tags them with an "Inner" frame; pressure's mkSection
+    -- puts the UIListLayout directly on the card, so accept either marker.
+    local cards = {}
+    for _, child in ipairs(page:GetChildren()) do
+        if child:IsA("Frame") and child.Visible and child ~= subBar and (child:FindFirstChild("Inner") or child:FindFirstChildOfClass("UIListLayout")) then
+            table.insert(cards, child)
+        end
+    end
+    table.sort(cards, function(a, b)
+        if a.LayoutOrder == b.LayoutOrder then return a.Name < b.Name end
+        return a.LayoutOrder < b.LayoutOrder
+    end)
+
+    local columns = 1
+    if #cards >= 2 and pageWidth >= 560 then columns = 2 end
+    if #cards >= 4 and pageWidth >= 760 then columns = 3 end
+    columns = math.max(1, math.min(columns, #cards))
+    local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
+    local columnWidth = math.floor(usableWidth / columns)
+    local heights = {}
+    for i = 1, columns do heights[i] = top end
+
+    for _, card in ipairs(cards) do
+        card.AnchorPoint = Vector2.zero
+        card.Size = UDim2.new(0, columnWidth, 0, 0)
+        local targetColumn = 1
+        for i = 2, columns do
+            if heights[i] < heights[targetColumn] then targetColumn = i end
+        end
+        card.Position = UDim2.fromOffset(inset + (targetColumn - 1) * (columnWidth + gap), heights[targetColumn])
+        local height = math.max(card.AbsoluteSize.Y, 42)
+        heights[targetColumn] = heights[targetColumn] + height + gap
+    end
+
+    local bottom = top
+    for i = 1, columns do bottom = math.max(bottom, heights[i]) end
+    local requiredHeight = math.max(pageLayoutSearchMode and 0 or areaHeight, bottom + inset - gap)
+    page.Size = UDim2.new(1, 0, 0, requiredHeight)
+end
+local function refreshPageLayouts()
+    -- Stay "queued" for the whole pass: relayoutPage writes Position/Size to every card,
+    -- which re-fires each card's AbsoluteSize watcher. Clearing the flag only after we're
+    -- done makes those self-triggered signals no-ops instead of re-entrant task.defer calls
+    -- stacking inside the same Deferred-signal drain.
+    ContentArea.ScrollingEnabled = true
+    for _, page in pairs(Pages) do relayoutPage(page) end
+    pageLayoutQueued = false
+end
+local function queuePageLayout()
+    if pageLayoutQueued then return end
+    pageLayoutQueued = true
+    task.defer(function()
+        RunService.Heartbeat:Wait()
+        refreshPageLayouts()
+    end)
+end
+local function watchPageChild(child)
+    if not child:IsA("GuiObject") then return end
+    tc(child:GetPropertyChangedSignal("Visible"):Connect(queuePageLayout))
+    tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+end
+for _, page in pairs(Pages) do
+    for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
+    tc(page.ChildAdded:Connect(function(child)
+        watchPageChild(child)
+        queuePageLayout()
+    end))
+end
+tc(ContentArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+S._RefreshPageLayout = function(searching)
+    pageLayoutSearchMode = searching == true
+    ContentArea.CanvasPosition = Vector2.zero
+    queuePageLayout()
+end
+queuePageLayout()
+end
 
 
 local function mkSection(parent, title, order)
