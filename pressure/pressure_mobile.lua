@@ -1195,7 +1195,6 @@ local btnClose = mkWinBtn("X", MOBILE and -14 or -16)
 -- Desktop: minimize. Mobile: minimize is pointless (the window is a sheet you
 -- close outright), so the slot becomes the Interface/appearance button — the
 -- profile card that opened it lives in the desktop sidebar, which mobile drops.
-local btnMin = mkWinBtn(MOBILE and "\u{2699}" or "-", MOBILE and -54 or -52)
 -- Modal releases the first-person cursor while this visible menu owns input.
 -- Because the button is inside Main, hiding Main disables the release too.
 btnClose.Modal = true
@@ -1290,7 +1289,7 @@ do
 				local p, s = gui.AbsolutePosition, gui.AbsoluteSize
 				return pos.X >= p.X and pos.X <= p.X + s.X and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
 			end
-			if over(SearchBox) or over(btnClose) or over(btnMin) then return end
+			if over(SearchBox) or over(btnClose)  then return end
 			dragging = true; dragStart = input.Position; startPos = Main.Position
 			local endConn
 			endConn = input.Changed:Connect(function()
@@ -1495,21 +1494,6 @@ FootRight.TextXAlignment = Enum.TextXAlignment.Right
 -- content between them, mid-tween showing a jarring half-clipped flash of
 -- Sidebar/ContentArea. Hiding them outright avoids all of that.
 local isMinimized = false
-btnMin.MouseButton1Click:Connect(function()
-	if MOBILE then
-		-- Same slot, different job on a phone: open Interface settings.
-		if openAppearance then openAppearance() end
-		return
-	end
-	isMinimized = not isMinimized
-	if isMinimized then
-		Sidebar.Visible = false; SBLine.Visible = false; ContentArea.Visible = false; Footer.Visible = false; SearchEmpty.Visible = false
-		Main:TweenSize(UDim2.fromOffset(WW, 51), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.22, true)
-	else
-		Main:TweenSize(UDim2.fromOffset(WW, WH), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.22, true, function()
-			Sidebar.Visible = true; SBLine.Visible = true; ContentArea.Visible = true; Footer.Visible = true
-			applySearch()
-		end)
 	end
 end)
 
@@ -2365,9 +2349,7 @@ do
 		end
 		-- A config saved before the menu button existed (or one where it was
 		-- somehow dropped) must not strand the user without a way in.
-		if entryFor("ui:menu") then
-			if not S.FloatButtons["ui:menu"] then S.FloatButtons["ui:menu"] = keepMenu end
-			createButton("ui:menu")
+					createButton("ui:menu")
 		end
 		for id in pairs(S._bindRegistry or {}) do repaintChips(id) end
 		if S._refreshFloatTab then pcall(S._refreshFloatTab) end
@@ -3325,33 +3307,7 @@ if MOBILE and Pages.Buttons then
 	-- is registered here instead of by a control builder.  It is also the one
 	-- button that cannot be removed — deleting it on a device with no keyboard
 	-- would leave no way to reopen the menu at all.
-	S._registerBindable("ui:menu", "Menu", function()
-		setMenuVisible(not menuOpen)
-	end, function() return menuOpen end, "button")
-
-	local secFloat = mkSection(Pages.Buttons, "Floating Buttons", 1)
-
-	local note = Instance.new("TextLabel")
-	note.Parent = secFloat; note.LayoutOrder = 1; note.BackgroundTransparency = 1
-	note.Size = UDim2.new(1, 0, 0, 38); note.Font = F; note.TextSize = 12
-	note.TextColor3 = T.Tx3; note.TextXAlignment = Enum.TextXAlignment.Left
-	note.TextWrapped = true
-	note.Text = "Вынеси функцию на экран — кнопку можно перетащить пальцем, позиция сохраняется."
-
-	local rows = {}
-	local order = {}
-	for id, entry in pairs(S._bindRegistry or {}) do
-		if type(entry) == "table" and entry.trigger then
-			table.insert(order, { id = id, label = tostring(entry.label or id) })
-		end
-	end
-	-- Menu first, then alphabetical: the one permanent button stays at the top
-	-- where it is easy to find.
-	table.sort(order, function(a, b)
-		if (a.id == "ui:menu") ~= (b.id == "ui:menu") then return a.id == "ui:menu" end
-		return string.lower(a.label) < string.lower(b.label)
-	end)
-
+	
 	local function mkPill(parent, text, x)
 		local pill = Instance.new("TextButton")
 		pill.Parent = parent

@@ -1191,7 +1191,6 @@ local btnClose = mkWinBtn("X", MOBILE and -14 or -16)
 -- Desktop: minimize. Mobile: minimize is pointless (the window is a sheet you
 -- close outright), so the slot becomes the Interface/appearance button — the
 -- profile card that opened it lives in the desktop sidebar, which mobile drops.
-local btnMin = mkWinBtn(MOBILE and "\u{2699}" or "-", MOBILE and -54 or -52)
 -- Modal releases the first-person cursor while this visible menu owns input.
 -- Because the button is inside Main, hiding Main disables the release too.
 btnClose.Modal = true
@@ -1286,7 +1285,7 @@ do
 				local p, s = gui.AbsolutePosition, gui.AbsoluteSize
 				return pos.X >= p.X and pos.X <= p.X + s.X and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
 			end
-			if over(SearchBox) or over(btnClose) or over(btnMin) then return end
+			if over(SearchBox) or over(btnClose)  then return end
 			dragging = true; dragStart = input.Position; startPos = Main.Position
 			local endConn
 			endConn = input.Changed:Connect(function()
@@ -1491,38 +1490,41 @@ FootRight.TextXAlignment = Enum.TextXAlignment.Right
 -- content between them, mid-tween showing a jarring half-clipped flash of
 -- Sidebar/ContentArea. Hiding them outright avoids all of that.
 local isMinimized = false
-btnMin.MouseButton1Click:Connect(function()
-	if MOBILE then
-		-- Same slot, different job on a phone: open Interface settings.
-		if openAppearance then openAppearance() end
-		return
-	end
-	isMinimized = not isMinimized
-	if isMinimized then
-		Sidebar.Visible = false; SBLine.Visible = false; ContentArea.Visible = false; Footer.Visible = false; SearchEmpty.Visible = false
-		Main:TweenSize(UDim2.fromOffset(WW, 51), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.22, true)
-	else
-		Main:TweenSize(UDim2.fromOffset(WW, WH), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.22, true, function()
-			Sidebar.Visible = true; SBLine.Visible = true; ContentArea.Visible = true; Footer.Visible = true
-			applySearch()
-		end)
 	end
 end)
 
 local function mkPage(name)
-	local sf = Instance.new("Frame")
-	sf.Name = name
-	sf.Parent = ContentArea
-	sf.BackgroundTransparency = 1
-	sf.BorderSizePixel = 0
-	sf.Size = UDim2.new(1, 0, 0, 0)
-	sf.AutomaticSize = Enum.AutomaticSize.Y
-	sf.Visible = false
-	local l = Instance.new("UIListLayout")
-	l.Parent = sf; l.SortOrder = Enum.SortOrder.LayoutOrder; l.Padding = UDim.new(0, MOBILE and 10 or 12)
-	Pad(sf, MOBILE and 6 or 8, MOBILE and 14 or 12, MOBILE and 6 or 6, MOBILE and 6 or 8)
-	Pages[name] = sf
-	return sf
+    local sf = Instance.new("Frame")
+    sf.Name = name
+    sf.Parent = ContentArea
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel = 0
+    sf.Position = UDim2.new(0, 0, 0, 0)
+    sf.Size = UDim2.new(1, 0, 1, 0)
+    sf.AutomaticSize = Enum.AutomaticSize.None
+    sf.Visible = false
+    -- Tab header, shown ONLY while searching so the combined multi-tab results list is labelled by
+    -- which tab each group of settings came from (applySearch appends the match count, e.g.
+    -- "COMBAT  ·  4"). Styled as a subtle pill so it separates the groups instead of blending into
+    -- the section titles. Hidden during normal single-tab browsing.
+    local hdr = Instance.new("TextLabel")
+    hdr.Name = "SearchHdr"
+    hdr.Parent = sf
+    hdr.LayoutOrder = -1
+    hdr.BackgroundColor3 = T.Elev; pcall(function() hdr:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    hdr.BackgroundTransparency = 0.25
+    hdr.BorderSizePixel = 0
+    hdr.Size = UDim2.new(1, 0, 0, 24)
+    hdr.Font = FB
+    hdr.TextSize = 12
+    hdr.TextColor3 = T.Tx2; pcall(function() hdr:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+    hdr.TextXAlignment = Enum.TextXAlignment.Left
+    hdr.Text = string.upper(name)
+    hdr.Visible = false
+    Corner(hdr, 6)
+    Pad(hdr, 0, 0, 10, 10)
+    Pages[name] = sf
+    return sf
 end
 
 local TAB_DEFS = {
@@ -2361,9 +2363,7 @@ do
 		end
 		-- A config saved before the menu button existed (or one where it was
 		-- somehow dropped) must not strand the user without a way in.
-		if entryFor("ui:menu") then
-			if not S.FloatButtons["ui:menu"] then S.FloatButtons["ui:menu"] = keepMenu end
-			createButton("ui:menu")
+					createButton("ui:menu")
 		end
 		for id in pairs(S._bindRegistry or {}) do repaintChips(id) end
 		if S._refreshFloatTab then pcall(S._refreshFloatTab) end
@@ -2432,6 +2432,58 @@ do
 		end
 	end))
 end
+
+-- Shared subtab helpers; optional width overrides support three-column bars.
+local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
+    btn.Name = text
+    btn.Parent = bar
+    btn.LayoutOrder = order
+    btn.Size = UDim2.new(widthScale or 0.5, gapOffset or -4, 1, 0)
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.Font = FM
+    btn.TextSize = 13
+    btn.Text = text
+    Corner(btn, 6)
+    return Stroke(btn, T.Bd, 1, 0.4)
+end
+-- Deduped: Blink and InvisibleFE each declared their own identical "disconnect every connection in
+-- this list" closure. One shared helper, called as `conns = disconnectAll(conns)`.
+local function disconnectAll(conns)
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    return {}
+end
+local function styleSubTabActive(btn, stroke, active)
+    btn.BackgroundColor3 = active and T.ActiveBg or T.Elev
+    btn.TextColor3 = active and T.White or T.Tx2
+    pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", active and "ActiveBg" or "Elev") end)
+    pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", active and "White" or "Tx2") end)
+    stroke.Color = active and T.Accent or T.Bd
+    pcall(function() stroke:SetAttribute("ThemeColorRole_Color", active and "Accent" or "Bd") end)
+end
+
+do
+local pageLayoutQueued = false
+local pageLayoutSearchMode = false
+local function relayoutPage(page)
+    local pageWidth = math.max(ContentArea.AbsoluteSize.X, 320)
+    local areaHeight = math.max(ContentArea.AbsoluteSize.Y, 260)
+    local inset, gap, top = 6, 8, 6
+    local header = page:FindFirstChild("SearchHdr")
+    local subBar = page:FindFirstChild("SubTabBar") or page:FindFirstChild("VisualsSubTabBar")
+
+    if header and header.Visible then
+        header.Position = UDim2.fromOffset(inset, top)
+        header.Size = UDim2.new(1, -(inset * 2), 0, 24)
+        top = top + 24 + gap
+    end
+    if subBar and subBar.Visible then
+        local subBarHeight = tonumber(subBar:GetAttribute("LayoutHeight")) or 30
+        subBar.Position = UDim2.fromOffset(inset, top)
+        subBar.Size = UDim2.new(1, -(inset * 2), 0, subBarHeight)
+        top = top + subBarHeight + gap
+    end
+
 
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")
@@ -3321,33 +3373,7 @@ if MOBILE and Pages.Buttons then
 	-- is registered here instead of by a control builder.  It is also the one
 	-- button that cannot be removed — deleting it on a device with no keyboard
 	-- would leave no way to reopen the menu at all.
-	S._registerBindable("ui:menu", "Menu", function()
-		setMenuVisible(not menuOpen)
-	end, function() return menuOpen end, "button")
-
-	local secFloat = mkSection(Pages.Buttons, "Floating Buttons", 1)
-
-	local note = Instance.new("TextLabel")
-	note.Parent = secFloat; note.LayoutOrder = 1; note.BackgroundTransparency = 1
-	note.Size = UDim2.new(1, 0, 0, 38); note.Font = F; note.TextSize = 12
-	note.TextColor3 = T.Tx3; note.TextXAlignment = Enum.TextXAlignment.Left
-	note.TextWrapped = true
-	note.Text = "Вынеси функцию на экран — кнопку можно перетащить пальцем, позиция сохраняется."
-
-	local rows = {}
-	local order = {}
-	for id, entry in pairs(S._bindRegistry or {}) do
-		if type(entry) == "table" and entry.trigger then
-			table.insert(order, { id = id, label = tostring(entry.label or id) })
-		end
-	end
-	-- Menu first, then alphabetical: the one permanent button stays at the top
-	-- where it is easy to find.
-	table.sort(order, function(a, b)
-		if (a.id == "ui:menu") ~= (b.id == "ui:menu") then return a.id == "ui:menu" end
-		return string.lower(a.label) < string.lower(b.label)
-	end)
-
+	
 	local function mkPill(parent, text, x)
 		local pill = Instance.new("TextButton")
 		pill.Parent = parent

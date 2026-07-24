@@ -455,99 +455,340 @@ local TONE_COLOR = {
 	warn = Color3.fromRGB(255, 202, 72),
 	danger = Color3.fromRGB(255, 78, 78),
 }
-local function Notify(title, msg, tone, dur)
-	if not NHost or not NHost.Parent then return end
-	NOrder = NOrder + 1
-	dur = dur or 2.8
-	local toneName = tone or "info"
-	local accent = TONE_COLOR[toneName] or (toneName == "muted" and T.Tx3 or T.Accent)
+S._NotificationPositionOptions = {
+    "Bottom Right", "Bottom Center", "Bottom Left",
+    "Top Left", "Top Center", "Top Right",
+}
+S._ApplyNotificationPosition = function(position)
+    if not table.find(S._NotificationPositionOptions, position) then
+        position = "Bottom Right"
+    end
+    S.NotificationPosition = position
 
-	local toast = Instance.new("Frame")
-	toast.Name = "N"
-	toast.Parent = NHost
-	toast.BackgroundColor3 = T.Card
-	toast.BorderSizePixel = 0
-	toast.ClipsDescendants = true
-	toast.LayoutOrder = NOrder
-	toast.Size = UDim2.new(0.86, 0, 0, 0)
-	toast.ZIndex = 901
-	Corner(toast, 12)
-	local tst = Stroke(toast, T.Bd2, 1, 0.5)
-	Shadow(toast, 0.5)
-	Grad(toast, T.White:Lerp(T.Accent, 0.12), T.White:Lerp(T.Elev, 0.08), 90)
+    local isTop = position:sub(1, 3) == "Top"
+    local isLeft = position:sub(-4) == "Left"
+    local isRight = position:sub(-5) == "Right"
+    local xScale = isLeft and 0 or (isRight and 1 or 0.5)
+    local yScale = isTop and 0 or 1
+    local xOffset = isLeft and 20 or (isRight and -20 or 0)
+    local yOffset = isTop and 20 or (isRight and -150 or -82)
 
-	local sc = Instance.new("UIScale")
-	sc.Scale = 0.9
-	sc.Parent = toast
+    NHost.AnchorPoint = Vector2.new(xScale, yScale)
+    NHost.Position = UDim2.new(xScale, xOffset, yScale, yOffset)
+    nLayout.HorizontalAlignment = isLeft and Enum.HorizontalAlignment.Left
+        or (isRight and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Center)
+    nLayout.VerticalAlignment = isTop and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom
 
-	local strip = Instance.new("Frame")
-	strip.Parent = toast
-	strip.BackgroundColor3 = accent
-	strip.BorderSizePixel = 0
-	strip.Position = UDim2.new(0, 0, 0, 7)
-	strip.Size = UDim2.new(0, 3, 1, -14)
-	strip.ZIndex = 902
-	Corner(strip, 4)
+    for _, entry in ipairs(ActiveN) do
+        local toast = entry.toast
+        if toast and toast.Parent then
+            local order = toast:GetAttribute("NotificationOrder") or 0
+            toast.LayoutOrder = isTop and -order or order
+        end
+    end
+end
+S._ApplyNotificationPosition(S.NotificationPosition)
+local function Notify(title, msg, dur, style)
+    if not NHost or not NHost.Parent then return end
+    NOrder = NOrder + 1
+    dur = math.max(tonumber(dur) or 2.8, 0.7)
+    SFX.Pop()
 
-	local tt = Instance.new("TextLabel")
-	tt.Parent = toast
-	tt.BackgroundTransparency = 1
-	tt.Font = FB
-	tt.Position = UDim2.new(0, MOBILE and 12 or 16, 0, MOBILE and 4 or 8)
-	tt.Size = UDim2.new(1, -30, 0, MOBILE and 15 or 18)
-	tt.Text = tostring(title or "")
-	tt.TextColor3 = T.White
-	tt.TextSize = MOBILE and 11 or 14
-	tt.TextTransparency = 1
-	tt.TextTruncate = Enum.TextTruncate.AtEnd
-	tt.TextXAlignment = Enum.TextXAlignment.Left
-	tt.ZIndex = 902
+    local titleText = tostring(title or "Inertia")
+    local bodyText = tostring(msg or "")
+    local roleReveal = style == "RoundRoles"
+    local murdererText = roleReveal and titleText or ""
+    local sheriffText = roleReveal and bodyText or ""
+    if roleReveal then
+        titleText = string.upper(lang("Round Roles"))
+        bodyText = ""
+    end
+    local notificationPosition = S.NotificationPosition or "Bottom Right"
+    local fromLeft = notificationPosition:sub(-4) == "Left"
+    local fromRight = notificationPosition:sub(-5) == "Right"
+    local fromTop = notificationPosition:sub(1, 3) == "Top"
+    local slideX = fromLeft and -18 or (fromRight and 18 or 0)
+    local slideY = (not fromLeft and not fromRight) and (fromTop and -12 or 12) or 0
+    -- A fixed 352px toast hangs off the edge of a narrow phone screen; follow
+    -- the viewport there instead.
+    local toastWidth = 352
+    if MOBILE then
+        local camera = workspace.CurrentCamera
+        local vp = camera and camera.ViewportSize
+        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.3), 160, 220) end
+    end
+    local bodyTextSize = math.clamp(math.round((MOBILE and 11 or 13) * (S.TextSizeScale or 1)), 10, 18)
+    local bodyHeight = roleReveal and 52 or 19
+    if not roleReveal then
+        pcall(function()
+            local measured = game:GetService("TextService"):GetTextSize(
+                bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 44, 96)
+            )
+            bodyHeight = math.clamp(math.ceil(measured.Y), 19, 60)
+        end)
+    end
+    local finalHeight = roleReveal and 98 or (48 + bodyHeight)
 
-	local bt = Instance.new("TextLabel")
-	bt.Parent = toast
-	bt.BackgroundTransparency = 1
-	bt.Font = F
-	bt.Position = UDim2.new(0, MOBILE and 12 or 16, 0, MOBILE and 19 or 26)
-	bt.Size = UDim2.new(1, -30, 0, MOBILE and 16 or 17)
-	bt.Text = tostring(msg or "")
-	bt.TextColor3 = T.Tx2
-	bt.TextSize = MOBILE and 10 or 13
-	bt.TextTransparency = 1
-	bt.TextWrapped = true
-	bt.TextXAlignment = Enum.TextXAlignment.Left
-	bt.ZIndex = 902
+    local toast = Instance.new("Frame")
+    toast.Name = "NotificationSlot"
+    toast.Parent = NHost
+    toast.BackgroundTransparency = 1
+    toast.BorderSizePixel = 0
+    toast.ClipsDescendants = false
+    toast.LayoutOrder = fromTop and -NOrder or NOrder
+    toast:SetAttribute("NotificationOrder", NOrder)
+    toast.Size = UDim2.fromOffset(toastWidth, 0)
+    toast.ZIndex = 901
 
-	table.insert(ActiveN, toast)
-	if #ActiveN > (MOBILE and 3 or 4) then
-		local old = table.remove(ActiveN, 1)
-		if old and old.Parent then old:Destroy() end
-	end
+    local shadow = Instance.new("Frame")
+    shadow.Name = "NotificationShadow"
+    shadow.Parent = toast
+    shadow.BackgroundColor3 = T.BG; pcall(function() shadow:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
+    shadow.BackgroundTransparency = 0.42
+    shadow.BorderSizePixel = 0
+    shadow.Position = UDim2.fromOffset(slideX, slideY + 3)
+    shadow.Size = UDim2.fromScale(1, 1)
+    shadow.ZIndex = 901
+    Corner(shadow, 13)
 
-	TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = UDim2.new(1, 0, 0, MOBILE and 42 or 52)
-	}):Play()
-	TweenService:Create(sc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-	TweenService:Create(tt, TweenInfo.new(0.14), { TextTransparency = 0 }):Play()
-	TweenService:Create(bt, TweenInfo.new(0.18), { TextTransparency = 0 }):Play()
+    local card = Instance.new("TextButton")
+    card.Name = "NotificationCard"
+    card.Parent = toast
+    card.Active = true
+    card.AutoButtonColor = false
+    card.Text = ""
+    card.BackgroundColor3 = T.Card; pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+    card.BackgroundTransparency = 0.035
+    card.BorderSizePixel = 0
+    card.ClipsDescendants = true
+    card.Position = UDim2.fromOffset(slideX, slideY)
+    card.Size = UDim2.fromScale(1, 1)
+    card.ZIndex = 902
+    Corner(card, 12)
+    local tst = Stroke(card, T.Bd2, 1, 0.14); pcall(function() tst:SetAttribute("ThemeColorRole_Color", "Bd2") end)
 
-	task.delay(dur, function()
-		if not toast.Parent then return end
-		TweenService:Create(tt, TweenInfo.new(0.18), { TextTransparency = 1 }):Play()
-		TweenService:Create(bt, TweenInfo.new(0.18), { TextTransparency = 1 }):Play()
-		TweenService:Create(tst, TweenInfo.new(0.18), { Transparency = 1 }):Play()
-		TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(0.86, 0, 0, 0)
-		}):Play()
-		task.wait(0.24)
-		for i, v in ipairs(ActiveN) do
-			if v == toast then table.remove(ActiveN, i); break end
-		end
-		if toast.Parent then toast:Destroy() end
-	end)
+    local cardGradient = Instance.new("UIGradient")
+    cardGradient.Name = "NotificationGradient"
+    cardGradient.Color = ColorSequence.new(
+        T.White:Lerp(T.Accent, 0.12),
+        T.White:Lerp(T.Elev, 0.08)
+    )
+    cardGradient.Rotation = 90
+    cardGradient.Parent = card
+
+    local statusDot = Instance.new("Frame")
+    statusDot.Name = "NotificationDot"
+    statusDot.Parent = card
+    statusDot.AnchorPoint = Vector2.new(0, 0.5)
+    statusDot.Position = UDim2.fromOffset(19, 17)
+    statusDot.Size = UDim2.fromOffset(6, 6)
+    statusDot.BackgroundColor3 = T.Accent; pcall(function() statusDot:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+    statusDot.BorderSizePixel = 0
+    statusDot.ZIndex = 904
+    Corner(statusDot, 4)
+
+    local tt = Instance.new("TextLabel")
+    tt.Name = "NotificationTitle"
+    tt.Parent = card
+    tt.BackgroundTransparency = 1
+    tt.Font = FB
+    tt.Position = UDim2.fromOffset(31, 8)
+    tt.Size = UDim2.new(1, -62, 0, 19)
+    tt.Text = titleText
+    tt.TextColor3 = T.White; pcall(function() tt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+    tt.TextTransparency = 0
+    tt.TextSize = MOBILE and 12 or 14
+    tt.TextTruncate = Enum.TextTruncate.AtEnd
+    tt.TextXAlignment = Enum.TextXAlignment.Left
+    tt.ZIndex = 904
+    if roleReveal then bindLocalizedText(tt, "Round Roles", "Round Roles", true) end
+
+    local closeGlyph = Instance.new("TextLabel")
+    closeGlyph.Name = "NotificationClose"
+    closeGlyph.Parent = card
+    closeGlyph.AnchorPoint = Vector2.new(1, 0)
+    closeGlyph.BackgroundTransparency = 1
+    closeGlyph.Position = UDim2.new(1, -13, 0, 7)
+    closeGlyph.Size = UDim2.fromOffset(18, 18)
+    closeGlyph.Font = FM
+    closeGlyph.Text = "×"
+    closeGlyph.TextColor3 = T.White; pcall(function() closeGlyph:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+    closeGlyph.TextTransparency = 0.18
+    closeGlyph.TextSize = MOBILE and 12 or 14
+    closeGlyph.ZIndex = 904
+
+    if roleReveal then
+        local function makeRoleRow(name, y, labelKey, value, colorRole, backgroundRole, borderRole, nameColor)
+            local row = Instance.new("Frame")
+            row.Name = name
+            row.Parent = card
+            row.Position = UDim2.fromOffset(17, y)
+            row.Size = UDim2.new(1, -34, 0, 25)
+            row.BackgroundColor3 = T[backgroundRole]; pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", backgroundRole) end)
+            row.BackgroundTransparency = 0.04
+            row.BorderSizePixel = 0
+            row.ZIndex = 903
+            Corner(row, 7)
+            local rowStroke = Stroke(row, T[borderRole], 1, 0.24)
+            pcall(function() rowStroke:SetAttribute("ThemeColorRole_Color", borderRole) end)
+
+            local dot = Instance.new("Frame")
+            dot.Name = "RoleDot"
+            dot.Parent = row
+            dot.AnchorPoint = Vector2.new(0, 0.5)
+            dot.Position = UDim2.fromOffset(10, 12)
+            dot.Size = UDim2.fromOffset(6, 6)
+            dot.BackgroundColor3 = T[colorRole]
+            dot.BorderSizePixel = 0
+            dot.ZIndex = 905
+            Corner(dot, 6)
+            pcall(function() dot:SetAttribute("ThemeColorRole_BackgroundColor3", colorRole) end)
+
+            local roleLabel = Instance.new("TextLabel")
+            roleLabel.Name = "RoleLabel"
+            roleLabel.Parent = row
+            roleLabel.BackgroundTransparency = 1
+            roleLabel.Position = UDim2.fromOffset(24, 0)
+            roleLabel.Size = UDim2.fromOffset(82, 25)
+            roleLabel.Font = FB
+            roleLabel.Text = string.upper(lang(labelKey))
+            roleLabel.TextColor3 = T[colorRole]
+            roleLabel.TextSize = 10
+            roleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            roleLabel.ZIndex = 905
+            pcall(function() roleLabel:SetAttribute("ThemeColorRole_TextColor3", colorRole) end)
+            bindLocalizedText(roleLabel, labelKey, labelKey, true)
+
+            local playerLabel = Instance.new("TextLabel")
+            playerLabel.Name = "PlayerName"
+            playerLabel.Parent = row
+            playerLabel.BackgroundTransparency = 1
+            playerLabel.Position = UDim2.fromOffset(108, 0)
+            playerLabel.Size = UDim2.new(1, -118, 1, 0)
+            playerLabel.Font = FM
+            playerLabel.Text = value ~= "" and value or "?"
+            playerLabel.TextColor3 = nameColor or T.White
+            if not nameColor then pcall(function() playerLabel:SetAttribute("ThemeColorRole_TextColor3", "White") end) end
+            playerLabel.TextSize = 13
+            playerLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            playerLabel.TextXAlignment = Enum.TextXAlignment.Right
+            playerLabel.ZIndex = 905
+        end
+
+        makeRoleRow("MurdererRole", 31, "Murderer", murdererText, "RoleMurderer", "RoleMurdererBg", "RoleMurdererBorder", Color3.fromRGB(255, 96, 96))
+        makeRoleRow("SheriffRole", 60, "Sheriff", sheriffText, "RoleSheriff", "RoleSheriffBg", "RoleSheriffBorder", Color3.fromRGB(60, 140, 255))
+    else
+        local bt = Instance.new("TextLabel")
+        bt.Name = "NotificationBody"
+        bt.Parent = card
+        bt.BackgroundTransparency = 1
+        bt.Font = FM
+        bt.Position = UDim2.fromOffset(19, 30)
+        bt.Size = UDim2.new(1, -38, 0, bodyHeight)
+        bt.Text = bodyText
+        bt.TextColor3 = T.White; pcall(function() bt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+        bt.TextTransparency = 0
+        bt.TextSize = 13
+        bt.TextTruncate = Enum.TextTruncate.None
+        bt.TextWrapped = true
+        bt.TextXAlignment = Enum.TextXAlignment.Left
+        bt.TextYAlignment = Enum.TextYAlignment.Top
+        bt.ZIndex = 904
+    end
+
+    local progressTrack = Instance.new("Frame")
+    progressTrack.Name = "NotificationProgressTrack"
+    progressTrack.Parent = card
+    progressTrack.AnchorPoint = Vector2.new(0, 1)
+    progressTrack.Position = UDim2.new(0, 19, 1, -6)
+    progressTrack.Size = UDim2.new(1, -38, 0, 2)
+    progressTrack.BackgroundColor3 = T.Bd2; pcall(function() progressTrack:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd2") end)
+    progressTrack.BackgroundTransparency = 0.25
+    progressTrack.BorderSizePixel = 0
+    progressTrack.ZIndex = 903
+    Corner(progressTrack, 2)
+    local progress = Instance.new("Frame")
+    progress.Name = "NotificationProgress"
+    progress.Parent = progressTrack
+    progress.Size = UDim2.fromScale(1, 1)
+    progress.BackgroundColor3 = T.Accent; pcall(function() progress:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+    progress.BackgroundTransparency = 0.04
+    progress.BorderSizePixel = 0
+    progress.ZIndex = 904
+    Corner(progress, 2)
+
+    local entry = { toast = toast }
+    local closed = false
+    local progressTween
+    local function dismiss()
+        if closed then return end
+        closed = true
+        if progressTween then pcall(function() progressTween:Cancel() end) end
+        for i, active in ipairs(ActiveN) do
+            if active == entry then table.remove(ActiveN, i); break end
+        end
+        if not toast.Parent then return end
+        TweenService:Create(card, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.fromOffset(slideX, slideY),
+        }):Play()
+        TweenService:Create(shadow, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.fromOffset(slideX, slideY + 3),
+            BackgroundTransparency = 1,
+        }):Play()
+        TweenService:Create(tst, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+        task.delay(0.11, function()
+            if toast.Parent then
+                TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Size = UDim2.fromOffset(toastWidth, 0),
+                }):Play()
+            end
+        end)
+        task.delay(0.31, function()
+            if toast.Parent then toast:Destroy() end
+        end)
+    end
+    entry.dismiss = dismiss
+    table.insert(ActiveN, entry)
+    if #ActiveN > 4 then
+        local old = ActiveN[1]
+        if old and old.dismiss then old.dismiss() end
+    end
+
+    card.Activated:Connect(dismiss)
+    card.MouseEnter:Connect(function()
+        if closed then return end
+        TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0,
+        }):Play()
+        TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.02 }):Play()
+        closeGlyph.TextTransparency = 0
+    end)
+    card.MouseLeave:Connect(function()
+        if closed then return end
+        TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.035,
+        }):Play()
+        TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.14 }):Play()
+        closeGlyph.TextTransparency = 0.18
+    end)
+
+    TweenService:Create(toast, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(toastWidth, finalHeight),
+    }):Play()
+    TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+        Position = UDim2.fromOffset(0, 0),
+    }):Play()
+    TweenService:Create(shadow, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+        Position = UDim2.fromOffset(0, 3),
+    }):Play()
+    progressTween = TweenService:Create(progress, TweenInfo.new(math.max(dur, 0.1), Enum.EasingStyle.Linear), {
+        Size = UDim2.new(0, 0, 1, 0),
+    })
+    progressTween:Play()
+    task.delay(dur, dismiss)
 end
 local function NotifyToggle(label, enabled)
-	Notify(label, enabled and "Enabled" or "Disabled", enabled and "success" or "muted", 1.8)
+    Notify(label, enabled and 'Enabled' or 'Disabled', 1.8)
 end
 
 -- Main Window Shell Setup.  WW/WH is the DESKTOP design size; the mobile build
@@ -635,7 +876,6 @@ local CloseBtn = mkWinBtn("X", MOBILE and -14 or -12)
 -- Desktop: minimize.  Mobile: minimize is pointless on a sheet you close
 -- outright, so the slot becomes the Interface button — the profile card that
 -- opened it lives in the desktop sidebar, which mobile drops.
-local MinBtn = mkWinBtn(MOBILE and "\u{2699}" or "-", MOBILE and -54 or -46)
 
 -- Drag Utility
 makeElementDraggable = function(frame, handle)
@@ -778,21 +1018,37 @@ local SBItems = {}
 local activePage
 
 local function mkPage(name)
-	local sf = Instance.new("Frame")
-	sf.Name = name
-	sf.Parent = ContentArea
-	sf.BackgroundTransparency = 1
-	sf.BorderSizePixel = 0
-	sf.Size = UDim2.new(1, 0, 0, 0)
-	sf.AutomaticSize = Enum.AutomaticSize.Y
-	sf.Visible = false
-	local l = Instance.new("UIListLayout")
-	l.Parent = sf
-	l.SortOrder = Enum.SortOrder.LayoutOrder
-	l.Padding = UDim.new(0, MOBILE and 10 or 14)
-	Pad(sf, MOBILE and 6 or 10, MOBILE and 14 or 14, MOBILE and 6 or 8, MOBILE and 6 or 10)
-	Pages[name] = sf
-	return sf
+    local sf = Instance.new("Frame")
+    sf.Name = name
+    sf.Parent = ContentArea
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel = 0
+    sf.Position = UDim2.new(0, 0, 0, 0)
+    sf.Size = UDim2.new(1, 0, 1, 0)
+    sf.AutomaticSize = Enum.AutomaticSize.None
+    sf.Visible = false
+    -- Tab header, shown ONLY while searching so the combined multi-tab results list is labelled by
+    -- which tab each group of settings came from (applySearch appends the match count, e.g.
+    -- "COMBAT  ·  4"). Styled as a subtle pill so it separates the groups instead of blending into
+    -- the section titles. Hidden during normal single-tab browsing.
+    local hdr = Instance.new("TextLabel")
+    hdr.Name = "SearchHdr"
+    hdr.Parent = sf
+    hdr.LayoutOrder = -1
+    hdr.BackgroundColor3 = T.Elev; pcall(function() hdr:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    hdr.BackgroundTransparency = 0.25
+    hdr.BorderSizePixel = 0
+    hdr.Size = UDim2.new(1, 0, 0, 24)
+    hdr.Font = FB
+    hdr.TextSize = 12
+    hdr.TextColor3 = T.Tx2; pcall(function() hdr:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+    hdr.TextXAlignment = Enum.TextXAlignment.Left
+    hdr.Text = string.upper(name)
+    hdr.Visible = false
+    Corner(hdr, 6)
+    Pad(hdr, 0, 0, 10, 10)
+    Pages[name] = sf
+    return sf
 end
 
 local function mkSBItem(name, iconKind, page, order)
@@ -871,24 +1127,16 @@ refreshSB = function()
 	end
 end
 
-mkPage("Evidence")
-mkPage("Ghost & Hunt")
-mkPage("Automation")
-mkPage("ESP")
-mkPage("Movement")
-mkPage("Teleport")
-mkPage("Misc")
-mkPage("HUD")
-Pages["Evidence"].Visible = true
-activePage = Pages["Evidence"]
-mkSBItem("Evidence", "search-check", Pages["Evidence"], 1)
-mkSBItem("Ghost & Hunt", "ghost", Pages["Ghost & Hunt"], 2)
-mkSBItem("Automation", "workflow", Pages["Automation"], 3)
-mkSBItem("ESP", "scan-eye", Pages["ESP"], 4)
-mkSBItem("Movement", "footprints", Pages["Movement"], 5)
-mkSBItem("Teleport", "map-pin", Pages["Teleport"], 6)
-mkSBItem("Misc", "wrench", Pages["Misc"], 7)
-mkSBItem("HUD", "panels-top-left", Pages["HUD"], 8)
+mkPage("Main")
+mkPage("Visuals")
+mkPage("Player")
+mkPage("Settings")
+Pages["Main"].Visible = true
+activePage = Pages["Main"]
+mkSBItem("Main", "ghost", Pages["Main"], 1)
+mkSBItem("Visuals", "eye", Pages["Visuals"], 2)
+mkSBItem("Player", "user-round", Pages["Player"], 3)
+mkSBItem("Settings", "settings-2", Pages["Settings"], 4)
 -- Floating buttons are a touch feature, so the tab that manages them only
 -- exists on the mobile build.
 if MOBILE then
@@ -1430,6 +1678,58 @@ do
 	end
 end
 
+-- Shared subtab helpers; optional width overrides support three-column bars.
+local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
+    btn.Name = text
+    btn.Parent = bar
+    btn.LayoutOrder = order
+    btn.Size = UDim2.new(widthScale or 0.5, gapOffset or -4, 1, 0)
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.Font = FM
+    btn.TextSize = 13
+    btn.Text = text
+    Corner(btn, 6)
+    return Stroke(btn, T.Bd, 1, 0.4)
+end
+-- Deduped: Blink and InvisibleFE each declared their own identical "disconnect every connection in
+-- this list" closure. One shared helper, called as `conns = disconnectAll(conns)`.
+local function disconnectAll(conns)
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    return {}
+end
+local function styleSubTabActive(btn, stroke, active)
+    btn.BackgroundColor3 = active and T.ActiveBg or T.Elev
+    btn.TextColor3 = active and T.White or T.Tx2
+    pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", active and "ActiveBg" or "Elev") end)
+    pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", active and "White" or "Tx2") end)
+    stroke.Color = active and T.Accent or T.Bd
+    pcall(function() stroke:SetAttribute("ThemeColorRole_Color", active and "Accent" or "Bd") end)
+end
+
+do
+local pageLayoutQueued = false
+local pageLayoutSearchMode = false
+local function relayoutPage(page)
+    local pageWidth = math.max(ContentArea.AbsoluteSize.X, 320)
+    local areaHeight = math.max(ContentArea.AbsoluteSize.Y, 260)
+    local inset, gap, top = 6, 8, 6
+    local header = page:FindFirstChild("SearchHdr")
+    local subBar = page:FindFirstChild("SubTabBar") or page:FindFirstChild("VisualsSubTabBar")
+
+    if header and header.Visible then
+        header.Position = UDim2.fromOffset(inset, top)
+        header.Size = UDim2.new(1, -(inset * 2), 0, 24)
+        top = top + 24 + gap
+    end
+    if subBar and subBar.Visible then
+        local subBarHeight = tonumber(subBar:GetAttribute("LayoutHeight")) or 30
+        subBar.Position = UDim2.fromOffset(inset, top)
+        subBar.Size = UDim2.new(1, -(inset * 2), 0, subBarHeight)
+        top = top + subBarHeight + gap
+    end
+
+
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")
 	card.Name = title
@@ -1511,6 +1811,126 @@ local function mkStat(parent, label, order)
 		val.Text = tostring(text)
 		val.TextColor3 = color or T.White
 	end
+	
+do
+    -- MAIN TAB
+    local mainBar = Instance.new("Frame")
+    mainBar.Name = "SubTabBar"
+    mainBar.LayoutOrder = 0
+    mainBar.BackgroundTransparency = 1
+    mainBar.Size = UDim2.new(1, 0, 0, 32)
+    mainBar.Parent = Pages["Main"]
+
+    local subList = Instance.new("UIListLayout")
+    subList.FillDirection = Enum.FillDirection.Horizontal
+    subList.SortOrder = Enum.SortOrder.LayoutOrder
+    subList.Padding = UDim.new(0, 8)
+    subList.Parent = mainBar
+
+    local evBtn = Instance.new("TextButton")
+    local huntBtn = Instance.new("TextButton")
+    local autoBtn = Instance.new("TextButton")
+
+    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
+    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
+    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
+
+    local function updMain(t)
+        styleSubTabActive(evBtn, evStroke, t == "ev")
+        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
+        styleSubTabActive(autoBtn, autoStroke, t == "auto")
+        
+        Sec.prog.Visible = (t == "ev")
+        Sec.live.Visible = (t == "ev")
+        
+        Sec.info.Visible = (t == "hunt")
+        Sec.guess.Visible = (t == "hunt")
+        Sec.tools.Visible = (t == "hunt")
+        Sec.hunt.Visible = (t == "hunt")
+        
+        Sec.sb.Visible = (t == "auto")
+        Sec.photo.Visible = (t == "auto")
+        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
+        Sec.rate.Visible = (t == "auto")
+        
+        if relayoutPage then relayoutPage(Pages["Main"]) end
+    end
+    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
+    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
+    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
+    updMain("ev")
+
+    -- VISUALS TAB
+    local visBar = Instance.new("Frame")
+    visBar.Name = "SubTabBar"
+    visBar.LayoutOrder = 0
+    visBar.BackgroundTransparency = 1
+    visBar.Size = UDim2.new(1, 0, 0, 32)
+    visBar.Parent = Pages["Visuals"]
+
+    local subList2 = Instance.new("UIListLayout")
+    subList2.FillDirection = Enum.FillDirection.Horizontal
+    subList2.SortOrder = Enum.SortOrder.LayoutOrder
+    subList2.Padding = UDim.new(0, 8)
+    subList2.Parent = visBar
+
+    local espBtn = Instance.new("TextButton")
+    local hudBtn = Instance.new("TextButton")
+
+    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
+    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
+
+    local function updVis(t)
+        styleSubTabActive(espBtn, espStroke, t == "esp")
+        styleSubTabActive(hudBtn, hudStroke, t == "hud")
+        
+        Sec.world.Visible = (t == "esp")
+        Sec.placesToggles.Visible = (t == "esp")
+        Sec.players.Visible = (t == "esp")
+        
+        Sec.panels.Visible = (t == "hud")
+        if relayoutPage then relayoutPage(Pages["Visuals"]) end
+    end
+    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
+    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
+    updVis("esp")
+
+    -- PLAYER TAB
+    local plBar = Instance.new("Frame")
+    plBar.Name = "SubTabBar"
+    plBar.LayoutOrder = 0
+    plBar.BackgroundTransparency = 1
+    plBar.Size = UDim2.new(1, 0, 0, 32)
+    plBar.Parent = Pages["Player"]
+
+    local subList3 = Instance.new("UIListLayout")
+    subList3.FillDirection = Enum.FillDirection.Horizontal
+    subList3.SortOrder = Enum.SortOrder.LayoutOrder
+    subList3.Padding = UDim.new(0, 8)
+    subList3.Parent = plBar
+
+    local moveBtn = Instance.new("TextButton")
+    local tpBtn = Instance.new("TextButton")
+
+    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
+    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
+
+    local function updPl(t)
+        styleSubTabActive(moveBtn, moveStroke, t == "move")
+        styleSubTabActive(tpBtn, tpStroke, t == "tp")
+        
+        Sec.move.Visible = (t == "move")
+        Sec.vis.Visible = (t == "move")
+        
+        Sec.tp.Visible = (t == "tp")
+        Sec.targetTp.Visible = (t == "tp")
+        if relayoutPage then relayoutPage(Pages["Player"]) end
+    end
+    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
+    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
+    updPl("move")
+end
+
 	return api
 end
 
@@ -1572,6 +1992,126 @@ local function mkEvidenceRow(parent, label, order)
 			lbl.TextColor3 = T.Tx2
 		end
 	end
+	
+do
+    -- MAIN TAB
+    local mainBar = Instance.new("Frame")
+    mainBar.Name = "SubTabBar"
+    mainBar.LayoutOrder = 0
+    mainBar.BackgroundTransparency = 1
+    mainBar.Size = UDim2.new(1, 0, 0, 32)
+    mainBar.Parent = Pages["Main"]
+
+    local subList = Instance.new("UIListLayout")
+    subList.FillDirection = Enum.FillDirection.Horizontal
+    subList.SortOrder = Enum.SortOrder.LayoutOrder
+    subList.Padding = UDim.new(0, 8)
+    subList.Parent = mainBar
+
+    local evBtn = Instance.new("TextButton")
+    local huntBtn = Instance.new("TextButton")
+    local autoBtn = Instance.new("TextButton")
+
+    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
+    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
+    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
+
+    local function updMain(t)
+        styleSubTabActive(evBtn, evStroke, t == "ev")
+        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
+        styleSubTabActive(autoBtn, autoStroke, t == "auto")
+        
+        Sec.prog.Visible = (t == "ev")
+        Sec.live.Visible = (t == "ev")
+        
+        Sec.info.Visible = (t == "hunt")
+        Sec.guess.Visible = (t == "hunt")
+        Sec.tools.Visible = (t == "hunt")
+        Sec.hunt.Visible = (t == "hunt")
+        
+        Sec.sb.Visible = (t == "auto")
+        Sec.photo.Visible = (t == "auto")
+        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
+        Sec.rate.Visible = (t == "auto")
+        
+        if relayoutPage then relayoutPage(Pages["Main"]) end
+    end
+    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
+    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
+    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
+    updMain("ev")
+
+    -- VISUALS TAB
+    local visBar = Instance.new("Frame")
+    visBar.Name = "SubTabBar"
+    visBar.LayoutOrder = 0
+    visBar.BackgroundTransparency = 1
+    visBar.Size = UDim2.new(1, 0, 0, 32)
+    visBar.Parent = Pages["Visuals"]
+
+    local subList2 = Instance.new("UIListLayout")
+    subList2.FillDirection = Enum.FillDirection.Horizontal
+    subList2.SortOrder = Enum.SortOrder.LayoutOrder
+    subList2.Padding = UDim.new(0, 8)
+    subList2.Parent = visBar
+
+    local espBtn = Instance.new("TextButton")
+    local hudBtn = Instance.new("TextButton")
+
+    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
+    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
+
+    local function updVis(t)
+        styleSubTabActive(espBtn, espStroke, t == "esp")
+        styleSubTabActive(hudBtn, hudStroke, t == "hud")
+        
+        Sec.world.Visible = (t == "esp")
+        Sec.placesToggles.Visible = (t == "esp")
+        Sec.players.Visible = (t == "esp")
+        
+        Sec.panels.Visible = (t == "hud")
+        if relayoutPage then relayoutPage(Pages["Visuals"]) end
+    end
+    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
+    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
+    updVis("esp")
+
+    -- PLAYER TAB
+    local plBar = Instance.new("Frame")
+    plBar.Name = "SubTabBar"
+    plBar.LayoutOrder = 0
+    plBar.BackgroundTransparency = 1
+    plBar.Size = UDim2.new(1, 0, 0, 32)
+    plBar.Parent = Pages["Player"]
+
+    local subList3 = Instance.new("UIListLayout")
+    subList3.FillDirection = Enum.FillDirection.Horizontal
+    subList3.SortOrder = Enum.SortOrder.LayoutOrder
+    subList3.Padding = UDim.new(0, 8)
+    subList3.Parent = plBar
+
+    local moveBtn = Instance.new("TextButton")
+    local tpBtn = Instance.new("TextButton")
+
+    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
+    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
+
+    local function updPl(t)
+        styleSubTabActive(moveBtn, moveStroke, t == "move")
+        styleSubTabActive(tpBtn, tpStroke, t == "tp")
+        
+        Sec.move.Visible = (t == "move")
+        Sec.vis.Visible = (t == "move")
+        
+        Sec.tp.Visible = (t == "tp")
+        Sec.targetTp.Visible = (t == "tp")
+        if relayoutPage then relayoutPage(Pages["Player"]) end
+    end
+    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
+    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
+    updPl("move")
+end
+
 	return api
 end
 
@@ -1731,6 +2271,126 @@ local function mkToggle(parent, label, default, callback, order, noPersistState,
 			end
 		end,
 	})
+	
+do
+    -- MAIN TAB
+    local mainBar = Instance.new("Frame")
+    mainBar.Name = "SubTabBar"
+    mainBar.LayoutOrder = 0
+    mainBar.BackgroundTransparency = 1
+    mainBar.Size = UDim2.new(1, 0, 0, 32)
+    mainBar.Parent = Pages["Main"]
+
+    local subList = Instance.new("UIListLayout")
+    subList.FillDirection = Enum.FillDirection.Horizontal
+    subList.SortOrder = Enum.SortOrder.LayoutOrder
+    subList.Padding = UDim.new(0, 8)
+    subList.Parent = mainBar
+
+    local evBtn = Instance.new("TextButton")
+    local huntBtn = Instance.new("TextButton")
+    local autoBtn = Instance.new("TextButton")
+
+    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
+    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
+    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
+
+    local function updMain(t)
+        styleSubTabActive(evBtn, evStroke, t == "ev")
+        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
+        styleSubTabActive(autoBtn, autoStroke, t == "auto")
+        
+        Sec.prog.Visible = (t == "ev")
+        Sec.live.Visible = (t == "ev")
+        
+        Sec.info.Visible = (t == "hunt")
+        Sec.guess.Visible = (t == "hunt")
+        Sec.tools.Visible = (t == "hunt")
+        Sec.hunt.Visible = (t == "hunt")
+        
+        Sec.sb.Visible = (t == "auto")
+        Sec.photo.Visible = (t == "auto")
+        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
+        Sec.rate.Visible = (t == "auto")
+        
+        if relayoutPage then relayoutPage(Pages["Main"]) end
+    end
+    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
+    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
+    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
+    updMain("ev")
+
+    -- VISUALS TAB
+    local visBar = Instance.new("Frame")
+    visBar.Name = "SubTabBar"
+    visBar.LayoutOrder = 0
+    visBar.BackgroundTransparency = 1
+    visBar.Size = UDim2.new(1, 0, 0, 32)
+    visBar.Parent = Pages["Visuals"]
+
+    local subList2 = Instance.new("UIListLayout")
+    subList2.FillDirection = Enum.FillDirection.Horizontal
+    subList2.SortOrder = Enum.SortOrder.LayoutOrder
+    subList2.Padding = UDim.new(0, 8)
+    subList2.Parent = visBar
+
+    local espBtn = Instance.new("TextButton")
+    local hudBtn = Instance.new("TextButton")
+
+    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
+    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
+
+    local function updVis(t)
+        styleSubTabActive(espBtn, espStroke, t == "esp")
+        styleSubTabActive(hudBtn, hudStroke, t == "hud")
+        
+        Sec.world.Visible = (t == "esp")
+        Sec.placesToggles.Visible = (t == "esp")
+        Sec.players.Visible = (t == "esp")
+        
+        Sec.panels.Visible = (t == "hud")
+        if relayoutPage then relayoutPage(Pages["Visuals"]) end
+    end
+    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
+    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
+    updVis("esp")
+
+    -- PLAYER TAB
+    local plBar = Instance.new("Frame")
+    plBar.Name = "SubTabBar"
+    plBar.LayoutOrder = 0
+    plBar.BackgroundTransparency = 1
+    plBar.Size = UDim2.new(1, 0, 0, 32)
+    plBar.Parent = Pages["Player"]
+
+    local subList3 = Instance.new("UIListLayout")
+    subList3.FillDirection = Enum.FillDirection.Horizontal
+    subList3.SortOrder = Enum.SortOrder.LayoutOrder
+    subList3.Padding = UDim.new(0, 8)
+    subList3.Parent = plBar
+
+    local moveBtn = Instance.new("TextButton")
+    local tpBtn = Instance.new("TextButton")
+
+    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
+    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
+
+    local function updPl(t)
+        styleSubTabActive(moveBtn, moveStroke, t == "move")
+        styleSubTabActive(tpBtn, tpStroke, t == "tp")
+        
+        Sec.move.Visible = (t == "move")
+        Sec.vis.Visible = (t == "move")
+        
+        Sec.tp.Visible = (t == "tp")
+        Sec.targetTp.Visible = (t == "tp")
+        if relayoutPage then relayoutPage(Pages["Player"]) end
+    end
+    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
+    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
+    updPl("move")
+end
+
 	return api
 end
 
@@ -1912,6 +2572,126 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 		get = function() return val end,
 		set = api.set,
 	})
+	
+do
+    -- MAIN TAB
+    local mainBar = Instance.new("Frame")
+    mainBar.Name = "SubTabBar"
+    mainBar.LayoutOrder = 0
+    mainBar.BackgroundTransparency = 1
+    mainBar.Size = UDim2.new(1, 0, 0, 32)
+    mainBar.Parent = Pages["Main"]
+
+    local subList = Instance.new("UIListLayout")
+    subList.FillDirection = Enum.FillDirection.Horizontal
+    subList.SortOrder = Enum.SortOrder.LayoutOrder
+    subList.Padding = UDim.new(0, 8)
+    subList.Parent = mainBar
+
+    local evBtn = Instance.new("TextButton")
+    local huntBtn = Instance.new("TextButton")
+    local autoBtn = Instance.new("TextButton")
+
+    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
+    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
+    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
+
+    local function updMain(t)
+        styleSubTabActive(evBtn, evStroke, t == "ev")
+        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
+        styleSubTabActive(autoBtn, autoStroke, t == "auto")
+        
+        Sec.prog.Visible = (t == "ev")
+        Sec.live.Visible = (t == "ev")
+        
+        Sec.info.Visible = (t == "hunt")
+        Sec.guess.Visible = (t == "hunt")
+        Sec.tools.Visible = (t == "hunt")
+        Sec.hunt.Visible = (t == "hunt")
+        
+        Sec.sb.Visible = (t == "auto")
+        Sec.photo.Visible = (t == "auto")
+        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
+        Sec.rate.Visible = (t == "auto")
+        
+        if relayoutPage then relayoutPage(Pages["Main"]) end
+    end
+    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
+    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
+    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
+    updMain("ev")
+
+    -- VISUALS TAB
+    local visBar = Instance.new("Frame")
+    visBar.Name = "SubTabBar"
+    visBar.LayoutOrder = 0
+    visBar.BackgroundTransparency = 1
+    visBar.Size = UDim2.new(1, 0, 0, 32)
+    visBar.Parent = Pages["Visuals"]
+
+    local subList2 = Instance.new("UIListLayout")
+    subList2.FillDirection = Enum.FillDirection.Horizontal
+    subList2.SortOrder = Enum.SortOrder.LayoutOrder
+    subList2.Padding = UDim.new(0, 8)
+    subList2.Parent = visBar
+
+    local espBtn = Instance.new("TextButton")
+    local hudBtn = Instance.new("TextButton")
+
+    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
+    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
+
+    local function updVis(t)
+        styleSubTabActive(espBtn, espStroke, t == "esp")
+        styleSubTabActive(hudBtn, hudStroke, t == "hud")
+        
+        Sec.world.Visible = (t == "esp")
+        Sec.placesToggles.Visible = (t == "esp")
+        Sec.players.Visible = (t == "esp")
+        
+        Sec.panels.Visible = (t == "hud")
+        if relayoutPage then relayoutPage(Pages["Visuals"]) end
+    end
+    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
+    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
+    updVis("esp")
+
+    -- PLAYER TAB
+    local plBar = Instance.new("Frame")
+    plBar.Name = "SubTabBar"
+    plBar.LayoutOrder = 0
+    plBar.BackgroundTransparency = 1
+    plBar.Size = UDim2.new(1, 0, 0, 32)
+    plBar.Parent = Pages["Player"]
+
+    local subList3 = Instance.new("UIListLayout")
+    subList3.FillDirection = Enum.FillDirection.Horizontal
+    subList3.SortOrder = Enum.SortOrder.LayoutOrder
+    subList3.Padding = UDim.new(0, 8)
+    subList3.Parent = plBar
+
+    local moveBtn = Instance.new("TextButton")
+    local tpBtn = Instance.new("TextButton")
+
+    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
+    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
+
+    local function updPl(t)
+        styleSubTabActive(moveBtn, moveStroke, t == "move")
+        styleSubTabActive(tpBtn, tpStroke, t == "tp")
+        
+        Sec.move.Visible = (t == "move")
+        Sec.vis.Visible = (t == "move")
+        
+        Sec.tp.Visible = (t == "tp")
+        Sec.targetTp.Visible = (t == "tp")
+        if relayoutPage then relayoutPage(Pages["Player"]) end
+    end
+    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
+    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
+    updPl("move")
+end
+
 	return api
 end
 
@@ -2001,6 +2781,126 @@ local function mkCycle(parent, label, options, labels, default, callback, order)
 		get = function() return options[idx] end,
 		set = setByValue,
 	})
+	
+do
+    -- MAIN TAB
+    local mainBar = Instance.new("Frame")
+    mainBar.Name = "SubTabBar"
+    mainBar.LayoutOrder = 0
+    mainBar.BackgroundTransparency = 1
+    mainBar.Size = UDim2.new(1, 0, 0, 32)
+    mainBar.Parent = Pages["Main"]
+
+    local subList = Instance.new("UIListLayout")
+    subList.FillDirection = Enum.FillDirection.Horizontal
+    subList.SortOrder = Enum.SortOrder.LayoutOrder
+    subList.Padding = UDim.new(0, 8)
+    subList.Parent = mainBar
+
+    local evBtn = Instance.new("TextButton")
+    local huntBtn = Instance.new("TextButton")
+    local autoBtn = Instance.new("TextButton")
+
+    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
+    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
+    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
+
+    local function updMain(t)
+        styleSubTabActive(evBtn, evStroke, t == "ev")
+        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
+        styleSubTabActive(autoBtn, autoStroke, t == "auto")
+        
+        Sec.prog.Visible = (t == "ev")
+        Sec.live.Visible = (t == "ev")
+        
+        Sec.info.Visible = (t == "hunt")
+        Sec.guess.Visible = (t == "hunt")
+        Sec.tools.Visible = (t == "hunt")
+        Sec.hunt.Visible = (t == "hunt")
+        
+        Sec.sb.Visible = (t == "auto")
+        Sec.photo.Visible = (t == "auto")
+        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
+        Sec.rate.Visible = (t == "auto")
+        
+        if relayoutPage then relayoutPage(Pages["Main"]) end
+    end
+    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
+    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
+    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
+    updMain("ev")
+
+    -- VISUALS TAB
+    local visBar = Instance.new("Frame")
+    visBar.Name = "SubTabBar"
+    visBar.LayoutOrder = 0
+    visBar.BackgroundTransparency = 1
+    visBar.Size = UDim2.new(1, 0, 0, 32)
+    visBar.Parent = Pages["Visuals"]
+
+    local subList2 = Instance.new("UIListLayout")
+    subList2.FillDirection = Enum.FillDirection.Horizontal
+    subList2.SortOrder = Enum.SortOrder.LayoutOrder
+    subList2.Padding = UDim.new(0, 8)
+    subList2.Parent = visBar
+
+    local espBtn = Instance.new("TextButton")
+    local hudBtn = Instance.new("TextButton")
+
+    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
+    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
+
+    local function updVis(t)
+        styleSubTabActive(espBtn, espStroke, t == "esp")
+        styleSubTabActive(hudBtn, hudStroke, t == "hud")
+        
+        Sec.world.Visible = (t == "esp")
+        Sec.placesToggles.Visible = (t == "esp")
+        Sec.players.Visible = (t == "esp")
+        
+        Sec.panels.Visible = (t == "hud")
+        if relayoutPage then relayoutPage(Pages["Visuals"]) end
+    end
+    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
+    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
+    updVis("esp")
+
+    -- PLAYER TAB
+    local plBar = Instance.new("Frame")
+    plBar.Name = "SubTabBar"
+    plBar.LayoutOrder = 0
+    plBar.BackgroundTransparency = 1
+    plBar.Size = UDim2.new(1, 0, 0, 32)
+    plBar.Parent = Pages["Player"]
+
+    local subList3 = Instance.new("UIListLayout")
+    subList3.FillDirection = Enum.FillDirection.Horizontal
+    subList3.SortOrder = Enum.SortOrder.LayoutOrder
+    subList3.Padding = UDim.new(0, 8)
+    subList3.Parent = plBar
+
+    local moveBtn = Instance.new("TextButton")
+    local tpBtn = Instance.new("TextButton")
+
+    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
+    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
+
+    local function updPl(t)
+        styleSubTabActive(moveBtn, moveStroke, t == "move")
+        styleSubTabActive(tpBtn, tpStroke, t == "tp")
+        
+        Sec.move.Visible = (t == "move")
+        Sec.vis.Visible = (t == "move")
+        
+        Sec.tp.Visible = (t == "tp")
+        Sec.targetTp.Visible = (t == "tp")
+        if relayoutPage then relayoutPage(Pages["Player"]) end
+    end
+    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
+    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
+    updPl("move")
+end
+
 	return api
 end
 
@@ -2265,30 +3165,6 @@ end
 
 -- Window Controls (Minimize / Close)
 local minimized = false
-MinBtn.MouseButton1Click:Connect(function()
-	if MOBILE then
-		-- Same slot, different job on a phone: open Interface settings.
-		if openAppearance then openAppearance() end
-		return
-	end
-	minimized = not minimized
-	if minimized then
-		SB.Visible = false
-		SBLine.Visible = false
-		ContentArea.Visible = false
-		TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-			Size = UDim2.fromOffset(Main.AbsoluteSize.X, 48)
-		}):Play()
-	else
-		TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-			Size = expandedSize
-		}):Play()
-		task.wait(0.2)
-		SB.Visible = true
-		SBLine.Visible = true
-		ContentArea.Visible = true
-	end
-end)
 
 local function cleanupAndClose()
 	pcall(function()
@@ -2627,6 +3503,126 @@ local function makeSoundMuter(matchFn)
 			table.clear(original)
 		end
 	end
+	
+do
+    -- MAIN TAB
+    local mainBar = Instance.new("Frame")
+    mainBar.Name = "SubTabBar"
+    mainBar.LayoutOrder = 0
+    mainBar.BackgroundTransparency = 1
+    mainBar.Size = UDim2.new(1, 0, 0, 32)
+    mainBar.Parent = Pages["Main"]
+
+    local subList = Instance.new("UIListLayout")
+    subList.FillDirection = Enum.FillDirection.Horizontal
+    subList.SortOrder = Enum.SortOrder.LayoutOrder
+    subList.Padding = UDim.new(0, 8)
+    subList.Parent = mainBar
+
+    local evBtn = Instance.new("TextButton")
+    local huntBtn = Instance.new("TextButton")
+    local autoBtn = Instance.new("TextButton")
+
+    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
+    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
+    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
+
+    local function updMain(t)
+        styleSubTabActive(evBtn, evStroke, t == "ev")
+        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
+        styleSubTabActive(autoBtn, autoStroke, t == "auto")
+        
+        Sec.prog.Visible = (t == "ev")
+        Sec.live.Visible = (t == "ev")
+        
+        Sec.info.Visible = (t == "hunt")
+        Sec.guess.Visible = (t == "hunt")
+        Sec.tools.Visible = (t == "hunt")
+        Sec.hunt.Visible = (t == "hunt")
+        
+        Sec.sb.Visible = (t == "auto")
+        Sec.photo.Visible = (t == "auto")
+        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
+        Sec.rate.Visible = (t == "auto")
+        
+        if relayoutPage then relayoutPage(Pages["Main"]) end
+    end
+    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
+    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
+    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
+    updMain("ev")
+
+    -- VISUALS TAB
+    local visBar = Instance.new("Frame")
+    visBar.Name = "SubTabBar"
+    visBar.LayoutOrder = 0
+    visBar.BackgroundTransparency = 1
+    visBar.Size = UDim2.new(1, 0, 0, 32)
+    visBar.Parent = Pages["Visuals"]
+
+    local subList2 = Instance.new("UIListLayout")
+    subList2.FillDirection = Enum.FillDirection.Horizontal
+    subList2.SortOrder = Enum.SortOrder.LayoutOrder
+    subList2.Padding = UDim.new(0, 8)
+    subList2.Parent = visBar
+
+    local espBtn = Instance.new("TextButton")
+    local hudBtn = Instance.new("TextButton")
+
+    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
+    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
+
+    local function updVis(t)
+        styleSubTabActive(espBtn, espStroke, t == "esp")
+        styleSubTabActive(hudBtn, hudStroke, t == "hud")
+        
+        Sec.world.Visible = (t == "esp")
+        Sec.placesToggles.Visible = (t == "esp")
+        Sec.players.Visible = (t == "esp")
+        
+        Sec.panels.Visible = (t == "hud")
+        if relayoutPage then relayoutPage(Pages["Visuals"]) end
+    end
+    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
+    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
+    updVis("esp")
+
+    -- PLAYER TAB
+    local plBar = Instance.new("Frame")
+    plBar.Name = "SubTabBar"
+    plBar.LayoutOrder = 0
+    plBar.BackgroundTransparency = 1
+    plBar.Size = UDim2.new(1, 0, 0, 32)
+    plBar.Parent = Pages["Player"]
+
+    local subList3 = Instance.new("UIListLayout")
+    subList3.FillDirection = Enum.FillDirection.Horizontal
+    subList3.SortOrder = Enum.SortOrder.LayoutOrder
+    subList3.Padding = UDim.new(0, 8)
+    subList3.Parent = plBar
+
+    local moveBtn = Instance.new("TextButton")
+    local tpBtn = Instance.new("TextButton")
+
+    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
+    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
+
+    local function updPl(t)
+        styleSubTabActive(moveBtn, moveStroke, t == "move")
+        styleSubTabActive(tpBtn, tpStroke, t == "tp")
+        
+        Sec.move.Visible = (t == "move")
+        Sec.vis.Visible = (t == "move")
+        
+        Sec.tp.Visible = (t == "tp")
+        Sec.targetTp.Visible = (t == "tp")
+        if relayoutPage then relayoutPage(Pages["Player"]) end
+    end
+    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
+    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
+    updPl("move")
+end
+
 	return api
 end
 local MusicMuter = makeSoundMuter(function(snd)
@@ -2980,9 +3976,11 @@ end
 ------------------------------------------------------------------
 local StatEvidence, StatGhostInfo, GuesserLabel, EvidenceProgress
 do
-	local page = Pages["Evidence"]
+	local page = Pages["Main"]
 
-	local prog = mkSection(page, "Evidence Progress", 1)
+	local Sec = {}
+
+    local prog = mkSection(page, "Evidence Progress", 1); Sec.prog = prog
 	local progLbl = Instance.new("TextLabel")
 	progLbl.Parent = prog
 	progLbl.LayoutOrder = 1
@@ -3014,7 +4012,7 @@ do
 		end
 	}
 
-	local live = mkSection(page, "Live Readouts", 2)
+	local live = mkSection(page, "Live Readouts", 2); Sec.live = live
 	StatEvidence = {
 		Handprints = mkEvidenceRow(live, "Handprints", 1),
 		SpiritBox = mkEvidenceRow(live, "Spirit Box", 2),
@@ -3026,7 +4024,7 @@ do
 		Temperature = mkEvidenceRow(live, "Temperature", 8),
 	}
 
-	local info = mkSection(page, "Ghost & Round Info", 3)
+	local info = mkSection(page, "Ghost & Round Info", 3); Sec.info = info
 	StatGhostInfo = {
 		Ghost = mkStat(info, "Ghost", 1),
 		GhostRoom = mkStat(info, "Ghost's Room", 2),
@@ -3037,7 +4035,7 @@ do
 		Round = mkStat(info, "Round Status", 7),
 	}
 
-	local guess = mkSection(page, "Ghost Guesser", 4)
+	local guess = mkSection(page, "Ghost Guesser", 4); Sec.guess = guess
 	local lbl = Instance.new("TextLabel")
 	lbl.Parent = guess
 	lbl.LayoutOrder = 1
@@ -3351,8 +4349,8 @@ end
 --// PAGE: GHOST & HUNT
 ------------------------------------------------------------------
 do
-	local page = Pages["Ghost & Hunt"]
-	local tools = mkSection(page, "Ghost Tools", 1)
+	local page = Pages["Main"]
+	local tools = mkSection(page, "Ghost Tools", 1); Sec.tools = tools
 	mkToggle(tools, "Ghost Cam", false, function(v)
 		local Camera = workspace.CurrentCamera
 		if v then
@@ -3381,7 +4379,7 @@ do
 		NotifyToggle("Mute all sounds", v)
 	end, 5)
 
-	local hunt = mkSection(page, "Hunt Safety", 2)
+	local hunt = mkSection(page, "Hunt Safety", 2); Sec.hunt = hunt
 	mkToggle(hunt, "Auto Hide (nearest closet)", false, function(v)
 		S.AutoHide = v
 		if v and S.Ghost and S.Ghost:GetAttribute("Hunting") then
@@ -3411,9 +4409,9 @@ end
 --// PAGE: AUTOMATION
 ------------------------------------------------------------------
 do
-	local page = Pages["Automation"]
+	local page = Pages["Main"]
 
-	local sb = mkSection(page, "Spirit Box", 1)
+	local sb = mkSection(page, "Spirit Box", 1); Sec.sb = sb
 	mkToggle(sb, "Auto Spirit Box", false, function(v)
 		S.AutoSpiritBox = v
 		if not v then
@@ -3423,7 +4421,7 @@ do
 		NotifyToggle("Auto spirit box", v)
 	end, 1, true)
 
-	local photo = mkSection(page, "Photography", 2)
+	local photo = mkSection(page, "Photography", 2); Sec.photo = photo
 	local db2 = false
 	mkAction(photo, "Take Ghost Photo", function()
 		if db2 then return end
@@ -3486,7 +4484,7 @@ do
 		end)
 	end, 2)
 
-	local util = mkSection(page, "Utilities", 3)
+	local util = mkSection(page, "Utilities", 3); Sec.util = util
 	mkAction(util, "Turn On Fuse Box", function()
 		Events():WaitForChild("ToggleFuseBox"):FireServer()
 		Notify("Fuse box", "Toggle request sent", "info", 2.2)
@@ -3553,7 +4551,7 @@ do
 
 	local speedOptions = {0, 0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10}
 	local speedLabels = {"0s", "0.1s", "0.2s", "0.5s", "1s", "1.5s", "2s", "5s", "10s"}
-	local rate = mkSection(page, "Evidence Check Rate", 4)
+	local rate = mkSection(page, "Evidence Check Rate", 4); Sec.rate = rate
 	mkCycle(rate, "Check Speed", speedOptions, speedLabels, 1, function(v)
 		S.CheckSpeed = v
 		Notify("Check speed", tostring(v) .. "s interval", "info", 2)
@@ -3564,7 +4562,7 @@ end
 --// PAGE: ESP
 ------------------------------------------------------------------
 do
-	local page = Pages["ESP"]
+	local page = Pages["Visuals"]
 	local ItemEspList = {}
 	local EvidenceEspList = {}
 	local FuseEspList = {}
@@ -3742,7 +4740,7 @@ do
 		table.clear(ItemEspList)
 	end
 
-	local world = mkSection(page, "World ESP", 1)
+	local world = mkSection(page, "World ESP", 1); Sec.world = world
 	mkToggle(world, "Ghost ESP", false, function(v)
 		S.GhostEspOn = v
 		if v then
@@ -3770,7 +4768,7 @@ do
 		NotifyToggle("Evidence ESP", v)
 	end, 3)
 
-	local placesToggles = mkSection(page, "Places ESP", 3)
+	local placesToggles = mkSection(page, "Places ESP", 3); Sec.placesToggles = placesToggles
 	mkToggle(placesToggles, "Fuse Box ESP", false, function(v)
 		S.FuseEsp = v
 		UpdateESP()
@@ -3806,7 +4804,7 @@ do
 		end
 	end)
 
-	local players = mkSection(page, "Players", 4)
+	local players = mkSection(page, "Players", 4); Sec.players = players
 	mkToggle(players, "Players ESP", false, function(v)
 		S.PlayersEsp = v
 		NotifyToggle("Players ESP", v)
@@ -4063,8 +5061,8 @@ end
 --// PAGE: MOVEMENT
 ------------------------------------------------------------------
 do
-	local page = Pages["Movement"]
-	local move = mkSection(page, "Movement", 1)
+	local page = Pages["Player"]
+	local move = mkSection(page, "Movement", 1); Sec.move = move
 	
 	tc(RS.Heartbeat:Connect(function()
 		if WalkSpeedEnabled and plr.Character then
@@ -4153,7 +5151,7 @@ do
 		Notify("Fly Speed", tostring(v), "info", 1.6)
 	end, 3)
 
-	local vis = mkSection(page, "Vision", 2)
+	local vis = mkSection(page, "Vision", 2); Sec.vis = vis
 	local noclipOn = false
 	local noclipConn = RS.Stepped:Connect(function()
 		if noclipOn and plr.Character then
@@ -4213,8 +5211,8 @@ end
 --// PAGE: TELEPORT
 ------------------------------------------------------------------
 do
-	local page = Pages["Teleport"]
-	local tp = mkSection(page, "Teleports", 1)
+	local page = Pages["Player"]
+	local tp = mkSection(page, "Teleports", 1); Sec.tp = tp
 	mkAction(tp, "Teleport To Ghost", function()
 		if S.Ghost and S.Ghost:GetAttribute("Hunting") == true then return end
 		TpToGhost()
@@ -4240,7 +5238,7 @@ do
 		end
 	end, 3)
 
-	local targetTp = mkSection(page, "Target Teleports", 2)
+	local targetTp = mkSection(page, "Target Teleports", 2); Sec.targetTp = targetTp
 	local selectedPlayer = "None"
 	local selectedItem = "None"
 
@@ -4325,8 +5323,8 @@ end
 --// PAGE: MISC
 ------------------------------------------------------------------
 do
-	local page = Pages["Misc"]
-	local util = mkSection(page, "Utility", 1)
+	local page = Pages["Settings"]
+	local util = mkSection(page, "Utility", 1); Sec.misc_util = util
 	local antiAfkOn = true
 	local afkConn = plr.Idled:Connect(function()
 		if antiAfkOn then
@@ -4361,8 +5359,8 @@ end
 --// PAGE: HUD
 ------------------------------------------------------------------
 do
-	local page = Pages["HUD"]
-	local panels = mkSection(page, "HUD Panels", 1)
+	local page = Pages["Visuals"]
+	local panels = mkSection(page, "HUD Panels", 1); Sec.panels = panels
 
 	local ghostListHud = mkDragHUD("Ghost List", UDim2.new(1, -230, 0.5, -200), UDim2.fromOffset(220, 400), 850)
 	buildGhostMatrixList(ghostListHud.content, 16, function(count)

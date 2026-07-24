@@ -1356,7 +1356,6 @@ end
 local CloseBtn = mkWinBtn("×", MOBILE and -14 or -10)
 -- Mobile: the slot opens Settings, so it must LOOK like settings — keeping the
 -- "—" glyph made it read as minimize and surprised everyone who tapped it.
-local MinBtn = mkWinBtn(MOBILE and "\u{2699}" or "—", MOBILE and -54 or -40)
 -- ===== Feature search =====
 local UIRegistry = {}
 -- ===== Config system: each toggle/slider/cycle registers a get/set here =====
@@ -1550,7 +1549,7 @@ do
                 local ap, as = gui.AbsolutePosition, gui.AbsoluteSize
                 return p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y
             end
-            if over(SearchBox) or over(CloseBtn) or over(MinBtn) then return end
+            if over(SearchBox) or over(CloseBtn)  then return end
             dr = true
             ds = i.Position
             sp = Main.Position
@@ -9565,44 +9564,6 @@ do
     end))
 end
 local minimized = false
-MinBtn.MouseButton1Click:Connect(function()
-    SFX.Click()
-    if MOBILE then
-        -- Same slot, different job on a phone: minimizing a sheet you can close
-        -- outright is pointless, and the profile card that used to open Settings
-        -- is desktop-only, so this becomes the Settings button.
-        local modal = S._SettingsModal
-        if modal then
-            modal.Visible = not modal.Visible
-            if modal.Visible then SFX.On() else SFX.Off() end
-        end
-        return
-    end
-    minimized = not minimized
-    if minimized then
-        for _, pg in pairs(Pages) do pg.Visible = false end
-        SB.Visible = false
-        SBLine.Visible = false
-        ContentArea.Visible = false
-        StatusBar.Visible = false
-        RH.Visible = false
-        TweenService.Create(TweenService, Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-            Size = UDim2.fromOffset(Main.AbsoluteSize.X, 42)
-        }):Play()
-    else
-        TweenService.Create(TweenService, Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-            Size = expandedSize
-        }):Play()
-        task.wait(0.2)
-        SB.Visible = true
-        SBLine.Visible = true
-        ContentArea.Visible = true
-        StatusBar.Visible = true
-        RH.Visible = true
-        activePage.Visible = true
-        refreshSB()
-    end
-end)
 
 -- ===== RESPONSIVE LAYOUT =====
 -- Runs on every viewport change (resize, rotation, split view). The window is

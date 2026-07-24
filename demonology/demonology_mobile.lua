@@ -459,99 +459,340 @@ local TONE_COLOR = {
 	warn = Color3.fromRGB(255, 202, 72),
 	danger = Color3.fromRGB(255, 78, 78),
 }
-local function Notify(title, msg, tone, dur)
-	if not NHost or not NHost.Parent then return end
-	NOrder = NOrder + 1
-	dur = dur or 2.8
-	local toneName = tone or "info"
-	local accent = TONE_COLOR[toneName] or (toneName == "muted" and T.Tx3 or T.Accent)
+S._NotificationPositionOptions = {
+    "Bottom Right", "Bottom Center", "Bottom Left",
+    "Top Left", "Top Center", "Top Right",
+}
+S._ApplyNotificationPosition = function(position)
+    if not table.find(S._NotificationPositionOptions, position) then
+        position = "Bottom Right"
+    end
+    S.NotificationPosition = position
 
-	local toast = Instance.new("Frame")
-	toast.Name = "N"
-	toast.Parent = NHost
-	toast.BackgroundColor3 = T.Card
-	toast.BorderSizePixel = 0
-	toast.ClipsDescendants = true
-	toast.LayoutOrder = NOrder
-	toast.Size = UDim2.new(0.86, 0, 0, 0)
-	toast.ZIndex = 901
-	Corner(toast, 12)
-	local tst = Stroke(toast, T.Bd2, 1, 0.5)
-	Shadow(toast, 0.5)
-	Grad(toast, T.White:Lerp(T.Accent, 0.12), T.White:Lerp(T.Elev, 0.08), 90)
+    local isTop = position:sub(1, 3) == "Top"
+    local isLeft = position:sub(-4) == "Left"
+    local isRight = position:sub(-5) == "Right"
+    local xScale = isLeft and 0 or (isRight and 1 or 0.5)
+    local yScale = isTop and 0 or 1
+    local xOffset = isLeft and 20 or (isRight and -20 or 0)
+    local yOffset = isTop and 20 or (isRight and -150 or -82)
 
-	local sc = Instance.new("UIScale")
-	sc.Scale = 0.9
-	sc.Parent = toast
+    NHost.AnchorPoint = Vector2.new(xScale, yScale)
+    NHost.Position = UDim2.new(xScale, xOffset, yScale, yOffset)
+    nLayout.HorizontalAlignment = isLeft and Enum.HorizontalAlignment.Left
+        or (isRight and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Center)
+    nLayout.VerticalAlignment = isTop and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom
 
-	local strip = Instance.new("Frame")
-	strip.Parent = toast
-	strip.BackgroundColor3 = accent
-	strip.BorderSizePixel = 0
-	strip.Position = UDim2.new(0, 0, 0, 7)
-	strip.Size = UDim2.new(0, 3, 1, -14)
-	strip.ZIndex = 902
-	Corner(strip, 4)
+    for _, entry in ipairs(ActiveN) do
+        local toast = entry.toast
+        if toast and toast.Parent then
+            local order = toast:GetAttribute("NotificationOrder") or 0
+            toast.LayoutOrder = isTop and -order or order
+        end
+    end
+end
+S._ApplyNotificationPosition(S.NotificationPosition)
+local function Notify(title, msg, dur, style)
+    if not NHost or not NHost.Parent then return end
+    NOrder = NOrder + 1
+    dur = math.max(tonumber(dur) or 2.8, 0.7)
+    SFX.Pop()
 
-	local tt = Instance.new("TextLabel")
-	tt.Parent = toast
-	tt.BackgroundTransparency = 1
-	tt.Font = FB
-	tt.Position = UDim2.new(0, MOBILE and 12 or 16, 0, MOBILE and 4 or 8)
-	tt.Size = UDim2.new(1, -30, 0, MOBILE and 15 or 18)
-	tt.Text = tostring(title or "")
-	tt.TextColor3 = T.White
-	tt.TextSize = MOBILE and 11 or 14
-	tt.TextTransparency = 1
-	tt.TextTruncate = Enum.TextTruncate.AtEnd
-	tt.TextXAlignment = Enum.TextXAlignment.Left
-	tt.ZIndex = 902
+    local titleText = tostring(title or "Inertia")
+    local bodyText = tostring(msg or "")
+    local roleReveal = style == "RoundRoles"
+    local murdererText = roleReveal and titleText or ""
+    local sheriffText = roleReveal and bodyText or ""
+    if roleReveal then
+        titleText = string.upper(lang("Round Roles"))
+        bodyText = ""
+    end
+    local notificationPosition = S.NotificationPosition or "Bottom Right"
+    local fromLeft = notificationPosition:sub(-4) == "Left"
+    local fromRight = notificationPosition:sub(-5) == "Right"
+    local fromTop = notificationPosition:sub(1, 3) == "Top"
+    local slideX = fromLeft and -18 or (fromRight and 18 or 0)
+    local slideY = (not fromLeft and not fromRight) and (fromTop and -12 or 12) or 0
+    -- A fixed 352px toast hangs off the edge of a narrow phone screen; follow
+    -- the viewport there instead.
+    local toastWidth = 352
+    if MOBILE then
+        local camera = workspace.CurrentCamera
+        local vp = camera and camera.ViewportSize
+        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.3), 160, 220) end
+    end
+    local bodyTextSize = math.clamp(math.round((MOBILE and 11 or 13) * (S.TextSizeScale or 1)), 10, 18)
+    local bodyHeight = roleReveal and 52 or 19
+    if not roleReveal then
+        pcall(function()
+            local measured = game:GetService("TextService"):GetTextSize(
+                bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 44, 96)
+            )
+            bodyHeight = math.clamp(math.ceil(measured.Y), 19, 60)
+        end)
+    end
+    local finalHeight = roleReveal and 98 or (48 + bodyHeight)
 
-	local bt = Instance.new("TextLabel")
-	bt.Parent = toast
-	bt.BackgroundTransparency = 1
-	bt.Font = F
-	bt.Position = UDim2.new(0, MOBILE and 12 or 16, 0, MOBILE and 19 or 26)
-	bt.Size = UDim2.new(1, -30, 0, MOBILE and 16 or 17)
-	bt.Text = tostring(msg or "")
-	bt.TextColor3 = T.Tx2
-	bt.TextSize = MOBILE and 10 or 13
-	bt.TextTransparency = 1
-	bt.TextWrapped = true
-	bt.TextXAlignment = Enum.TextXAlignment.Left
-	bt.ZIndex = 902
+    local toast = Instance.new("Frame")
+    toast.Name = "NotificationSlot"
+    toast.Parent = NHost
+    toast.BackgroundTransparency = 1
+    toast.BorderSizePixel = 0
+    toast.ClipsDescendants = false
+    toast.LayoutOrder = fromTop and -NOrder or NOrder
+    toast:SetAttribute("NotificationOrder", NOrder)
+    toast.Size = UDim2.fromOffset(toastWidth, 0)
+    toast.ZIndex = 901
 
-	table.insert(ActiveN, toast)
-	if #ActiveN > (MOBILE and 3 or 4) then
-		local old = table.remove(ActiveN, 1)
-		if old and old.Parent then old:Destroy() end
-	end
+    local shadow = Instance.new("Frame")
+    shadow.Name = "NotificationShadow"
+    shadow.Parent = toast
+    shadow.BackgroundColor3 = T.BG; pcall(function() shadow:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
+    shadow.BackgroundTransparency = 0.42
+    shadow.BorderSizePixel = 0
+    shadow.Position = UDim2.fromOffset(slideX, slideY + 3)
+    shadow.Size = UDim2.fromScale(1, 1)
+    shadow.ZIndex = 901
+    Corner(shadow, 13)
 
-	TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = UDim2.new(1, 0, 0, MOBILE and 42 or 52)
-	}):Play()
-	TweenService:Create(sc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-	TweenService:Create(tt, TweenInfo.new(0.14), { TextTransparency = 0 }):Play()
-	TweenService:Create(bt, TweenInfo.new(0.18), { TextTransparency = 0 }):Play()
+    local card = Instance.new("TextButton")
+    card.Name = "NotificationCard"
+    card.Parent = toast
+    card.Active = true
+    card.AutoButtonColor = false
+    card.Text = ""
+    card.BackgroundColor3 = T.Card; pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+    card.BackgroundTransparency = 0.035
+    card.BorderSizePixel = 0
+    card.ClipsDescendants = true
+    card.Position = UDim2.fromOffset(slideX, slideY)
+    card.Size = UDim2.fromScale(1, 1)
+    card.ZIndex = 902
+    Corner(card, 12)
+    local tst = Stroke(card, T.Bd2, 1, 0.14); pcall(function() tst:SetAttribute("ThemeColorRole_Color", "Bd2") end)
 
-	task.delay(dur, function()
-		if not toast.Parent then return end
-		TweenService:Create(tt, TweenInfo.new(0.18), { TextTransparency = 1 }):Play()
-		TweenService:Create(bt, TweenInfo.new(0.18), { TextTransparency = 1 }):Play()
-		TweenService:Create(tst, TweenInfo.new(0.18), { Transparency = 1 }):Play()
-		TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(0.86, 0, 0, 0)
-		}):Play()
-		task.wait(0.24)
-		for i, v in ipairs(ActiveN) do
-			if v == toast then table.remove(ActiveN, i); break end
-		end
-		if toast.Parent then toast:Destroy() end
-	end)
+    local cardGradient = Instance.new("UIGradient")
+    cardGradient.Name = "NotificationGradient"
+    cardGradient.Color = ColorSequence.new(
+        T.White:Lerp(T.Accent, 0.12),
+        T.White:Lerp(T.Elev, 0.08)
+    )
+    cardGradient.Rotation = 90
+    cardGradient.Parent = card
+
+    local statusDot = Instance.new("Frame")
+    statusDot.Name = "NotificationDot"
+    statusDot.Parent = card
+    statusDot.AnchorPoint = Vector2.new(0, 0.5)
+    statusDot.Position = UDim2.fromOffset(19, 17)
+    statusDot.Size = UDim2.fromOffset(6, 6)
+    statusDot.BackgroundColor3 = T.Accent; pcall(function() statusDot:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+    statusDot.BorderSizePixel = 0
+    statusDot.ZIndex = 904
+    Corner(statusDot, 4)
+
+    local tt = Instance.new("TextLabel")
+    tt.Name = "NotificationTitle"
+    tt.Parent = card
+    tt.BackgroundTransparency = 1
+    tt.Font = FB
+    tt.Position = UDim2.fromOffset(31, 8)
+    tt.Size = UDim2.new(1, -62, 0, 19)
+    tt.Text = titleText
+    tt.TextColor3 = T.White; pcall(function() tt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+    tt.TextTransparency = 0
+    tt.TextSize = MOBILE and 12 or 14
+    tt.TextTruncate = Enum.TextTruncate.AtEnd
+    tt.TextXAlignment = Enum.TextXAlignment.Left
+    tt.ZIndex = 904
+    if roleReveal then bindLocalizedText(tt, "Round Roles", "Round Roles", true) end
+
+    local closeGlyph = Instance.new("TextLabel")
+    closeGlyph.Name = "NotificationClose"
+    closeGlyph.Parent = card
+    closeGlyph.AnchorPoint = Vector2.new(1, 0)
+    closeGlyph.BackgroundTransparency = 1
+    closeGlyph.Position = UDim2.new(1, -13, 0, 7)
+    closeGlyph.Size = UDim2.fromOffset(18, 18)
+    closeGlyph.Font = FM
+    closeGlyph.Text = "×"
+    closeGlyph.TextColor3 = T.White; pcall(function() closeGlyph:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+    closeGlyph.TextTransparency = 0.18
+    closeGlyph.TextSize = MOBILE and 12 or 14
+    closeGlyph.ZIndex = 904
+
+    if roleReveal then
+        local function makeRoleRow(name, y, labelKey, value, colorRole, backgroundRole, borderRole, nameColor)
+            local row = Instance.new("Frame")
+            row.Name = name
+            row.Parent = card
+            row.Position = UDim2.fromOffset(17, y)
+            row.Size = UDim2.new(1, -34, 0, 25)
+            row.BackgroundColor3 = T[backgroundRole]; pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", backgroundRole) end)
+            row.BackgroundTransparency = 0.04
+            row.BorderSizePixel = 0
+            row.ZIndex = 903
+            Corner(row, 7)
+            local rowStroke = Stroke(row, T[borderRole], 1, 0.24)
+            pcall(function() rowStroke:SetAttribute("ThemeColorRole_Color", borderRole) end)
+
+            local dot = Instance.new("Frame")
+            dot.Name = "RoleDot"
+            dot.Parent = row
+            dot.AnchorPoint = Vector2.new(0, 0.5)
+            dot.Position = UDim2.fromOffset(10, 12)
+            dot.Size = UDim2.fromOffset(6, 6)
+            dot.BackgroundColor3 = T[colorRole]
+            dot.BorderSizePixel = 0
+            dot.ZIndex = 905
+            Corner(dot, 6)
+            pcall(function() dot:SetAttribute("ThemeColorRole_BackgroundColor3", colorRole) end)
+
+            local roleLabel = Instance.new("TextLabel")
+            roleLabel.Name = "RoleLabel"
+            roleLabel.Parent = row
+            roleLabel.BackgroundTransparency = 1
+            roleLabel.Position = UDim2.fromOffset(24, 0)
+            roleLabel.Size = UDim2.fromOffset(82, 25)
+            roleLabel.Font = FB
+            roleLabel.Text = string.upper(lang(labelKey))
+            roleLabel.TextColor3 = T[colorRole]
+            roleLabel.TextSize = 10
+            roleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            roleLabel.ZIndex = 905
+            pcall(function() roleLabel:SetAttribute("ThemeColorRole_TextColor3", colorRole) end)
+            bindLocalizedText(roleLabel, labelKey, labelKey, true)
+
+            local playerLabel = Instance.new("TextLabel")
+            playerLabel.Name = "PlayerName"
+            playerLabel.Parent = row
+            playerLabel.BackgroundTransparency = 1
+            playerLabel.Position = UDim2.fromOffset(108, 0)
+            playerLabel.Size = UDim2.new(1, -118, 1, 0)
+            playerLabel.Font = FM
+            playerLabel.Text = value ~= "" and value or "?"
+            playerLabel.TextColor3 = nameColor or T.White
+            if not nameColor then pcall(function() playerLabel:SetAttribute("ThemeColorRole_TextColor3", "White") end) end
+            playerLabel.TextSize = 13
+            playerLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            playerLabel.TextXAlignment = Enum.TextXAlignment.Right
+            playerLabel.ZIndex = 905
+        end
+
+        makeRoleRow("MurdererRole", 31, "Murderer", murdererText, "RoleMurderer", "RoleMurdererBg", "RoleMurdererBorder", Color3.fromRGB(255, 96, 96))
+        makeRoleRow("SheriffRole", 60, "Sheriff", sheriffText, "RoleSheriff", "RoleSheriffBg", "RoleSheriffBorder", Color3.fromRGB(60, 140, 255))
+    else
+        local bt = Instance.new("TextLabel")
+        bt.Name = "NotificationBody"
+        bt.Parent = card
+        bt.BackgroundTransparency = 1
+        bt.Font = FM
+        bt.Position = UDim2.fromOffset(19, 30)
+        bt.Size = UDim2.new(1, -38, 0, bodyHeight)
+        bt.Text = bodyText
+        bt.TextColor3 = T.White; pcall(function() bt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+        bt.TextTransparency = 0
+        bt.TextSize = 13
+        bt.TextTruncate = Enum.TextTruncate.None
+        bt.TextWrapped = true
+        bt.TextXAlignment = Enum.TextXAlignment.Left
+        bt.TextYAlignment = Enum.TextYAlignment.Top
+        bt.ZIndex = 904
+    end
+
+    local progressTrack = Instance.new("Frame")
+    progressTrack.Name = "NotificationProgressTrack"
+    progressTrack.Parent = card
+    progressTrack.AnchorPoint = Vector2.new(0, 1)
+    progressTrack.Position = UDim2.new(0, 19, 1, -6)
+    progressTrack.Size = UDim2.new(1, -38, 0, 2)
+    progressTrack.BackgroundColor3 = T.Bd2; pcall(function() progressTrack:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd2") end)
+    progressTrack.BackgroundTransparency = 0.25
+    progressTrack.BorderSizePixel = 0
+    progressTrack.ZIndex = 903
+    Corner(progressTrack, 2)
+    local progress = Instance.new("Frame")
+    progress.Name = "NotificationProgress"
+    progress.Parent = progressTrack
+    progress.Size = UDim2.fromScale(1, 1)
+    progress.BackgroundColor3 = T.Accent; pcall(function() progress:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+    progress.BackgroundTransparency = 0.04
+    progress.BorderSizePixel = 0
+    progress.ZIndex = 904
+    Corner(progress, 2)
+
+    local entry = { toast = toast }
+    local closed = false
+    local progressTween
+    local function dismiss()
+        if closed then return end
+        closed = true
+        if progressTween then pcall(function() progressTween:Cancel() end) end
+        for i, active in ipairs(ActiveN) do
+            if active == entry then table.remove(ActiveN, i); break end
+        end
+        if not toast.Parent then return end
+        TweenService:Create(card, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.fromOffset(slideX, slideY),
+        }):Play()
+        TweenService:Create(shadow, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.fromOffset(slideX, slideY + 3),
+            BackgroundTransparency = 1,
+        }):Play()
+        TweenService:Create(tst, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+        task.delay(0.11, function()
+            if toast.Parent then
+                TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Size = UDim2.fromOffset(toastWidth, 0),
+                }):Play()
+            end
+        end)
+        task.delay(0.31, function()
+            if toast.Parent then toast:Destroy() end
+        end)
+    end
+    entry.dismiss = dismiss
+    table.insert(ActiveN, entry)
+    if #ActiveN > 4 then
+        local old = ActiveN[1]
+        if old and old.dismiss then old.dismiss() end
+    end
+
+    card.Activated:Connect(dismiss)
+    card.MouseEnter:Connect(function()
+        if closed then return end
+        TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0,
+        }):Play()
+        TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.02 }):Play()
+        closeGlyph.TextTransparency = 0
+    end)
+    card.MouseLeave:Connect(function()
+        if closed then return end
+        TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.035,
+        }):Play()
+        TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.14 }):Play()
+        closeGlyph.TextTransparency = 0.18
+    end)
+
+    TweenService:Create(toast, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(toastWidth, finalHeight),
+    }):Play()
+    TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+        Position = UDim2.fromOffset(0, 0),
+    }):Play()
+    TweenService:Create(shadow, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+        Position = UDim2.fromOffset(0, 3),
+    }):Play()
+    progressTween = TweenService:Create(progress, TweenInfo.new(math.max(dur, 0.1), Enum.EasingStyle.Linear), {
+        Size = UDim2.new(0, 0, 1, 0),
+    })
+    progressTween:Play()
+    task.delay(dur, dismiss)
 end
 local function NotifyToggle(label, enabled)
-	Notify(label, enabled and "Enabled" or "Disabled", enabled and "success" or "muted", 1.8)
+    Notify(label, enabled and 'Enabled' or 'Disabled', 1.8)
 end
 
 -- Main Window Shell Setup.  WW/WH is the DESKTOP design size; the mobile build
@@ -639,7 +880,6 @@ local CloseBtn = mkWinBtn("X", MOBILE and -14 or -12)
 -- Desktop: minimize.  Mobile: minimize is pointless on a sheet you close
 -- outright, so the slot becomes the Interface button — the profile card that
 -- opened it lives in the desktop sidebar, which mobile drops.
-local MinBtn = mkWinBtn(MOBILE and "\u{2699}" or "-", MOBILE and -54 or -46)
 
 -- Drag Utility
 makeElementDraggable = function(frame, handle)
@@ -2269,30 +2509,6 @@ end
 
 -- Window Controls (Minimize / Close)
 local minimized = false
-MinBtn.MouseButton1Click:Connect(function()
-	if MOBILE then
-		-- Same slot, different job on a phone: open Interface settings.
-		if openAppearance then openAppearance() end
-		return
-	end
-	minimized = not minimized
-	if minimized then
-		SB.Visible = false
-		SBLine.Visible = false
-		ContentArea.Visible = false
-		TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-			Size = UDim2.fromOffset(Main.AbsoluteSize.X, 48)
-		}):Play()
-	else
-		TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-			Size = expandedSize
-		}):Play()
-		task.wait(0.2)
-		SB.Visible = true
-		SBLine.Visible = true
-		ContentArea.Visible = true
-	end
-end)
 
 local function cleanupAndClose()
 	pcall(function()
