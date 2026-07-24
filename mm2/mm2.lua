@@ -6546,7 +6546,7 @@ local function attachHUDDrag(frame, handle)
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
             dragVisual(false)
             pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
@@ -6961,7 +6961,7 @@ local function mkWatermark()
     HUD.islandPing = metric(201, 48, "PING")
     HUD.islandFPS = metric(254, 44, "FPS")
     HUD.islandSession = metric(303, 60, "TIME")
-    attachHUDDrag(f)
+    if not MOBILE then attachHUDDrag(f) end
     HUDEls["Watermark"] = { frame = f, content = f }
     
     local startPos, startTick
