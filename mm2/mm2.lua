@@ -14,6 +14,20 @@ local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
+
+-- ===== BUILD MODE (PC / MOBILE) =====
+-- The launcher's PC/MOBILE switch sets _G.INERTIA_MOBILE before running this
+-- file, and that flag always wins: auto-detect alone is wrong on tablets with a
+-- keyboard, on emulators and on touchscreen PCs.  Without a launcher we fall
+-- back to "touch, no keyboard".
+-- This MUST stay above the first use of MOBILE.  It used to be declared ~1200
+-- lines further down, which meant every `MOBILE` in the notification builder
+-- above it resolved to a nil GLOBAL instead of this local — so the toast width
+-- and all three toast text sizes silently kept their desktop values on phones.
+local MOBILE = _G.INERTIA_MOBILE
+if MOBILE == nil then MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled end
+MOBILE = MOBILE == true
+
 local LP = Players.LocalPlayer
 -- The game's real max camera zoom, captured BEFORE anything (incl. config auto-load) changes it.
 -- "No Camera Limit" restores THIS when off, so executing the script never widens your zoom-out.
@@ -318,7 +332,9 @@ local Themes = {
 S.SelectedTheme = S.SelectedTheme or "Default"
 S.Language = S.Language or "ENG"
 S.TextSizeScale = S.TextSizeScale or 1.0
-S.NotificationPosition = S.NotificationPosition or "Bottom Right"
+-- Bottom Right sits on the jump button and the joystick on a phone; centre the
+-- toasts at the top there instead.  A saved config still overrides this.
+S.NotificationPosition = S.NotificationPosition or (MOBILE and "Top Center" or "Bottom Right")
 local Translations = {
     RU = {
         Visuals = "Визуалы", Combat = "Бой", Motion = "Движение", Misc = "Разное",
@@ -1195,14 +1211,8 @@ local FOV_COLORS = {
     Black  = Color3.fromRGB(15, 15, 15),
 }
 
--- ===== BUILD MODE (PC / MOBILE) =====
--- The launcher's PC/MOBILE switch sets _G.INERTIA_MOBILE before running this
--- file, and that flag always wins: auto-detect alone is wrong on tablets with a
--- keyboard, on emulators and on touchscreen PCs.  Without a launcher we fall
--- back to "touch, no keyboard".
-local MOBILE = _G.INERTIA_MOBILE
-if MOBILE == nil then MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled end
-MOBILE = MOBILE == true
+-- (MOBILE is defined with the services at the top of the file — see the note
+-- there for why it cannot live down here.)
 
 -- Every measurement that has to differ between a mouse pointer and a fingertip
 -- lives here, so layout code stays ONE path instead of two parallel UIs. Touch
@@ -1224,8 +1234,11 @@ local M = MOBILE and {
 local viewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(1280, 720)
 -- Mobile is Scale-driven (see the responsive block further down); the desktop
 -- numbers stay clamped to the monitor as before.
-local WW = MOBILE and math.floor(viewport.X * 0.96) or math.max(560, math.min(980, math.floor(viewport.X - 36)))
-local WH = MOBILE and math.floor(viewport.Y * 0.88) or math.max(430, math.min(640, math.floor(viewport.Y - 56)))
+-- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
+-- stay visible and playable around it.  relayout() re-proportions this per
+-- orientation immediately; these are just the first-frame values.
+local WW = MOBILE and math.floor(math.clamp(viewport.X * 0.86, 300, 540)) or math.max(560, math.min(980, math.floor(viewport.X - 36)))
+local WH = MOBILE and math.floor(math.clamp(viewport.Y * 0.56, 260, 430)) or math.max(430, math.min(640, math.floor(viewport.Y - 56)))
 local expandedSize = UDim2.fromOffset(WW, WH)
 Main = Instance.new("Frame")
 Main.Name = "Main"
@@ -1539,7 +1552,7 @@ end)
 do
     -- Touch counts as a drag: matching only MouseButton1/MouseMovement (as this
     -- did) makes the window impossible to move on a phone.
-    local dr, ds, sp
+    local dr, ds, sp, so
     TBar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             -- The search box and the header buttons bubble input through TBar;
@@ -1553,12 +1566,33 @@ do
             dr = true
             ds = i.Position
             sp = Main.Position
+            -- Top-left at drag start, in parent space: the clamp below offsets from
+            -- this fixed origin, not from the live (already moved) AbsolutePosition,
+            -- or the delta would compound every frame.
+            so = Main.Parent and (Main.AbsolutePosition - Main.Parent.AbsolutePosition) or nil
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
         if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - ds
-            Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+            -- A compact floating panel dragged past the screen edge is unrecoverable
+            -- on touch (no window list to get it back) and the spot is remembered as
+            -- the reopen position — so keep the whole panel on screen, stored as pure
+            -- Scale so it also survives a rotation.
+            local host = MOBILE and so and Main.Parent and Main.Parent.AbsoluteSize
+            if host and host.X > 0 and host.Y > 0 then
+                local size = Main.AbsoluteSize
+                local function fit(v, extent, span)
+                    if span >= extent then return (extent - span) / 2 end
+                    return math.clamp(v, 0, extent - span)
+                end
+                local x = fit(so.X + d.X, host.X, size.X)
+                local y = fit(so.Y + d.Y, host.Y, size.Y)
+                local pivot = Vector2.new(x, y) + Main.AnchorPoint * size
+                Main.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
+            else
+                Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+            end
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
@@ -9577,10 +9611,12 @@ do
         if not vp or vp.X < 1 or vp.Y < 1 then return end
         local portrait = vp.Y >= vp.X
         if MOBILE then
-            -- Portrait: a tall sheet. Landscape: WIDE and near-full height — a
-            -- narrow vertical sheet on a landscape phone wastes the whole screen.
-            WW = math.floor(math.clamp(vp.X * (portrait and 0.94 or 0.96), 260, 960))
-            WH = math.floor(math.clamp(vp.Y * (portrait and 0.82 or 0.88), 300, 940))
+            -- Compact floating panel.  Landscape (how most phones are held in
+            -- Roblox) stays deliberately narrow so the play area beside it is
+            -- usable; portrait can afford more width.  The pixel clamps are what
+            -- stop a tablet from getting a panel that covers the whole screen.
+            WW = math.floor(math.clamp(vp.X * (portrait and 0.86 or 0.54), 300, 540))
+            WH = math.floor(math.clamp(vp.Y * (portrait and 0.56 or 0.78), 260, 430))
         else
             WW = math.max(560, math.min(980, math.floor(vp.X - 36)))
             WH = math.max(430, math.min(640, math.floor(vp.Y - 56)))

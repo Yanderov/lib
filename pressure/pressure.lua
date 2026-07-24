@@ -132,7 +132,10 @@ local M = MOBILE and {
 --------------------------------------------------------------------------------
 local S = {
 	Connections = {}, Gui = nil, Destroyed = false,
-	UITheme = "Default", UITextScale = 1, HUDScale = 1, NotificationPosition = "Top Right",
+	-- Top Right is the Roblox leaderboard's corner on a phone; centre the toasts
+	-- there instead (they clear the Dynamic Island, which ends around y=42).
+	UITheme = "Default", UITextScale = 1, HUDScale = 1,
+	NotificationPosition = MOBILE and "Top Center" or "Top Right",
 	-- Motion
 	SpeedEnabled = false, CustomWalkSpeed = 24, CrouchSpeed = 10, SprintMod = 45,
 	JumpEnabled = false, CustomJumpPower = 50,
@@ -1052,7 +1055,10 @@ Main.BackgroundColor3 = T.BG
 Main.BorderSizePixel = 0
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.Position = UDim2.fromScale(0.5, 0.5)
-Main.Size = MOBILE and UDim2.fromScale(0.92, 0.84) or UDim2.fromOffset(WW, WH)
+-- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
+-- stay visible and playable around it.  relayout() re-proportions this per
+-- orientation immediately; these are just the first-frame values.
+Main.Size = MOBILE and UDim2.fromScale(0.86, 0.56) or UDim2.fromOffset(WW, WH)
 Main.ClipsDescendants = true
 Main.Visible = false
 Corner(Main, MOBILE and 18 or 14)
@@ -1061,11 +1067,12 @@ Shadow(Main, 0.2)
 local mainScale = Instance.new("UIScale"); mainScale.Parent = Main
 mainScale.Scale = 0.9
 if MOBILE then
-	-- Upper bound only, and wide enough for a landscape phone sheet — the old
-	-- 560 cap was what kept the menu a narrow vertical strip in landscape.
+	-- The MaxSize is what actually keeps the panel compact: on a tablet a pure
+	-- Scale size would still cover most of the screen.  MinSize keeps it usable
+	-- on a small phone — below ~300 wide the rail + a row no longer fit.
 	local limit = Instance.new("UISizeConstraint")
-	limit.MaxSize = Vector2.new(960, 940)
-	limit.MinSize = Vector2.new(260, 300)
+	limit.MaxSize = Vector2.new(540, 430)
+	limit.MinSize = Vector2.new(300, 260)
 	limit.Parent = Main
 end
 
@@ -1274,7 +1281,7 @@ end))
 
 -- Window drag
 do
-	local dragging, dragStart, startPos = false, nil, nil
+	local dragging, dragStart, startPos, startCentre = false, nil, nil, nil
 	tc(TBar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			-- TextBox and title-bar buttons bubble input through TBar.  Without
@@ -1287,6 +1294,7 @@ do
 			end
 			if over(SearchBox) or over(btnClose)  then return end
 			dragging = true; dragStart = input.Position; startPos = Main.Position
+			startCentre = Main.AbsolutePosition + Main.AbsoluteSize / 2
 			local endConn
 			endConn = input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
@@ -1299,7 +1307,23 @@ do
 	tc(UIS.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local d = input.Position - dragStart
-			Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			-- A compact floating panel dragged past the screen edge is unrecoverable
+			-- on touch (no window list to get it back), and the spot is remembered as
+			-- the reopen position — so keep the whole panel on screen and store the
+			-- result as pure Scale, which also survives a rotation.
+			local host = MOBILE and startCentre and Main.Parent and Main.Parent.AbsoluteSize
+			if host and host.X > 0 and host.Y > 0 then
+				local half = Main.AbsoluteSize / 2
+				local function fit(v, halfSize, extent)
+					if halfSize * 2 >= extent then return extent / 2 end
+					return math.clamp(v, halfSize, extent - halfSize)
+				end
+				local cx = fit(startCentre.X + d.X, half.X, host.X)
+				local cy = fit(startCentre.Y + d.Y, half.Y, host.Y)
+				Main.Position = UDim2.fromScale(cx / host.X, cy / host.Y)
+			else
+				Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			end
 		end
 	end))
 end
@@ -2405,9 +2429,10 @@ do
 		local portrait = vp.Y >= vp.X
 
 		if MOBILE then
-			-- Portrait: a tall sheet. Landscape: WIDE and near-full height — a
-			-- narrow vertical sheet on a landscape phone wastes the whole screen.
-			Main.Size = portrait and UDim2.fromScale(0.94, 0.8) or UDim2.fromScale(0.74, 0.92)
+			-- Compact floating panel, capped by the UISizeConstraint above.  Landscape
+			-- (how most phones are held in Roblox) stays deliberately narrow so the
+			-- play area beside it is usable; portrait can afford more width.
+			Main.Size = portrait and UDim2.fromScale(0.86, 0.56) or UDim2.fromScale(0.54, 0.78)
 		else
 			WW = math.min(920, math.floor(vp.X - 40))
 			WH = math.min(590, math.floor(vp.Y - 40))

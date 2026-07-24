@@ -795,7 +795,10 @@ end
 -- never uses a pixel size — expandedSize is Scale-based and recomputed by
 -- relayout() on every viewport/orientation change.
 local WW, WH = 900, 580
-local expandedSize = MOBILE and UDim2.fromScale(0.92, 0.84) or UDim2.fromOffset(WW, WH)
+-- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
+-- stay visible and playable around it.  relayout() re-proportions this per
+-- orientation immediately; these are just the first-frame values.
+local expandedSize = MOBILE and UDim2.fromScale(0.86, 0.56) or UDim2.fromOffset(WW, WH)
 Main = Instance.new("Frame")
 Main.Name = "Main"
 Main.Parent = SG
@@ -812,11 +815,12 @@ local mainSt = Stroke(Main, T.Bd, 1, 0.1)
 Shadow(Main, 0.15)
 Grad(Main, T.White:Lerp(T.Accent, 0.10), T.White:Lerp(T.Elev, 0.06), 90)
 if MOBILE then
-	-- Upper bound only, and wide enough for a landscape phone sheet — the old
-	-- 560 cap was what kept the menu a narrow vertical strip in landscape.
+	-- The MaxSize is what actually keeps the panel compact: on a tablet a pure
+	-- Scale size would still cover most of the screen.  MinSize keeps it usable
+	-- on a small phone — below ~300 wide the rail + a row no longer fit.
 	local limit = Instance.new("UISizeConstraint")
-	limit.MaxSize = Vector2.new(960, 940)
-	limit.MinSize = Vector2.new(260, 300)
+	limit.MaxSize = Vector2.new(540, 430)
+	limit.MinSize = Vector2.new(300, 260)
 	limit.Parent = Main
 end
 
@@ -880,13 +884,17 @@ local CloseBtn = mkWinBtn("X", MOBILE and -14 or -12)
 -- Drag Utility
 makeElementDraggable = function(frame, handle)
 	handle = handle or frame
-	local dragging, dragInput, dragStart, startPos
+	local dragging, dragInput, dragStart, startPos, startOrigin
 	handle.InputBegan:Connect(function(input)
 		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and frame.Active then
 			if frame == Main or (not hudLocked) then
 				dragging = true
 				dragStart = input.Position
 				startPos = frame.Position
+				-- Top-left at drag start, in parent space: the clamp below offsets
+				-- from this fixed origin, not from the live (already moved)
+				-- AbsolutePosition, or the delta would compound every frame.
+				startOrigin = frame.Parent and (frame.AbsolutePosition - frame.Parent.AbsolutePosition) or nil
 				local conn
 				conn = input.Changed:Connect(function()
 					if input.UserInputState == Enum.UserInputState.End then
@@ -906,7 +914,26 @@ makeElementDraggable = function(frame, handle)
 	tc(UIS.InputChanged:Connect(function(input)
 		if input == dragInput and dragging then
 			local delta = input.Position - dragStart
-			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			-- On touch, anything dragged past the screen edge is unrecoverable (no
+			-- window list to get it back) and the spot is persisted by autosave — so
+			-- keep every draggable fully on screen and store the result as pure Scale,
+			-- which also survives a rotation.  Clamping the TOP-LEFT and converting
+			-- back through the frame's own AnchorPoint keeps this correct for the
+			-- centre-anchored Main window and the corner-anchored HUD panels alike.
+			local host = MOBILE and startOrigin and frame.Parent and frame.Parent.AbsoluteSize
+			if host and host.X > 0 and host.Y > 0 then
+				local size = frame.AbsoluteSize
+				local function fit(v, extent, span)
+					if span >= extent then return (extent - span) / 2 end
+					return math.clamp(v, 0, extent - span)
+				end
+				local x = fit(startOrigin.X + delta.X, host.X, size.X)
+				local y = fit(startOrigin.Y + delta.Y, host.Y, size.Y)
+				local pivot = Vector2.new(x, y) + frame.AnchorPoint * size
+				frame.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
+			else
+				frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			end
 		end
 	end))
 end
@@ -2785,9 +2812,10 @@ do
 		local portrait = vp.Y >= vp.X
 
 		if MOBILE then
-			-- Portrait: a tall sheet. Landscape: WIDE and near-full height — a
-			-- narrow vertical sheet on a landscape phone wastes the whole screen.
-			expandedSize = portrait and UDim2.fromScale(0.92, 0.82) or UDim2.fromScale(0.74, 0.92)
+			-- Compact floating panel, capped by the UISizeConstraint above.  Landscape
+			-- (how most phones are held in Roblox) stays deliberately narrow so the
+			-- play area beside it is usable; portrait can afford more width.
+			expandedSize = portrait and UDim2.fromScale(0.86, 0.56) or UDim2.fromScale(0.54, 0.78)
 		else
 			WW = math.min(900, math.floor(vp.X - 40))
 			WH = math.min(580, math.floor(vp.Y - 40))
