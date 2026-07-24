@@ -1254,30 +1254,23 @@ local function setMenuVisible(v)
         return
     end
     S._menuWantOpen = v
-    -- Floating buttons hide while the sheet is open: they are gameplay
-    -- controls, and stacked on top of the menu they just cover its rows.
     if S._floatHost then S._floatHost.Visible = not v end
     if v then
         Main.Visible = true
+        menuScale.Scale = 1 -- Fast UI, no heavy scaling on open
         Main.Position = (S._islandPoint and S._islandPoint()) or UDim2.new(0.5, 0, 0, 34)
-        menuScale.Scale = 0.06
-        TweenService.Create(TweenService, Main, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = S._menuHome or UDim2.fromScale(0.5, 0.5)
         }):Play()
-        TweenService.Create(TweenService, menuScale, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
         if S._islandGulp then S._islandGulp(true) end
     else
         S._menuHome = Main.Position
         local target = (S._islandPoint and S._islandPoint()) or UDim2.new(0.5, 0, 0, 34)
-        TweenService.Create(TweenService, Main, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = target }):Play()
-        TweenService.Create(TweenService, menuScale, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.05 }):Play()
-        task.delay(0.27, function()
-            -- Reopened mid-animation? The open path already re-tweened it; hiding
-            -- now would swallow the window the user just asked for.
+        TweenService:Create(Main, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = target }):Play()
+        task.delay(0.16, function()
             if S._menuWantOpen then return end
             Main.Visible = false
             Main.Position = S._menuHome or UDim2.fromScale(0.5, 0.5)
-            menuScale.Scale = 1
             if S._islandGulp then S._islandGulp(false) end
         end)
     end
@@ -1647,7 +1640,7 @@ SettingsModal.Position = UDim2.new(0.5, 0, 0.5, 0)
 SettingsModal.Size = UDim2.fromOffset(300, 500)
 SettingsModal.BackgroundColor3 = T.Card; pcall(function() SettingsModal:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
 SettingsModal.BorderSizePixel = 0
-SettingsModal.ZIndex = 999
+SettingsModal.ZIndex = 1000
 SettingsModal.Visible = false
 Corner(SettingsModal, 12)
 Stroke(SettingsModal, T.Bd2, 1.2, 0.4)
@@ -2004,20 +1997,20 @@ do
     local dr, ds, sp
     mHdr.Active = true
     mHdr.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dr = true
             ds = i.Position
             sp = SettingsModal.Position
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and i.UserInputType == Enum.UserInputType.MouseMovement then
+        if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - ds
             SettingsModal.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dr = false
         end
     end))
@@ -3203,7 +3196,10 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     frame.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             active = true
-            if MOBILE then ContentArea.ScrollingEnabled = false end
+            if MOBILE then
+                local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
+                if sf then sf.ScrollingEnabled = false end
+            end
             fromMouse(i)
         end
     end)
@@ -3214,7 +3210,10 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     end))
     tc(UIS.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            if active and MOBILE then ContentArea.ScrollingEnabled = true end
+            if active and MOBILE then
+                local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
+                if sf then sf.ScrollingEnabled = true end
+            end
             active = false
         end
     end))
@@ -6534,7 +6533,7 @@ local function attachHUDDrag(frame, handle)
         end
     end
     dragHandle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
@@ -6542,7 +6541,7 @@ local function attachHUDDrag(frame, handle)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement and dragStart and startPos then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
             local delta = input.Position - dragStart
             frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
@@ -9560,7 +9559,7 @@ do
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             rs = false
         end
     end))
