@@ -218,7 +218,7 @@ local function launch(entry)
 		-- The time query defeats the raw.githubusercontent CDN cache (~5 min):
 		-- without it, a freshly pushed fix keeps serving the previous, possibly
 		-- broken file and "nothing injects" for no visible reason.
-		local url = REPO .. entry.file .. (MOBILE and "_mobile" or "") .. ".txt?t=" .. tostring(os.time())
+		local url = REPO .. entry.file .. (MOBILE and "_mobile" or "") .. ".lua?t=" .. tostring(os.time())
 		local ok, source = pcall(function() return game:HttpGet(url) end)
 		if not ok or type(source) ~= "string" or #source == 0 then
 			busy = false

@@ -1,5 +1,5 @@
 -- MURDER MYSTERY 2 — MOBILE BUILD (generated, do not edit by hand).
--- Identical source to mm2/mm2.txt with the build flag forced on.
+-- Identical source to mm2/mm2.lua with the build flag forced on.
 -- Regenerate after ANY edit to the source:   .\build_mobile.ps1
 _G.INERTIA_MOBILE = true
 if _G.MM2_Visuals_Script then

@@ -13,9 +13,9 @@ $ErrorActionPreference = 'Stop'
 Set-Location -Path $PSScriptRoot
 
 $builds = @(
-    @{ Source = 'pressure/pressure.txt';               Target = 'pressure/pressure_mobile.txt';       Name = 'PRESSURE HUB' },
-    @{ Source = 'demonology/demonology.txt';    Target = 'demonology/demonology_mobile.txt';   Name = 'DEMONOLOGY' },
-    @{ Source = 'mm2/mm2.txt';                  Target = 'mm2/mm2_mobile.txt';                 Name = 'MURDER MYSTERY 2' }
+    @{ Source = 'pressure/pressure.lua';               Target = 'pressure/pressure_mobile.lua';       Name = 'PRESSURE HUB' },
+    @{ Source = 'demonology/demonology.lua';    Target = 'demonology/demonology_mobile.lua';   Name = 'DEMONOLOGY' },
+    @{ Source = 'mm2/mm2.lua';                  Target = 'mm2/mm2_mobile.lua';                 Name = 'MURDER MYSTERY 2' }
 )
 
 foreach ($build in $builds) {
