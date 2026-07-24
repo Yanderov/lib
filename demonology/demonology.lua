@@ -1729,6 +1729,83 @@ local function relayoutPage(page)
         top = top + subBarHeight + gap
     end
 
+    -- Section cards carry an "Inner" frame (mkSection); stack them in a masonry
+    -- of 1 column on phones, up to 3 on wide desktop windows.
+    local cards = {}
+    for _, child in ipairs(page:GetChildren()) do
+        if child:IsA("Frame") and child.Visible and child ~= subBar and child:FindFirstChild("Inner") then
+            table.insert(cards, child)
+        end
+    end
+    table.sort(cards, function(a, b)
+        if a.LayoutOrder == b.LayoutOrder then return a.Name < b.Name end
+        return a.LayoutOrder < b.LayoutOrder
+    end)
+
+    local columns = 1
+    if #cards >= 2 and pageWidth >= 560 then columns = 2 end
+    if #cards >= 4 and pageWidth >= 760 then columns = 3 end
+    columns = math.max(1, math.min(columns, #cards))
+    local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
+    local columnWidth = math.floor(usableWidth / columns)
+    local heights = {}
+    for i = 1, columns do heights[i] = top end
+
+    for _, card in ipairs(cards) do
+        card.AnchorPoint = Vector2.zero
+        card.Size = UDim2.new(0, columnWidth, 0, 0)
+        local targetColumn = 1
+        for i = 2, columns do
+            if heights[i] < heights[targetColumn] then targetColumn = i end
+        end
+        card.Position = UDim2.fromOffset(inset + (targetColumn - 1) * (columnWidth + gap), heights[targetColumn])
+        local height = math.max(card.AbsoluteSize.Y, 42)
+        heights[targetColumn] = heights[targetColumn] + height + gap
+    end
+
+    local bottom = top
+    for i = 1, columns do bottom = math.max(bottom, heights[i]) end
+    local requiredHeight = math.max(pageLayoutSearchMode and 0 or areaHeight, bottom + inset - gap)
+    page.Size = UDim2.new(1, 0, 0, requiredHeight)
+end
+local function refreshPageLayouts()
+    -- Clear the queued flag only after the whole pass: relayoutPage writes to every
+    -- card, re-firing each card's AbsoluteSize watcher; a still-set flag makes those
+    -- self-triggered signals no-ops instead of re-entrant task.defer calls.
+    ContentArea.ScrollingEnabled = true
+    for _, page in pairs(Pages) do relayoutPage(page) end
+    pageLayoutQueued = false
+end
+local function queuePageLayout()
+    if pageLayoutQueued then return end
+    pageLayoutQueued = true
+    task.defer(function()
+        RS.Heartbeat:Wait()
+        refreshPageLayouts()
+    end)
+end
+local function watchPageChild(child)
+    if not child:IsA("GuiObject") then return end
+    tc(child:GetPropertyChangedSignal("Visible"):Connect(queuePageLayout))
+    tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+end
+for _, page in pairs(Pages) do
+    for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
+    tc(page.ChildAdded:Connect(function(child)
+        watchPageChild(child)
+        queuePageLayout()
+    end))
+end
+tc(ContentArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+S._RefreshPageLayout = function(searching)
+    pageLayoutSearchMode = searching == true
+    ContentArea.CanvasPosition = Vector2.zero
+    queuePageLayout()
+end
+S._QueuePageLayout = queuePageLayout
+queuePageLayout()
+end
+
 
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")
@@ -1812,125 +1889,6 @@ local function mkStat(parent, label, order)
 		val.TextColor3 = color or T.White
 	end
 	
-do
-    -- MAIN TAB
-    local mainBar = Instance.new("Frame")
-    mainBar.Name = "SubTabBar"
-    mainBar.LayoutOrder = 0
-    mainBar.BackgroundTransparency = 1
-    mainBar.Size = UDim2.new(1, 0, 0, 32)
-    mainBar.Parent = Pages["Main"]
-
-    local subList = Instance.new("UIListLayout")
-    subList.FillDirection = Enum.FillDirection.Horizontal
-    subList.SortOrder = Enum.SortOrder.LayoutOrder
-    subList.Padding = UDim.new(0, 8)
-    subList.Parent = mainBar
-
-    local evBtn = Instance.new("TextButton")
-    local huntBtn = Instance.new("TextButton")
-    local autoBtn = Instance.new("TextButton")
-
-    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
-    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
-    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
-
-    local function updMain(t)
-        styleSubTabActive(evBtn, evStroke, t == "ev")
-        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
-        styleSubTabActive(autoBtn, autoStroke, t == "auto")
-        
-        Sec.prog.Visible = (t == "ev")
-        Sec.live.Visible = (t == "ev")
-        
-        Sec.info.Visible = (t == "hunt")
-        Sec.guess.Visible = (t == "hunt")
-        Sec.tools.Visible = (t == "hunt")
-        Sec.hunt.Visible = (t == "hunt")
-        
-        Sec.sb.Visible = (t == "auto")
-        Sec.photo.Visible = (t == "auto")
-        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
-        Sec.rate.Visible = (t == "auto")
-        
-        if relayoutPage then relayoutPage(Pages["Main"]) end
-    end
-    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
-    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
-    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
-    updMain("ev")
-
-    -- VISUALS TAB
-    local visBar = Instance.new("Frame")
-    visBar.Name = "SubTabBar"
-    visBar.LayoutOrder = 0
-    visBar.BackgroundTransparency = 1
-    visBar.Size = UDim2.new(1, 0, 0, 32)
-    visBar.Parent = Pages["Visuals"]
-
-    local subList2 = Instance.new("UIListLayout")
-    subList2.FillDirection = Enum.FillDirection.Horizontal
-    subList2.SortOrder = Enum.SortOrder.LayoutOrder
-    subList2.Padding = UDim.new(0, 8)
-    subList2.Parent = visBar
-
-    local espBtn = Instance.new("TextButton")
-    local hudBtn = Instance.new("TextButton")
-
-    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
-    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
-
-    local function updVis(t)
-        styleSubTabActive(espBtn, espStroke, t == "esp")
-        styleSubTabActive(hudBtn, hudStroke, t == "hud")
-        
-        Sec.world.Visible = (t == "esp")
-        Sec.placesToggles.Visible = (t == "esp")
-        Sec.players.Visible = (t == "esp")
-        
-        Sec.panels.Visible = (t == "hud")
-        if relayoutPage then relayoutPage(Pages["Visuals"]) end
-    end
-    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
-    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
-    updVis("esp")
-
-    -- PLAYER TAB
-    local plBar = Instance.new("Frame")
-    plBar.Name = "SubTabBar"
-    plBar.LayoutOrder = 0
-    plBar.BackgroundTransparency = 1
-    plBar.Size = UDim2.new(1, 0, 0, 32)
-    plBar.Parent = Pages["Player"]
-
-    local subList3 = Instance.new("UIListLayout")
-    subList3.FillDirection = Enum.FillDirection.Horizontal
-    subList3.SortOrder = Enum.SortOrder.LayoutOrder
-    subList3.Padding = UDim.new(0, 8)
-    subList3.Parent = plBar
-
-    local moveBtn = Instance.new("TextButton")
-    local tpBtn = Instance.new("TextButton")
-
-    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
-    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
-
-    local function updPl(t)
-        styleSubTabActive(moveBtn, moveStroke, t == "move")
-        styleSubTabActive(tpBtn, tpStroke, t == "tp")
-        
-        Sec.move.Visible = (t == "move")
-        Sec.vis.Visible = (t == "move")
-        
-        Sec.tp.Visible = (t == "tp")
-        Sec.targetTp.Visible = (t == "tp")
-        if relayoutPage then relayoutPage(Pages["Player"]) end
-    end
-    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
-    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
-    updPl("move")
-end
-
 	return api
 end
 
@@ -1993,125 +1951,6 @@ local function mkEvidenceRow(parent, label, order)
 		end
 	end
 	
-do
-    -- MAIN TAB
-    local mainBar = Instance.new("Frame")
-    mainBar.Name = "SubTabBar"
-    mainBar.LayoutOrder = 0
-    mainBar.BackgroundTransparency = 1
-    mainBar.Size = UDim2.new(1, 0, 0, 32)
-    mainBar.Parent = Pages["Main"]
-
-    local subList = Instance.new("UIListLayout")
-    subList.FillDirection = Enum.FillDirection.Horizontal
-    subList.SortOrder = Enum.SortOrder.LayoutOrder
-    subList.Padding = UDim.new(0, 8)
-    subList.Parent = mainBar
-
-    local evBtn = Instance.new("TextButton")
-    local huntBtn = Instance.new("TextButton")
-    local autoBtn = Instance.new("TextButton")
-
-    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
-    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
-    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
-
-    local function updMain(t)
-        styleSubTabActive(evBtn, evStroke, t == "ev")
-        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
-        styleSubTabActive(autoBtn, autoStroke, t == "auto")
-        
-        Sec.prog.Visible = (t == "ev")
-        Sec.live.Visible = (t == "ev")
-        
-        Sec.info.Visible = (t == "hunt")
-        Sec.guess.Visible = (t == "hunt")
-        Sec.tools.Visible = (t == "hunt")
-        Sec.hunt.Visible = (t == "hunt")
-        
-        Sec.sb.Visible = (t == "auto")
-        Sec.photo.Visible = (t == "auto")
-        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
-        Sec.rate.Visible = (t == "auto")
-        
-        if relayoutPage then relayoutPage(Pages["Main"]) end
-    end
-    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
-    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
-    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
-    updMain("ev")
-
-    -- VISUALS TAB
-    local visBar = Instance.new("Frame")
-    visBar.Name = "SubTabBar"
-    visBar.LayoutOrder = 0
-    visBar.BackgroundTransparency = 1
-    visBar.Size = UDim2.new(1, 0, 0, 32)
-    visBar.Parent = Pages["Visuals"]
-
-    local subList2 = Instance.new("UIListLayout")
-    subList2.FillDirection = Enum.FillDirection.Horizontal
-    subList2.SortOrder = Enum.SortOrder.LayoutOrder
-    subList2.Padding = UDim.new(0, 8)
-    subList2.Parent = visBar
-
-    local espBtn = Instance.new("TextButton")
-    local hudBtn = Instance.new("TextButton")
-
-    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
-    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
-
-    local function updVis(t)
-        styleSubTabActive(espBtn, espStroke, t == "esp")
-        styleSubTabActive(hudBtn, hudStroke, t == "hud")
-        
-        Sec.world.Visible = (t == "esp")
-        Sec.placesToggles.Visible = (t == "esp")
-        Sec.players.Visible = (t == "esp")
-        
-        Sec.panels.Visible = (t == "hud")
-        if relayoutPage then relayoutPage(Pages["Visuals"]) end
-    end
-    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
-    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
-    updVis("esp")
-
-    -- PLAYER TAB
-    local plBar = Instance.new("Frame")
-    plBar.Name = "SubTabBar"
-    plBar.LayoutOrder = 0
-    plBar.BackgroundTransparency = 1
-    plBar.Size = UDim2.new(1, 0, 0, 32)
-    plBar.Parent = Pages["Player"]
-
-    local subList3 = Instance.new("UIListLayout")
-    subList3.FillDirection = Enum.FillDirection.Horizontal
-    subList3.SortOrder = Enum.SortOrder.LayoutOrder
-    subList3.Padding = UDim.new(0, 8)
-    subList3.Parent = plBar
-
-    local moveBtn = Instance.new("TextButton")
-    local tpBtn = Instance.new("TextButton")
-
-    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
-    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
-
-    local function updPl(t)
-        styleSubTabActive(moveBtn, moveStroke, t == "move")
-        styleSubTabActive(tpBtn, tpStroke, t == "tp")
-        
-        Sec.move.Visible = (t == "move")
-        Sec.vis.Visible = (t == "move")
-        
-        Sec.tp.Visible = (t == "tp")
-        Sec.targetTp.Visible = (t == "tp")
-        if relayoutPage then relayoutPage(Pages["Player"]) end
-    end
-    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
-    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
-    updPl("move")
-end
-
 	return api
 end
 
@@ -2272,125 +2111,6 @@ local function mkToggle(parent, label, default, callback, order, noPersistState,
 		end,
 	})
 	
-do
-    -- MAIN TAB
-    local mainBar = Instance.new("Frame")
-    mainBar.Name = "SubTabBar"
-    mainBar.LayoutOrder = 0
-    mainBar.BackgroundTransparency = 1
-    mainBar.Size = UDim2.new(1, 0, 0, 32)
-    mainBar.Parent = Pages["Main"]
-
-    local subList = Instance.new("UIListLayout")
-    subList.FillDirection = Enum.FillDirection.Horizontal
-    subList.SortOrder = Enum.SortOrder.LayoutOrder
-    subList.Padding = UDim.new(0, 8)
-    subList.Parent = mainBar
-
-    local evBtn = Instance.new("TextButton")
-    local huntBtn = Instance.new("TextButton")
-    local autoBtn = Instance.new("TextButton")
-
-    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
-    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
-    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
-
-    local function updMain(t)
-        styleSubTabActive(evBtn, evStroke, t == "ev")
-        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
-        styleSubTabActive(autoBtn, autoStroke, t == "auto")
-        
-        Sec.prog.Visible = (t == "ev")
-        Sec.live.Visible = (t == "ev")
-        
-        Sec.info.Visible = (t == "hunt")
-        Sec.guess.Visible = (t == "hunt")
-        Sec.tools.Visible = (t == "hunt")
-        Sec.hunt.Visible = (t == "hunt")
-        
-        Sec.sb.Visible = (t == "auto")
-        Sec.photo.Visible = (t == "auto")
-        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
-        Sec.rate.Visible = (t == "auto")
-        
-        if relayoutPage then relayoutPage(Pages["Main"]) end
-    end
-    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
-    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
-    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
-    updMain("ev")
-
-    -- VISUALS TAB
-    local visBar = Instance.new("Frame")
-    visBar.Name = "SubTabBar"
-    visBar.LayoutOrder = 0
-    visBar.BackgroundTransparency = 1
-    visBar.Size = UDim2.new(1, 0, 0, 32)
-    visBar.Parent = Pages["Visuals"]
-
-    local subList2 = Instance.new("UIListLayout")
-    subList2.FillDirection = Enum.FillDirection.Horizontal
-    subList2.SortOrder = Enum.SortOrder.LayoutOrder
-    subList2.Padding = UDim.new(0, 8)
-    subList2.Parent = visBar
-
-    local espBtn = Instance.new("TextButton")
-    local hudBtn = Instance.new("TextButton")
-
-    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
-    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
-
-    local function updVis(t)
-        styleSubTabActive(espBtn, espStroke, t == "esp")
-        styleSubTabActive(hudBtn, hudStroke, t == "hud")
-        
-        Sec.world.Visible = (t == "esp")
-        Sec.placesToggles.Visible = (t == "esp")
-        Sec.players.Visible = (t == "esp")
-        
-        Sec.panels.Visible = (t == "hud")
-        if relayoutPage then relayoutPage(Pages["Visuals"]) end
-    end
-    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
-    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
-    updVis("esp")
-
-    -- PLAYER TAB
-    local plBar = Instance.new("Frame")
-    plBar.Name = "SubTabBar"
-    plBar.LayoutOrder = 0
-    plBar.BackgroundTransparency = 1
-    plBar.Size = UDim2.new(1, 0, 0, 32)
-    plBar.Parent = Pages["Player"]
-
-    local subList3 = Instance.new("UIListLayout")
-    subList3.FillDirection = Enum.FillDirection.Horizontal
-    subList3.SortOrder = Enum.SortOrder.LayoutOrder
-    subList3.Padding = UDim.new(0, 8)
-    subList3.Parent = plBar
-
-    local moveBtn = Instance.new("TextButton")
-    local tpBtn = Instance.new("TextButton")
-
-    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
-    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
-
-    local function updPl(t)
-        styleSubTabActive(moveBtn, moveStroke, t == "move")
-        styleSubTabActive(tpBtn, tpStroke, t == "tp")
-        
-        Sec.move.Visible = (t == "move")
-        Sec.vis.Visible = (t == "move")
-        
-        Sec.tp.Visible = (t == "tp")
-        Sec.targetTp.Visible = (t == "tp")
-        if relayoutPage then relayoutPage(Pages["Player"]) end
-    end
-    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
-    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
-    updPl("move")
-end
-
 	return api
 end
 
@@ -2573,125 +2293,6 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 		set = api.set,
 	})
 	
-do
-    -- MAIN TAB
-    local mainBar = Instance.new("Frame")
-    mainBar.Name = "SubTabBar"
-    mainBar.LayoutOrder = 0
-    mainBar.BackgroundTransparency = 1
-    mainBar.Size = UDim2.new(1, 0, 0, 32)
-    mainBar.Parent = Pages["Main"]
-
-    local subList = Instance.new("UIListLayout")
-    subList.FillDirection = Enum.FillDirection.Horizontal
-    subList.SortOrder = Enum.SortOrder.LayoutOrder
-    subList.Padding = UDim.new(0, 8)
-    subList.Parent = mainBar
-
-    local evBtn = Instance.new("TextButton")
-    local huntBtn = Instance.new("TextButton")
-    local autoBtn = Instance.new("TextButton")
-
-    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
-    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
-    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
-
-    local function updMain(t)
-        styleSubTabActive(evBtn, evStroke, t == "ev")
-        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
-        styleSubTabActive(autoBtn, autoStroke, t == "auto")
-        
-        Sec.prog.Visible = (t == "ev")
-        Sec.live.Visible = (t == "ev")
-        
-        Sec.info.Visible = (t == "hunt")
-        Sec.guess.Visible = (t == "hunt")
-        Sec.tools.Visible = (t == "hunt")
-        Sec.hunt.Visible = (t == "hunt")
-        
-        Sec.sb.Visible = (t == "auto")
-        Sec.photo.Visible = (t == "auto")
-        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
-        Sec.rate.Visible = (t == "auto")
-        
-        if relayoutPage then relayoutPage(Pages["Main"]) end
-    end
-    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
-    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
-    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
-    updMain("ev")
-
-    -- VISUALS TAB
-    local visBar = Instance.new("Frame")
-    visBar.Name = "SubTabBar"
-    visBar.LayoutOrder = 0
-    visBar.BackgroundTransparency = 1
-    visBar.Size = UDim2.new(1, 0, 0, 32)
-    visBar.Parent = Pages["Visuals"]
-
-    local subList2 = Instance.new("UIListLayout")
-    subList2.FillDirection = Enum.FillDirection.Horizontal
-    subList2.SortOrder = Enum.SortOrder.LayoutOrder
-    subList2.Padding = UDim.new(0, 8)
-    subList2.Parent = visBar
-
-    local espBtn = Instance.new("TextButton")
-    local hudBtn = Instance.new("TextButton")
-
-    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
-    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
-
-    local function updVis(t)
-        styleSubTabActive(espBtn, espStroke, t == "esp")
-        styleSubTabActive(hudBtn, hudStroke, t == "hud")
-        
-        Sec.world.Visible = (t == "esp")
-        Sec.placesToggles.Visible = (t == "esp")
-        Sec.players.Visible = (t == "esp")
-        
-        Sec.panels.Visible = (t == "hud")
-        if relayoutPage then relayoutPage(Pages["Visuals"]) end
-    end
-    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
-    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
-    updVis("esp")
-
-    -- PLAYER TAB
-    local plBar = Instance.new("Frame")
-    plBar.Name = "SubTabBar"
-    plBar.LayoutOrder = 0
-    plBar.BackgroundTransparency = 1
-    plBar.Size = UDim2.new(1, 0, 0, 32)
-    plBar.Parent = Pages["Player"]
-
-    local subList3 = Instance.new("UIListLayout")
-    subList3.FillDirection = Enum.FillDirection.Horizontal
-    subList3.SortOrder = Enum.SortOrder.LayoutOrder
-    subList3.Padding = UDim.new(0, 8)
-    subList3.Parent = plBar
-
-    local moveBtn = Instance.new("TextButton")
-    local tpBtn = Instance.new("TextButton")
-
-    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
-    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
-
-    local function updPl(t)
-        styleSubTabActive(moveBtn, moveStroke, t == "move")
-        styleSubTabActive(tpBtn, tpStroke, t == "tp")
-        
-        Sec.move.Visible = (t == "move")
-        Sec.vis.Visible = (t == "move")
-        
-        Sec.tp.Visible = (t == "tp")
-        Sec.targetTp.Visible = (t == "tp")
-        if relayoutPage then relayoutPage(Pages["Player"]) end
-    end
-    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
-    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
-    updPl("move")
-end
-
 	return api
 end
 
@@ -2782,125 +2383,6 @@ local function mkCycle(parent, label, options, labels, default, callback, order)
 		set = setByValue,
 	})
 	
-do
-    -- MAIN TAB
-    local mainBar = Instance.new("Frame")
-    mainBar.Name = "SubTabBar"
-    mainBar.LayoutOrder = 0
-    mainBar.BackgroundTransparency = 1
-    mainBar.Size = UDim2.new(1, 0, 0, 32)
-    mainBar.Parent = Pages["Main"]
-
-    local subList = Instance.new("UIListLayout")
-    subList.FillDirection = Enum.FillDirection.Horizontal
-    subList.SortOrder = Enum.SortOrder.LayoutOrder
-    subList.Padding = UDim.new(0, 8)
-    subList.Parent = mainBar
-
-    local evBtn = Instance.new("TextButton")
-    local huntBtn = Instance.new("TextButton")
-    local autoBtn = Instance.new("TextButton")
-
-    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
-    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
-    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
-
-    local function updMain(t)
-        styleSubTabActive(evBtn, evStroke, t == "ev")
-        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
-        styleSubTabActive(autoBtn, autoStroke, t == "auto")
-        
-        Sec.prog.Visible = (t == "ev")
-        Sec.live.Visible = (t == "ev")
-        
-        Sec.info.Visible = (t == "hunt")
-        Sec.guess.Visible = (t == "hunt")
-        Sec.tools.Visible = (t == "hunt")
-        Sec.hunt.Visible = (t == "hunt")
-        
-        Sec.sb.Visible = (t == "auto")
-        Sec.photo.Visible = (t == "auto")
-        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
-        Sec.rate.Visible = (t == "auto")
-        
-        if relayoutPage then relayoutPage(Pages["Main"]) end
-    end
-    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
-    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
-    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
-    updMain("ev")
-
-    -- VISUALS TAB
-    local visBar = Instance.new("Frame")
-    visBar.Name = "SubTabBar"
-    visBar.LayoutOrder = 0
-    visBar.BackgroundTransparency = 1
-    visBar.Size = UDim2.new(1, 0, 0, 32)
-    visBar.Parent = Pages["Visuals"]
-
-    local subList2 = Instance.new("UIListLayout")
-    subList2.FillDirection = Enum.FillDirection.Horizontal
-    subList2.SortOrder = Enum.SortOrder.LayoutOrder
-    subList2.Padding = UDim.new(0, 8)
-    subList2.Parent = visBar
-
-    local espBtn = Instance.new("TextButton")
-    local hudBtn = Instance.new("TextButton")
-
-    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
-    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
-
-    local function updVis(t)
-        styleSubTabActive(espBtn, espStroke, t == "esp")
-        styleSubTabActive(hudBtn, hudStroke, t == "hud")
-        
-        Sec.world.Visible = (t == "esp")
-        Sec.placesToggles.Visible = (t == "esp")
-        Sec.players.Visible = (t == "esp")
-        
-        Sec.panels.Visible = (t == "hud")
-        if relayoutPage then relayoutPage(Pages["Visuals"]) end
-    end
-    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
-    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
-    updVis("esp")
-
-    -- PLAYER TAB
-    local plBar = Instance.new("Frame")
-    plBar.Name = "SubTabBar"
-    plBar.LayoutOrder = 0
-    plBar.BackgroundTransparency = 1
-    plBar.Size = UDim2.new(1, 0, 0, 32)
-    plBar.Parent = Pages["Player"]
-
-    local subList3 = Instance.new("UIListLayout")
-    subList3.FillDirection = Enum.FillDirection.Horizontal
-    subList3.SortOrder = Enum.SortOrder.LayoutOrder
-    subList3.Padding = UDim.new(0, 8)
-    subList3.Parent = plBar
-
-    local moveBtn = Instance.new("TextButton")
-    local tpBtn = Instance.new("TextButton")
-
-    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
-    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
-
-    local function updPl(t)
-        styleSubTabActive(moveBtn, moveStroke, t == "move")
-        styleSubTabActive(tpBtn, tpStroke, t == "tp")
-        
-        Sec.move.Visible = (t == "move")
-        Sec.vis.Visible = (t == "move")
-        
-        Sec.tp.Visible = (t == "tp")
-        Sec.targetTp.Visible = (t == "tp")
-        if relayoutPage then relayoutPage(Pages["Player"]) end
-    end
-    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
-    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
-    updPl("move")
-end
-
 	return api
 end
 
@@ -3504,125 +2986,6 @@ local function makeSoundMuter(matchFn)
 		end
 	end
 	
-do
-    -- MAIN TAB
-    local mainBar = Instance.new("Frame")
-    mainBar.Name = "SubTabBar"
-    mainBar.LayoutOrder = 0
-    mainBar.BackgroundTransparency = 1
-    mainBar.Size = UDim2.new(1, 0, 0, 32)
-    mainBar.Parent = Pages["Main"]
-
-    local subList = Instance.new("UIListLayout")
-    subList.FillDirection = Enum.FillDirection.Horizontal
-    subList.SortOrder = Enum.SortOrder.LayoutOrder
-    subList.Padding = UDim.new(0, 8)
-    subList.Parent = mainBar
-
-    local evBtn = Instance.new("TextButton")
-    local huntBtn = Instance.new("TextButton")
-    local autoBtn = Instance.new("TextButton")
-
-    local evStroke = mkSubTabBtn(mainBar, evBtn, "Evidence", 1, 1/3, -6)
-    local huntStroke = mkSubTabBtn(mainBar, huntBtn, "Hunt", 2, 1/3, -6)
-    local autoStroke = mkSubTabBtn(mainBar, autoBtn, "Auto", 3, 1/3, -6)
-
-    local function updMain(t)
-        styleSubTabActive(evBtn, evStroke, t == "ev")
-        styleSubTabActive(huntBtn, huntStroke, t == "hunt")
-        styleSubTabActive(autoBtn, autoStroke, t == "auto")
-        
-        Sec.prog.Visible = (t == "ev")
-        Sec.live.Visible = (t == "ev")
-        
-        Sec.info.Visible = (t == "hunt")
-        Sec.guess.Visible = (t == "hunt")
-        Sec.tools.Visible = (t == "hunt")
-        Sec.hunt.Visible = (t == "hunt")
-        
-        Sec.sb.Visible = (t == "auto")
-        Sec.photo.Visible = (t == "auto")
-        if Sec.misc_util then Sec.misc_util.Visible = (t == "auto") end
-        Sec.rate.Visible = (t == "auto")
-        
-        if relayoutPage then relayoutPage(Pages["Main"]) end
-    end
-    evBtn.MouseButton1Click:Connect(function() updMain("ev") end)
-    huntBtn.MouseButton1Click:Connect(function() updMain("hunt") end)
-    autoBtn.MouseButton1Click:Connect(function() updMain("auto") end)
-    updMain("ev")
-
-    -- VISUALS TAB
-    local visBar = Instance.new("Frame")
-    visBar.Name = "SubTabBar"
-    visBar.LayoutOrder = 0
-    visBar.BackgroundTransparency = 1
-    visBar.Size = UDim2.new(1, 0, 0, 32)
-    visBar.Parent = Pages["Visuals"]
-
-    local subList2 = Instance.new("UIListLayout")
-    subList2.FillDirection = Enum.FillDirection.Horizontal
-    subList2.SortOrder = Enum.SortOrder.LayoutOrder
-    subList2.Padding = UDim.new(0, 8)
-    subList2.Parent = visBar
-
-    local espBtn = Instance.new("TextButton")
-    local hudBtn = Instance.new("TextButton")
-
-    local espStroke = mkSubTabBtn(visBar, espBtn, "ESP", 1, 1/2, -4)
-    local hudStroke = mkSubTabBtn(visBar, hudBtn, "HUD", 2, 1/2, -4)
-
-    local function updVis(t)
-        styleSubTabActive(espBtn, espStroke, t == "esp")
-        styleSubTabActive(hudBtn, hudStroke, t == "hud")
-        
-        Sec.world.Visible = (t == "esp")
-        Sec.placesToggles.Visible = (t == "esp")
-        Sec.players.Visible = (t == "esp")
-        
-        Sec.panels.Visible = (t == "hud")
-        if relayoutPage then relayoutPage(Pages["Visuals"]) end
-    end
-    espBtn.MouseButton1Click:Connect(function() updVis("esp") end)
-    hudBtn.MouseButton1Click:Connect(function() updVis("hud") end)
-    updVis("esp")
-
-    -- PLAYER TAB
-    local plBar = Instance.new("Frame")
-    plBar.Name = "SubTabBar"
-    plBar.LayoutOrder = 0
-    plBar.BackgroundTransparency = 1
-    plBar.Size = UDim2.new(1, 0, 0, 32)
-    plBar.Parent = Pages["Player"]
-
-    local subList3 = Instance.new("UIListLayout")
-    subList3.FillDirection = Enum.FillDirection.Horizontal
-    subList3.SortOrder = Enum.SortOrder.LayoutOrder
-    subList3.Padding = UDim.new(0, 8)
-    subList3.Parent = plBar
-
-    local moveBtn = Instance.new("TextButton")
-    local tpBtn = Instance.new("TextButton")
-
-    local moveStroke = mkSubTabBtn(plBar, moveBtn, "Movement", 1, 1/2, -4)
-    local tpStroke = mkSubTabBtn(plBar, tpBtn, "Teleport", 2, 1/2, -4)
-
-    local function updPl(t)
-        styleSubTabActive(moveBtn, moveStroke, t == "move")
-        styleSubTabActive(tpBtn, tpStroke, t == "tp")
-        
-        Sec.move.Visible = (t == "move")
-        Sec.vis.Visible = (t == "move")
-        
-        Sec.tp.Visible = (t == "tp")
-        Sec.targetTp.Visible = (t == "tp")
-        if relayoutPage then relayoutPage(Pages["Player"]) end
-    end
-    moveBtn.MouseButton1Click:Connect(function() updPl("move") end)
-    tpBtn.MouseButton1Click:Connect(function() updPl("tp") end)
-    updPl("move")
-end
-
 	return api
 end
 local MusicMuter = makeSoundMuter(function(snd)

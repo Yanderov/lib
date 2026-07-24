@@ -1022,21 +1022,37 @@ local SBItems = {}
 local activePage
 
 local function mkPage(name)
-	local sf = Instance.new("Frame")
-	sf.Name = name
-	sf.Parent = ContentArea
-	sf.BackgroundTransparency = 1
-	sf.BorderSizePixel = 0
-	sf.Size = UDim2.new(1, 0, 0, 0)
-	sf.AutomaticSize = Enum.AutomaticSize.Y
-	sf.Visible = false
-	local l = Instance.new("UIListLayout")
-	l.Parent = sf
-	l.SortOrder = Enum.SortOrder.LayoutOrder
-	l.Padding = UDim.new(0, MOBILE and 10 or 14)
-	Pad(sf, MOBILE and 6 or 10, MOBILE and 14 or 14, MOBILE and 6 or 8, MOBILE and 6 or 10)
-	Pages[name] = sf
-	return sf
+    local sf = Instance.new("Frame")
+    sf.Name = name
+    sf.Parent = ContentArea
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel = 0
+    sf.Position = UDim2.new(0, 0, 0, 0)
+    sf.Size = UDim2.new(1, 0, 1, 0)
+    sf.AutomaticSize = Enum.AutomaticSize.None
+    sf.Visible = false
+    -- Tab header, shown ONLY while searching so the combined multi-tab results list is labelled by
+    -- which tab each group of settings came from (applySearch appends the match count, e.g.
+    -- "COMBAT  ·  4"). Styled as a subtle pill so it separates the groups instead of blending into
+    -- the section titles. Hidden during normal single-tab browsing.
+    local hdr = Instance.new("TextLabel")
+    hdr.Name = "SearchHdr"
+    hdr.Parent = sf
+    hdr.LayoutOrder = -1
+    hdr.BackgroundColor3 = T.Elev; pcall(function() hdr:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    hdr.BackgroundTransparency = 0.25
+    hdr.BorderSizePixel = 0
+    hdr.Size = UDim2.new(1, 0, 0, 24)
+    hdr.Font = FB
+    hdr.TextSize = 12
+    hdr.TextColor3 = T.Tx2; pcall(function() hdr:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+    hdr.TextXAlignment = Enum.TextXAlignment.Left
+    hdr.Text = string.upper(name)
+    hdr.Visible = false
+    Corner(hdr, 6)
+    Pad(hdr, 0, 0, 10, 10)
+    Pages[name] = sf
+    return sf
 end
 
 local function mkSBItem(name, iconKind, page, order)
@@ -1115,24 +1131,16 @@ refreshSB = function()
 	end
 end
 
-mkPage("Evidence")
-mkPage("Ghost & Hunt")
-mkPage("Automation")
-mkPage("ESP")
-mkPage("Movement")
-mkPage("Teleport")
-mkPage("Misc")
-mkPage("HUD")
-Pages["Evidence"].Visible = true
-activePage = Pages["Evidence"]
-mkSBItem("Evidence", "search-check", Pages["Evidence"], 1)
-mkSBItem("Ghost & Hunt", "ghost", Pages["Ghost & Hunt"], 2)
-mkSBItem("Automation", "workflow", Pages["Automation"], 3)
-mkSBItem("ESP", "scan-eye", Pages["ESP"], 4)
-mkSBItem("Movement", "footprints", Pages["Movement"], 5)
-mkSBItem("Teleport", "map-pin", Pages["Teleport"], 6)
-mkSBItem("Misc", "wrench", Pages["Misc"], 7)
-mkSBItem("HUD", "panels-top-left", Pages["HUD"], 8)
+mkPage("Main")
+mkPage("Visuals")
+mkPage("Player")
+mkPage("Settings")
+Pages["Main"].Visible = true
+activePage = Pages["Main"]
+mkSBItem("Main", "ghost", Pages["Main"], 1)
+mkSBItem("Visuals", "eye", Pages["Visuals"], 2)
+mkSBItem("Player", "user-round", Pages["Player"], 3)
+mkSBItem("Settings", "settings-2", Pages["Settings"], 4)
 -- Floating buttons are a touch feature, so the tab that manages them only
 -- exists on the mobile build.
 if MOBILE then
@@ -1674,6 +1682,135 @@ do
 	end
 end
 
+-- Shared subtab helpers; optional width overrides support three-column bars.
+local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
+    btn.Name = text
+    btn.Parent = bar
+    btn.LayoutOrder = order
+    btn.Size = UDim2.new(widthScale or 0.5, gapOffset or -4, 1, 0)
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.Font = FM
+    btn.TextSize = 13
+    btn.Text = text
+    Corner(btn, 6)
+    return Stroke(btn, T.Bd, 1, 0.4)
+end
+-- Deduped: Blink and InvisibleFE each declared their own identical "disconnect every connection in
+-- this list" closure. One shared helper, called as `conns = disconnectAll(conns)`.
+local function disconnectAll(conns)
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    return {}
+end
+local function styleSubTabActive(btn, stroke, active)
+    btn.BackgroundColor3 = active and T.ActiveBg or T.Elev
+    btn.TextColor3 = active and T.White or T.Tx2
+    pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", active and "ActiveBg" or "Elev") end)
+    pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", active and "White" or "Tx2") end)
+    stroke.Color = active and T.Accent or T.Bd
+    pcall(function() stroke:SetAttribute("ThemeColorRole_Color", active and "Accent" or "Bd") end)
+end
+
+do
+local pageLayoutQueued = false
+local pageLayoutSearchMode = false
+local function relayoutPage(page)
+    local pageWidth = math.max(ContentArea.AbsoluteSize.X, 320)
+    local areaHeight = math.max(ContentArea.AbsoluteSize.Y, 260)
+    local inset, gap, top = 6, 8, 6
+    local header = page:FindFirstChild("SearchHdr")
+    local subBar = page:FindFirstChild("SubTabBar") or page:FindFirstChild("VisualsSubTabBar")
+
+    if header and header.Visible then
+        header.Position = UDim2.fromOffset(inset, top)
+        header.Size = UDim2.new(1, -(inset * 2), 0, 24)
+        top = top + 24 + gap
+    end
+    if subBar and subBar.Visible then
+        local subBarHeight = tonumber(subBar:GetAttribute("LayoutHeight")) or 30
+        subBar.Position = UDim2.fromOffset(inset, top)
+        subBar.Size = UDim2.new(1, -(inset * 2), 0, subBarHeight)
+        top = top + subBarHeight + gap
+    end
+
+    -- Section cards carry an "Inner" frame (mkSection); stack them in a masonry
+    -- of 1 column on phones, up to 3 on wide desktop windows.
+    local cards = {}
+    for _, child in ipairs(page:GetChildren()) do
+        if child:IsA("Frame") and child.Visible and child ~= subBar and child:FindFirstChild("Inner") then
+            table.insert(cards, child)
+        end
+    end
+    table.sort(cards, function(a, b)
+        if a.LayoutOrder == b.LayoutOrder then return a.Name < b.Name end
+        return a.LayoutOrder < b.LayoutOrder
+    end)
+
+    local columns = 1
+    if #cards >= 2 and pageWidth >= 560 then columns = 2 end
+    if #cards >= 4 and pageWidth >= 760 then columns = 3 end
+    columns = math.max(1, math.min(columns, #cards))
+    local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
+    local columnWidth = math.floor(usableWidth / columns)
+    local heights = {}
+    for i = 1, columns do heights[i] = top end
+
+    for _, card in ipairs(cards) do
+        card.AnchorPoint = Vector2.zero
+        card.Size = UDim2.new(0, columnWidth, 0, 0)
+        local targetColumn = 1
+        for i = 2, columns do
+            if heights[i] < heights[targetColumn] then targetColumn = i end
+        end
+        card.Position = UDim2.fromOffset(inset + (targetColumn - 1) * (columnWidth + gap), heights[targetColumn])
+        local height = math.max(card.AbsoluteSize.Y, 42)
+        heights[targetColumn] = heights[targetColumn] + height + gap
+    end
+
+    local bottom = top
+    for i = 1, columns do bottom = math.max(bottom, heights[i]) end
+    local requiredHeight = math.max(pageLayoutSearchMode and 0 or areaHeight, bottom + inset - gap)
+    page.Size = UDim2.new(1, 0, 0, requiredHeight)
+end
+local function refreshPageLayouts()
+    -- Clear the queued flag only after the whole pass: relayoutPage writes to every
+    -- card, re-firing each card's AbsoluteSize watcher; a still-set flag makes those
+    -- self-triggered signals no-ops instead of re-entrant task.defer calls.
+    ContentArea.ScrollingEnabled = true
+    for _, page in pairs(Pages) do relayoutPage(page) end
+    pageLayoutQueued = false
+end
+local function queuePageLayout()
+    if pageLayoutQueued then return end
+    pageLayoutQueued = true
+    task.defer(function()
+        RS.Heartbeat:Wait()
+        refreshPageLayouts()
+    end)
+end
+local function watchPageChild(child)
+    if not child:IsA("GuiObject") then return end
+    tc(child:GetPropertyChangedSignal("Visible"):Connect(queuePageLayout))
+    tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+end
+for _, page in pairs(Pages) do
+    for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
+    tc(page.ChildAdded:Connect(function(child)
+        watchPageChild(child)
+        queuePageLayout()
+    end))
+end
+tc(ContentArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
+S._RefreshPageLayout = function(searching)
+    pageLayoutSearchMode = searching == true
+    ContentArea.CanvasPosition = Vector2.zero
+    queuePageLayout()
+end
+S._QueuePageLayout = queuePageLayout
+queuePageLayout()
+end
+
+
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")
 	card.Name = title
@@ -1755,6 +1892,7 @@ local function mkStat(parent, label, order)
 		val.Text = tostring(text)
 		val.TextColor3 = color or T.White
 	end
+	
 	return api
 end
 
@@ -1816,6 +1954,7 @@ local function mkEvidenceRow(parent, label, order)
 			lbl.TextColor3 = T.Tx2
 		end
 	end
+	
 	return api
 end
 
@@ -1975,6 +2114,7 @@ local function mkToggle(parent, label, default, callback, order, noPersistState,
 			end
 		end,
 	})
+	
 	return api
 end
 
@@ -2156,6 +2296,7 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 		get = function() return val end,
 		set = api.set,
 	})
+	
 	return api
 end
 
@@ -2245,6 +2386,7 @@ local function mkCycle(parent, label, options, labels, default, callback, order)
 		get = function() return options[idx] end,
 		set = setByValue,
 	})
+	
 	return api
 end
 
@@ -2847,6 +2989,7 @@ local function makeSoundMuter(matchFn)
 			table.clear(original)
 		end
 	end
+	
 	return api
 end
 local MusicMuter = makeSoundMuter(function(snd)
@@ -3200,9 +3343,11 @@ end
 ------------------------------------------------------------------
 local StatEvidence, StatGhostInfo, GuesserLabel, EvidenceProgress
 do
-	local page = Pages["Evidence"]
+	local page = Pages["Main"]
 
-	local prog = mkSection(page, "Evidence Progress", 1)
+	local Sec = {}
+
+    local prog = mkSection(page, "Evidence Progress", 1); Sec.prog = prog
 	local progLbl = Instance.new("TextLabel")
 	progLbl.Parent = prog
 	progLbl.LayoutOrder = 1
@@ -3234,7 +3379,7 @@ do
 		end
 	}
 
-	local live = mkSection(page, "Live Readouts", 2)
+	local live = mkSection(page, "Live Readouts", 2); Sec.live = live
 	StatEvidence = {
 		Handprints = mkEvidenceRow(live, "Handprints", 1),
 		SpiritBox = mkEvidenceRow(live, "Spirit Box", 2),
@@ -3246,7 +3391,7 @@ do
 		Temperature = mkEvidenceRow(live, "Temperature", 8),
 	}
 
-	local info = mkSection(page, "Ghost & Round Info", 3)
+	local info = mkSection(page, "Ghost & Round Info", 3); Sec.info = info
 	StatGhostInfo = {
 		Ghost = mkStat(info, "Ghost", 1),
 		GhostRoom = mkStat(info, "Ghost's Room", 2),
@@ -3257,7 +3402,7 @@ do
 		Round = mkStat(info, "Round Status", 7),
 	}
 
-	local guess = mkSection(page, "Ghost Guesser", 4)
+	local guess = mkSection(page, "Ghost Guesser", 4); Sec.guess = guess
 	local lbl = Instance.new("TextLabel")
 	lbl.Parent = guess
 	lbl.LayoutOrder = 1
@@ -3571,8 +3716,8 @@ end
 --// PAGE: GHOST & HUNT
 ------------------------------------------------------------------
 do
-	local page = Pages["Ghost & Hunt"]
-	local tools = mkSection(page, "Ghost Tools", 1)
+	local page = Pages["Main"]
+	local tools = mkSection(page, "Ghost Tools", 1); Sec.tools = tools
 	mkToggle(tools, "Ghost Cam", false, function(v)
 		local Camera = workspace.CurrentCamera
 		if v then
@@ -3601,7 +3746,7 @@ do
 		NotifyToggle("Mute all sounds", v)
 	end, 5)
 
-	local hunt = mkSection(page, "Hunt Safety", 2)
+	local hunt = mkSection(page, "Hunt Safety", 2); Sec.hunt = hunt
 	mkToggle(hunt, "Auto Hide (nearest closet)", false, function(v)
 		S.AutoHide = v
 		if v and S.Ghost and S.Ghost:GetAttribute("Hunting") then
@@ -3631,9 +3776,9 @@ end
 --// PAGE: AUTOMATION
 ------------------------------------------------------------------
 do
-	local page = Pages["Automation"]
+	local page = Pages["Main"]
 
-	local sb = mkSection(page, "Spirit Box", 1)
+	local sb = mkSection(page, "Spirit Box", 1); Sec.sb = sb
 	mkToggle(sb, "Auto Spirit Box", false, function(v)
 		S.AutoSpiritBox = v
 		if not v then
@@ -3643,7 +3788,7 @@ do
 		NotifyToggle("Auto spirit box", v)
 	end, 1, true)
 
-	local photo = mkSection(page, "Photography", 2)
+	local photo = mkSection(page, "Photography", 2); Sec.photo = photo
 	local db2 = false
 	mkAction(photo, "Take Ghost Photo", function()
 		if db2 then return end
@@ -3706,7 +3851,7 @@ do
 		end)
 	end, 2)
 
-	local util = mkSection(page, "Utilities", 3)
+	local util = mkSection(page, "Utilities", 3); Sec.util = util
 	mkAction(util, "Turn On Fuse Box", function()
 		Events():WaitForChild("ToggleFuseBox"):FireServer()
 		Notify("Fuse box", "Toggle request sent", "info", 2.2)
@@ -3773,7 +3918,7 @@ do
 
 	local speedOptions = {0, 0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10}
 	local speedLabels = {"0s", "0.1s", "0.2s", "0.5s", "1s", "1.5s", "2s", "5s", "10s"}
-	local rate = mkSection(page, "Evidence Check Rate", 4)
+	local rate = mkSection(page, "Evidence Check Rate", 4); Sec.rate = rate
 	mkCycle(rate, "Check Speed", speedOptions, speedLabels, 1, function(v)
 		S.CheckSpeed = v
 		Notify("Check speed", tostring(v) .. "s interval", "info", 2)
@@ -3784,7 +3929,7 @@ end
 --// PAGE: ESP
 ------------------------------------------------------------------
 do
-	local page = Pages["ESP"]
+	local page = Pages["Visuals"]
 	local ItemEspList = {}
 	local EvidenceEspList = {}
 	local FuseEspList = {}
@@ -3962,7 +4107,7 @@ do
 		table.clear(ItemEspList)
 	end
 
-	local world = mkSection(page, "World ESP", 1)
+	local world = mkSection(page, "World ESP", 1); Sec.world = world
 	mkToggle(world, "Ghost ESP", false, function(v)
 		S.GhostEspOn = v
 		if v then
@@ -3990,7 +4135,7 @@ do
 		NotifyToggle("Evidence ESP", v)
 	end, 3)
 
-	local placesToggles = mkSection(page, "Places ESP", 3)
+	local placesToggles = mkSection(page, "Places ESP", 3); Sec.placesToggles = placesToggles
 	mkToggle(placesToggles, "Fuse Box ESP", false, function(v)
 		S.FuseEsp = v
 		UpdateESP()
@@ -4026,7 +4171,7 @@ do
 		end
 	end)
 
-	local players = mkSection(page, "Players", 4)
+	local players = mkSection(page, "Players", 4); Sec.players = players
 	mkToggle(players, "Players ESP", false, function(v)
 		S.PlayersEsp = v
 		NotifyToggle("Players ESP", v)
@@ -4283,8 +4428,8 @@ end
 --// PAGE: MOVEMENT
 ------------------------------------------------------------------
 do
-	local page = Pages["Movement"]
-	local move = mkSection(page, "Movement", 1)
+	local page = Pages["Player"]
+	local move = mkSection(page, "Movement", 1); Sec.move = move
 	
 	tc(RS.Heartbeat:Connect(function()
 		if WalkSpeedEnabled and plr.Character then
@@ -4373,7 +4518,7 @@ do
 		Notify("Fly Speed", tostring(v), "info", 1.6)
 	end, 3)
 
-	local vis = mkSection(page, "Vision", 2)
+	local vis = mkSection(page, "Vision", 2); Sec.vis = vis
 	local noclipOn = false
 	local noclipConn = RS.Stepped:Connect(function()
 		if noclipOn and plr.Character then
@@ -4433,8 +4578,8 @@ end
 --// PAGE: TELEPORT
 ------------------------------------------------------------------
 do
-	local page = Pages["Teleport"]
-	local tp = mkSection(page, "Teleports", 1)
+	local page = Pages["Player"]
+	local tp = mkSection(page, "Teleports", 1); Sec.tp = tp
 	mkAction(tp, "Teleport To Ghost", function()
 		if S.Ghost and S.Ghost:GetAttribute("Hunting") == true then return end
 		TpToGhost()
@@ -4460,7 +4605,7 @@ do
 		end
 	end, 3)
 
-	local targetTp = mkSection(page, "Target Teleports", 2)
+	local targetTp = mkSection(page, "Target Teleports", 2); Sec.targetTp = targetTp
 	local selectedPlayer = "None"
 	local selectedItem = "None"
 
@@ -4545,8 +4690,8 @@ end
 --// PAGE: MISC
 ------------------------------------------------------------------
 do
-	local page = Pages["Misc"]
-	local util = mkSection(page, "Utility", 1)
+	local page = Pages["Settings"]
+	local util = mkSection(page, "Utility", 1); Sec.misc_util = util
 	local antiAfkOn = true
 	local afkConn = plr.Idled:Connect(function()
 		if antiAfkOn then
@@ -4581,8 +4726,8 @@ end
 --// PAGE: HUD
 ------------------------------------------------------------------
 do
-	local page = Pages["HUD"]
-	local panels = mkSection(page, "HUD Panels", 1)
+	local page = Pages["Visuals"]
+	local panels = mkSection(page, "HUD Panels", 1); Sec.panels = panels
 
 	local ghostListHud = mkDragHUD("Ghost List", UDim2.new(1, -230, 0.5, -200), UDim2.fromOffset(220, 400), 850)
 	buildGhostMatrixList(ghostListHud.content, 16, function(count)
