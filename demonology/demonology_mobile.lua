@@ -475,7 +475,7 @@ S._ApplyNotificationPosition = function(position)
     local xScale = isLeft and 0 or (isRight and 1 or 0.5)
     local yScale = isTop and 0 or 1
     local xOffset = isLeft and 20 or (isRight and -20 or 0)
-    local yOffset = isTop and 20 or (isRight and -150 or -82)
+    local yOffset = isTop and 15 or -15
 
     NHost.AnchorPoint = Vector2.new(xScale, yScale)
     NHost.Position = UDim2.new(xScale, xOffset, yScale, yOffset)
@@ -515,13 +515,13 @@ local function Notify(title, msg, dur, style)
     local slideY = (not fromLeft and not fromRight) and (fromTop and -12 or 12) or 0
     -- A fixed 352px toast hangs off the edge of a narrow phone screen; follow
     -- the viewport there instead.
-    local toastWidth = 352
+    local toastWidth = 240
     if MOBILE then
         local camera = workspace.CurrentCamera
         local vp = camera and camera.ViewportSize
-        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.3), 160, 220) end
+        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.3), 140, 180) end
     end
-    local bodyTextSize = math.clamp(math.round((MOBILE and 11 or 13) * (S.TextSizeScale or 1)), 10, 18)
+    local bodyTextSize = math.clamp(math.round((MOBILE and 10 or 12) * (S.TextSizeScale or 1)), 9, 16)
     local bodyHeight = roleReveal and 52 or 19
     if not roleReveal then
         pcall(function()
@@ -601,7 +601,7 @@ local function Notify(title, msg, dur, style)
     tt.Text = titleText
     tt.TextColor3 = T.White; pcall(function() tt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
     tt.TextTransparency = 0
-    tt.TextSize = MOBILE and 12 or 14
+    tt.TextSize = MOBILE and 11 or 13
     tt.TextTruncate = Enum.TextTruncate.AtEnd
     tt.TextXAlignment = Enum.TextXAlignment.Left
     tt.ZIndex = 904
