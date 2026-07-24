@@ -7000,7 +7000,7 @@ local function mkWatermark()
             local camera = workspace.CurrentCamera
             local vp = camera and camera.ViewportSize
             if not vp or vp.X < 1 then return end
-            local fit = math.clamp((vp.X - 32) / 420, 0.55, 0.85)
+            local fit = math.clamp((vp.X - 32) / 420, 0.40, 0.65)
             f:SetAttribute("MobileFit", fit)
             local scaler = f:FindFirstChild("HUDScale")
             if scaler and f.Visible then scaler.Scale = fit end

@@ -4431,7 +4431,7 @@ do
 		local function fitIsland()
 			local vp = cam() and cam().ViewportSize
 			if not vp or vp.X < 1 then return end
-			island:SetAttribute("MobileFit", math.clamp((vp.X - 32) / 420, 0.55, 0.85))
+			island:SetAttribute("MobileFit", math.clamp((vp.X - 32) / 420, 0.40, 0.65))
 			islandScale.Scale = S.HUDScale * (tonumber(island:GetAttribute("MobileFit")) or 1)
 		end
 		fitIsland()
