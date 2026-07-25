@@ -2408,6 +2408,13 @@ local function mkSBItem(name, iconKind, page, order)
     Corner(bar, 2)
     -- Icons on BOTH builds: every tab has a glyph, so the mobile rail leads with
     -- the icon instead of falling back to a uniform text strip.
+    -- Lay the row out from the CAPABILITY, not from whether this particular call
+    -- succeeded: the glyphs are written to disk and fetched with getcustomasset, so an
+    -- early tab can come back without one while a later tab gets it. Keying the caption
+    -- offset off the per-call result made those tabs sit at a different indent from
+    -- their neighbours - the "tabs load crooked" report. The slot is reserved either
+    -- way, so a glyph that arrives late drops into place instead of shifting the text.
+    local navIcons = S._MakeNavIcon ~= nil
     local icon = S._MakeNavIcon and S._MakeNavIcon(btn, iconKind) or nil
     if icon and MOBILE then
         -- Rail item: glyph centred near the top, caption underneath it.
@@ -2422,15 +2429,15 @@ local function mkSBItem(name, iconKind, page, order)
     if MOBILE then
         -- getcustomasset is missing on some executors, so the icon can be nil; the
         -- caption then owns the whole pill instead of leaving a gap.
-        label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
-        label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
-        label.TextSize = icon and 9 or 11
+        label.Position = navIcons and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
+        label.Size = navIcons and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
+        label.TextSize = navIcons and 9 or 11
     else
-        label.Position = UDim2.new(0, icon and 36 or 14, 0, 0)
+        label.Position = UDim2.new(0, navIcons and 36 or 14, 0, 0)
         -- Reserve only what the corner markers need. At -54 the caption ended exactly
         -- where the search dot sat (measured: "Combat" wanted 52px of the 54 available),
         -- so any larger text size truncated it to "Comba...".
-        label.Size = UDim2.new(1, icon and -42 or -32, 1, 0)
+        label.Size = UDim2.new(1, navIcons and -42 or -32, 1, 0)
         label.TextSize = 14
     end
     label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left

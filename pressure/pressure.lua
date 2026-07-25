@@ -1608,6 +1608,12 @@ local function mkSBItem(name, iconKind, page, order)
 	-- Icons on BOTH builds: every tab now has a glyph (the mobile-only "Buttons"
 	-- tab reuses the settings glyph), so the rail can lead with the
 	-- icon instead of falling back to a uniform text strip.
+	-- Lay the row out from the CAPABILITY, not from whether this call succeeded:
+	-- glyphs are fetched with getcustomasset after a disk write, so an early tab can
+	-- come back without one while a later tab gets it, and keying the caption offset
+	-- off the per-call result left those tabs at a different indent than their
+	-- neighbours. The slot is reserved either way.
+	local navIcons = S._MakeNavIcon ~= nil
 	local icon = S._MakeNavIcon(btn, iconKind)
 	if icon and MOBILE then
 		-- Rail item: glyph centred near the top, caption underneath it.
@@ -1622,12 +1628,12 @@ local function mkSBItem(name, iconKind, page, order)
 		-- getcustomasset is missing on some executors, so the icon can be nil; the
 		-- caption then owns the whole pill instead of leaving a gap where the
 		-- glyph would have been.
-		label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
-		label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
-		label.TextSize = icon and 9 or 11
+		label.Position = navIcons and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
+		label.Size = navIcons and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
+		label.TextSize = navIcons and 9 or 11
 	else
-		label.Position = UDim2.new(0, icon and 38 or 13, 0, 0)
-		label.Size = UDim2.new(1, icon and -48 or -20, 1, 0)
+		label.Position = UDim2.new(0, navIcons and 38 or 13, 0, 0)
+		label.Size = UDim2.new(1, navIcons and -48 or -20, 1, 0)
 		label.TextSize = 14
 	end
 	label.Font = F; label.TextColor3 = T.Tx2
