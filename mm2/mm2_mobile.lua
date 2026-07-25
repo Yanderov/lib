@@ -9133,6 +9133,12 @@ local function buildConfig()
         Language = S.Language,
         TextSizeScale = S.TextSizeScale,
         NotificationPosition = S.NotificationPosition,
+        -- These live on the settings modal, not on a page, so they are not in
+        -- ConfigControls and were silently dropped: the slider called SaveConfig but
+        -- the value it changed was never part of the payload, so it reset every launch.
+        GuiTransparency = S.GuiTransparency,
+        HudTransparency = S.HudTransparency,
+        AutoSaveCfg = S.AutoSaveCfg,
         controls = {}, hud = {}, binds = {} }
     for _, c in ipairs(ConfigControls) do
         local ok, val = pcall(c.get)
@@ -9188,6 +9194,17 @@ local function applyConfig(data)
     if type(data.NotificationPosition) == "string" then
         pcall(S._ApplyNotificationPosition, data.NotificationPosition)
     end
+    if tonumber(data.GuiTransparency) then
+        S.GuiTransparency = math.clamp(tonumber(data.GuiTransparency), 0, 0.85)
+        if tonumber(data.HudTransparency) then
+            S.HudTransparency = math.clamp(tonumber(data.HudTransparency), 0, 0.90)
+        end
+        pcall(function() if S._UpdateGuiTransparency then S._UpdateGuiTransparency() end end)
+        -- The slider is built lazily by the settings modal; refresh it so it shows the
+        -- restored value instead of the default the next time the modal is opened.
+        pcall(function() if S._BuildTransparencySetting then S._RestoredTransparency = true end end)
+    end
+    if type(data.AutoSaveCfg) == "boolean" then S.AutoSaveCfg = data.AutoSaveCfg end
     pcall(updateLanguage)
     pcall(updateTextSizes)
     if type(data.controls) == "table" then
