@@ -2403,75 +2403,6 @@ local function mkSBItem(name, iconKind, page, order)
     -- Icons on BOTH builds: every tab has a glyph, so the mobile rail leads with
     -- the icon instead of falling back to a uniform text strip.
     local icon = S._MakeNavIcon and S._MakeNavIcon(btn, iconKind) or nil
-    if icon and MOBILE then
-        -- Rail item: glyph centred near the top, caption underneath it.
-        icon.slot.AnchorPoint = Vector2.new(0.5, 0)
-        icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
-        icon.slot.Size = UDim2.fromOffset(24, 24)
-        icon.image.Size = UDim2.fromOffset(18, 18)
-    end
-    local label = Instance.new("TextLabel")
-    label.Parent = btn
-    label.BackgroundTransparency = 1
-    if MOBILE then
-        -- getcustomasset is missing on some executors, so the icon can be nil; the
-        -- caption then owns the whole pill instead of leaving a gap.
-        label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
-        label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
-        label.TextSize = icon and 9 or 11
-    else
-        label.Position = UDim2.new(0, icon and 38 or 14, 0, 0)
-        label.Size = UDim2.new(1, icon and -54 or -32, 1, 0)
-        label.TextSize = 14
-    end
-    label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
-    label.TextWrapped = false
-    label.Font = F
-    label.TextTruncate = Enum.TextTruncate.AtEnd
-    label.TextColor3 = T.Tx2; pcall(function() label:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
-    bindLocalizedText(label, name, name, false)
-    -- Small dot shown while searching if THIS tab has matches but isn't the one on screen.
-    local dot = Instance.new("Frame")
-    dot.Name = "MatchDot"
-    dot.Parent = btn
-    dot.AnchorPoint = Vector2.new(1, 0.5)
-    -- Centred pill on mobile: the search dot moves to the top-right corner so it
-    -- can't sit on top of the label.
-    dot.Position = MOBILE and UDim2.new(1, -6, 0, 7) or UDim2.new(1, -18, 0.5, 0)
-    dot.Size = UDim2.new(0, 6, 0, 6)
-    dot.BackgroundColor3 = T.Accent; pcall(function() dot:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
-    dot.BorderSizePixel = 0
-    dot.Visible = false
-    Corner(dot, 3)
-    -- Favourite pin (gold dot). Right-click a tab to pin it to the very top of the sidebar.
-    local pin = Instance.new("Frame")
-    pin.Name = "FavPin"
-    pin.Parent = btn
-    pin.AnchorPoint = Vector2.new(1, 0.5)
-    -- Favourites are a right-click feature, so the pin marker is desktop-only.
-    pin.Position = MOBILE and UDim2.new(0, 8, 0, 7) or UDim2.new(1, -8, 0.5, 0)
-    pin.Size = UDim2.new(0, 6, 0, 6)
-    pin.BackgroundColor3 = Color3.fromRGB(255, 200, 70)
-    pin.BorderSizePixel = 0
-    pin.Visible = false
-    Corner(pin, 3)
-    if icon and MOBILE then
-        -- Some shipped glyph bitmaps never decode in-engine.  Without this the tab
-        -- would render an empty gap above its caption; fall back to the text-only
-        -- pill instead (same layout the nil-icon path already uses).
-        task.defer(function()
-            local t0 = os.clock()
-            while icon.image.Parent and icon.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
-                task.wait(0.3)
-            end
-            if icon.image.Parent and icon.image.ContentImageSize.X == 0 then
-                icon.slot.Visible = false
-                label.Position = UDim2.new(0, 1, 0, 0)
-                label.Size = UDim2.new(1, -2, 1, 0)
-                label.TextSize = 11
-            end
-        end)
-    end
     local item = { name = name, btn = btn, bar = bar, icon = icon, label = label, stroke = btnStroke, page = page, dot = dot, pin = pin, order = order, fav = false }
     btn.MouseButton1Click:Connect(function()
         SFX.Click()
@@ -2714,22 +2645,6 @@ do
         scale.Scale = 0.6
         TweenService.Create(TweenService, scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
-        if glyph then
-            -- Same self-heal as the nav rail: a bitmap that never decodes would leave a
-            -- gap above the caption, so drop back to the caption-only layout.
-            task.defer(function()
-                local t0 = os.clock()
-                while glyph.image.Parent and glyph.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
-                    task.wait(0.3)
-                end
-                if glyph.image.Parent and glyph.image.ContentImageSize.X == 0 then
-                    glyph.slot.Visible = false
-                    label.Position = UDim2.new(0, 4, 0, 20)
-                    label.Size = UDim2.new(1, -8, 1, -26)
-                    label.TextSize = size <= 60 and 11 or 12
-                end
-            end)
-        end
         local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
         Buttons[id] = record
 

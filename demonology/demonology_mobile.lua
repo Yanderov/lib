@@ -1115,50 +1115,6 @@ local function mkSBItem(name, iconKind, page, order)
 	-- Icons on BOTH builds: every current tab has a glyph now, so the mobile rail
 	-- can lead with the icon instead of falling back to a uniform text strip.
 	local icon = MakeNavIcon(btn, iconKind)
-	if icon and MOBILE then
-		-- Rail item: glyph centred near the top, caption underneath it.
-		icon.slot.AnchorPoint = Vector2.new(0.5, 0)
-		icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
-		icon.slot.Size = UDim2.fromOffset(24, 24)
-		icon.image.Size = UDim2.fromOffset(18, 18)
-	end
-	local label = Instance.new("TextLabel")
-	label.Parent = btn
-	label.BackgroundTransparency = 1
-	if MOBILE then
-		-- getcustomasset is missing on some executors, so the icon can be nil; the
-		-- caption then owns the whole pill instead of leaving a gap.
-		label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
-		label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
-		label.TextSize = icon and 9 or 11
-	else
-		label.Position = UDim2.new(0, icon and 36 or 13, 0, 0)
-		label.Size = UDim2.new(1, icon and -42 or -20, 1, 0)
-		label.TextSize = 13
-	end
-	label.Font = F
-	label.TextColor3 = T.Tx2
-	label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
-	label.TextWrapped = false
-	label.TextTruncate = Enum.TextTruncate.AtEnd
-	label.Text = name
-	if icon and MOBILE then
-		-- Some shipped glyph bitmaps never decode in-engine.  Without this the tab
-		-- would render an empty gap above its caption; fall back to the text-only
-		-- pill instead (same layout the nil-icon path already uses).
-		task.defer(function()
-			local t0 = os.clock()
-			while icon.image.Parent and icon.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
-				task.wait(0.3)
-			end
-			if icon.image.Parent and icon.image.ContentImageSize.X == 0 then
-				icon.slot.Visible = false
-				label.Position = UDim2.new(0, 1, 0, 0)
-				label.Size = UDim2.new(1, -2, 1, 0)
-				label.TextSize = 11
-			end
-		end)
-	end
 	local item = { btn = btn, bar = bar, icon = icon, label = label, page = page }
 	btn.MouseButton1Click:Connect(function()
 		for _, pg in pairs(Pages) do
@@ -1624,22 +1580,6 @@ do
 		scale.Scale = 0.6
 		TweenService:Create(scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
-		if glyph then
-			-- Same self-heal as the nav rail: a bitmap that never decodes would leave a
-			-- gap above the caption, so drop back to the caption-only layout.
-			task.defer(function()
-				local t0 = os.clock()
-				while glyph.image.Parent and glyph.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
-					task.wait(0.3)
-				end
-				if glyph.image.Parent and glyph.image.ContentImageSize.X == 0 then
-					glyph.slot.Visible = false
-					label.Position = UDim2.new(0, 4, 0, 20)
-					label.Size = UDim2.new(1, -8, 1, -26)
-					label.TextSize = size <= 60 and 11 or 12
-				end
-			end)
-		end
 		local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
 		Buttons[id] = record
 
