@@ -6572,8 +6572,19 @@ do
             if #targets == 0 then Notify("Fling Target", "No targets selected (pick players in the Targets tab)", 3); return end
             local flung = 0
             for _, p in ipairs(targets) do
-                local ok, res = pcall(skidFling, p)
-                if ok and res then flung = flung + 1 end
+                -- Retry: one attempt is flaky because the IY spin has to build up before it
+                -- launches anybody. Fling All only looks reliable because later targets ride
+                -- an already-spinning body; a single target gets no such head start.
+                local done = false
+                for attempt = 1, 3 do
+                    local ok, res = pcall(skidFling, p)
+                    if ok and res then done = true break end
+                    local ch = p.Character
+                    local h = ch and ch:FindFirstChildOfClass("Humanoid")
+                    if not (h and h.Health > 0) then break end
+                    task.wait(0.15)
+                end
+                if done then flung = flung + 1 end
                 task.wait(0.1)
             end
             Notify("Fling Target", flung > 0 and ("Flung " .. flung .. "/" .. #targets) or "Failed", 3)
@@ -8660,7 +8671,17 @@ do
                     local sheriff = sheriffPlayer()
                     if sheriff and S._FlingPlayer then
                         Notify("Takeover", "Flinging " .. sheriff.Name .. " for the gun", 2)
-                        pcall(S._FlingPlayer, sheriff)
+                        -- Retry: a single fling attempt is flaky (the spin has to build up),
+                        -- and dropping the gun is the whole point of this step.
+                        for _ = 1, 3 do
+                            local ok, res = pcall(S._FlingPlayer, sheriff)
+                            if ok and res then break end
+                            if gunOnGround() then break end
+                            local sc = sheriff.Character
+                            local sh = sc and sc:FindFirstChildOfClass("Humanoid")
+                            if not (sh and sh.Health > 0) then break end
+                            task.wait(0.15)
+                        end
                         task.wait(1.1)
                         if gunOnGround() and S.GrabGunNow then pcall(S.GrabGunNow, true) end
                     end
@@ -10541,7 +10562,14 @@ end
 -- FallenPartsDestroyHeight is NaN'd for the duration so nobody void-dies mid-throw.
 local flingBusy = false
 local function flingPlayer(target)
-    if flingBusy then return false end
+    -- Wait briefly instead of failing outright: a click that lands while the previous
+    -- fling (or the touch-fling loop) is still unwinding used to return false at once,
+    -- which is a large part of "sometimes it just doesn't fling".
+    if flingBusy then
+        local waitUntil = tick() + 2
+        repeat task.wait(0.05) until not flingBusy or tick() > waitUntil
+        if flingBusy then return false end
+    end
     local c = LP.Character
     local hum = c and c:FindFirstChildOfClass("Humanoid")
     local root = c and c:FindFirstChild("HumanoidRootPart")
