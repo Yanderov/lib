@@ -655,7 +655,6 @@ end
 
 -- Lucide navigation icons (ISC): https://github.com/lucide-icons/lucide
 S._NavIconData = {
-	["grid"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAiklEQVR42u3YwQmAMAwF0I7k5h2tI0QPHhWstoXIC+RoyjsIyS8RUTJ3AQCYA9iOrtFf9fx22dy7R1q8r3bz2JS5V4Aa36uumnsFGFVL5j4BPP2hegFD5gIAAAAAAPwekG6VSL/MpV+n0x80bmIAAKmEVEIqYRsFAAAAAACQSkglpBJSCUc9wOzeATuXLnOq/wAcAAAAAElFTkSuQmCC",
 	["eye"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAC+klEQVRoge2YwU8TQRTGvwWCxEQu9VLTyAkPeCF6ABKTEjnI34EHCByoV2uix14ketMLfwFq8A9ADAcBb8iJg6AmkBAhJBATG9Kfh50mzXS2O20XEN0v2bTbfd/33kxn3r55UooUKVKk+J8RJCECXJU0LOme+bwhKSPpujH5KelA0q6kVUkrktaCIPiVhP+WAHQC48AboEzzKBvuONB5noF3AVPAtxaCjsKO0ew66+DHgC8JBm5jAxhrJiavPQBckfRS0mSESUXh2v4kaU3SlsI1f2CeZ8x1S9KQpBGFe6UjQu+1pNkgCH77xBcXfB/wOWLGtoHHQK4F3ZzhbkdorwM32w3+NrDvED8EZoHuthyEPrqN1qHDzz4w0KpwP7DnEF0EMu0G7vCXMdo29oD+ZsVywA9LqGL+8qh1W+VmgRKwSZgqy+Z7CcjGcDuMj4rl+zu+y5Qwv390zMREDC8AZoATB7eKE2PTMHkAEw7uMj7vC+CJg1zwCH6uQeA25jwG8cjBK8YFPwicWqR5j0HPNBF8FdMeuvMW5xQYbER4bxG+AtdinGSpXzZrQB7oMVfe/FaLY+L3RC/1aXYxyviuY5bue8xSyRF83Vol3Fv2IEoe+mOOuO64DN9ZRh/ixA1v0+LlG9jmLdtNTx/LFu+ty+jIMhr1FLcr0Z4Gtj2WbdnTx6jFO6o+a5jTLwNqB2AvmaeeGlvW/VADW/uZzY3CM+t+qc6Cy76JjbErjfbGOPg70qghXO4XmSGdRynxnLMoJQyxnWJumnBpROHY2MQF/9DB9SvmjECOsIStRQUocvbldJF2yukasYs40NhJBGCXZg80NaIDRB8pCyR3pCyQ9JGyxkEf4QHbhW3zl7d6qC/S5qG+mbbKC0lTESbVtsqq/NoqwwpbK1H+X0kqJNJWqQXhW3EjYsaSwAYeb/92B1FtLe4kGPgOMMk590g7gQfAAq03dxeMRstVcZLt9SGF7fURSVm52+t7CtuPK5LWL7S9niJFihQp/gn8AXDP9oufq13tAAAAAElFTkSuQmCC",
 	["crosshair"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAADC0lEQVRoge2asU4bQRCGZ1NHsmiSgspIRlCE4BeAIsg1ooMOpeJVQrpQQEpcQIVS8AJ5AqSk4ApIGihMAZGgASG+FLe213Nre+98Z/sk/sq+nX/2n7u93dmdE3nFZGHycAIYEVkSkXURqYvIgojMishba/IgItciEonImYj8EJFfxhjy6D8zgDqwC1ySHpeWW5+E8CpwnEF0PxwD1XEIrwBfgcccxbfxaH1XihI/D0QDBFwB+8AmsOJpX7Ft+9a2HyKglrf4NeDO09kT8A1YJn6RXU4PVJuxnD3rQ+MWWMtL/DbwrDp4AQ4ZMG4HBaDsqtbXi6I8A9ujil/ziL8DGgHcoAAc+wbJp/wMfMoqvuZxGAHzgfxUAViO7z27Je07QTzbaEcRMJPCR+oALG+mT9/hsxPxdObiLvTOOz5aDr+VkjsP/FMadkPJc/TO8y8EjHmPnw0bRAvYyMBv0PtiPxKy2JFcYQ/Tdp4XgKbScjSMUFeEp6CoC4IdDXqd6Mmd3ijOlvp/YIz5W6zM/jDG/BGR7+rypteYeHXUWeVy4SqHwDMqLlCrftvwozK88hqOGfbGXittS+12dwitK+7pxDccImI1nKrLHa1uAHpj8bMoURmgtXS0ugEsKKPrwuSkh9aymLAA7glDpoVpGOgufCG4b/OM4yDNeL8xxrzPOYCWiLwLtTfGGJHkOlA6uAE8BHJuRGSnAC071ncIklpJprArucobAcCq0ha129wnECne7HjkBUFrOW//cAM4U0arhclJD61Fay1vKqENS5fMdYaQzTlOFP/zuIQOgNZw0jdH80Q79RsaH6m8W0pLqlLmTb0ll/dYxToo98GWdVQjPtbTjqb/aNFxOO7DXT1ssh/uOo77Ha83gblRAyCeKpsUcbzudDKowLFHvH6kLXDUGVzgGO3Oe4KoMbzEdABskUx/sde2rI3ObVzkX2JygqgQl0aLKvLtUlSRTwVSBY5yFH/EJFIW4nH8hWyF7gvLHanQneenBh+k+6nBovg/NTiX7qcGv6fh5O8Vo+I/UeCznCCfR4oAAAAASUVORK5CYII=",
 	["gauge"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAC0UlEQVRoge2YO2wTQRRF30ZyA1WKgEiiSEGKQCAiFCdKlSJpcBUpjatItFBSRuLT86ncuAGJXwFJGsA0/BooAFNF0EVJAYWdQIkUJPtQeCyG5xln197dpNgrrWR577vvzHp2Zz0imTJlynSQCuIKAsZFZF5EpkXkuIgcM4eISN0cNRGpisi7IAi24urds4CzQBnYJrq2Te2ZtKEDYB6o9ADtU8VkxjYjfPBDwHoEsF1zhNUaMJQU/CJQ69J8A7gDFIARIGfV5sx3BePZ6JJTAxbjhr/hadYAngBTPWTmTW3Tk309LvhrngavgYkY8idMlktX+w1fcYTuAVeAgX7hrT4DJnPP0W+l19CCI+wXMBMXuKPnjOmhdSFq0CDwwwEfea5HFTDlGMR3YDBKyEMV8BvIJ8it++dNT1sPwhbPOn7CSwkzuzguOzhmwxSuqqJnJLBCAkWgbo4lx/kAeK5Ynu4XOk7r2d7WH2A0Afhl1afu8Y0ahrYatF4avcG31YjvpgDvHYDx31PeW93Cv1nGJnAqBfgGUOxSc5r/V+uvPuOICv6cEvxyiNqqqhtun7NX0wVV9ypOeBG5r/o1ReRiEASPQkRoFs0qApTUKDtNPaifK29lLKj6ksu0pkwnDgO8yRlWGasu0wdlyjmyojQtxgFvsnIq573LtGkZfvYDb/LqccBbefb70Wb7e/umslfbvq6+Q1FuWJ+6MwGf1BU70kczAZb496rgfc6HzDqq2D66TC+Vyb9kpyzgpGKrtM/ZU2hH1Z1PBy+UNMtu+4M9gC/KFO1fULLSLNUOBzCpfqYtkt5oCiFar9V65++cyzhA5ybU3AEwa645xbSDb0MBeKzML1LmdTHpLUz/o5jWroDWZIq8mkdPa4Dp/YreqoJySrwulrJieaM9rrl0MwW2XrU/G627vkRrl6wKjKUA5mMZMwx7hunAn4qZMmXKlOlw6S+/znsQLzCvmQAAAABJRU5ErkJggg==",
@@ -1575,7 +1574,7 @@ local TAB_DEFS = {
 }
 -- Floating buttons are a touch feature, so the tab that manages them only
 -- exists on the mobile build — right after Config, where settings live.
-if MOBILE then table.insert(TAB_DEFS, { name = "Buttons", icon = "grid" }) end
+if MOBILE then table.insert(TAB_DEFS, { name = "Buttons", icon = "settings-2" }) end
 
 local SBItems = {}
 
@@ -1607,7 +1606,7 @@ local function mkSBItem(name, iconKind, page, order)
 	Corner(barInd, 2)
 
 	-- Icons on BOTH builds: every tab now has a glyph (the mobile-only "Buttons"
-	-- tab was the one hole, and it has "grid" now), so the rail can lead with the
+	-- tab reuses the settings glyph), so the rail can lead with the
 	-- icon instead of falling back to a uniform text strip.
 	local icon = S._MakeNavIcon(btn, iconKind)
 	if icon and MOBILE then
@@ -2206,7 +2205,7 @@ do
 	-- wrapped shouty text inside a 48px circle.  First match wins, so the more
 	-- specific words are listed first.
 	local FLOAT_ICON_RULES = {
-		{ "menu", "grid" },
+		{ "menu", "settings-2" },
 		{ "esp", "eye" },
 		{ "cham", "eye" },
 		{ "visual", "eye" },
