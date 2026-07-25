@@ -80,6 +80,11 @@ local S = {
     InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false,
     Fling = false, WalkFling = false, FlyFling = false, InvisFling = false,
     CoinESP = false, FastAutofarm = false, FastAutofarmSpeed = 20,
+    -- Safe Mode caps how far the root may be moved in ONE frame. MM2 rejects a
+    -- position that jumps further than a player could plausibly travel in a step
+    -- ("invalid position" / snap-back), and that limit is per-step, not per-second:
+    -- 120 studs/s in small steps is fine, one 40-stud jump is not.
+    AutofarmSafe = true, AutofarmAvoidRadius = 60,
     FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
     FakeLag = false, FakeLagLimit = 15,
@@ -1374,7 +1379,9 @@ local function mkWinBtn(txt, xOff)
     end)
     return b
 end
-local CloseBtn = mkWinBtn("×", MOBILE and -14 or -10)
+-- Right margin 16 on mobile so the button lines up with the search box and the
+-- brand accent bar, which both sit on a 16px inset; -14 left it 2px out of true.
+local CloseBtn = mkWinBtn("×", MOBILE and -16 or -10)
 -- Mobile: the slot opens Settings, so it must LOOK like settings — keeping the
 -- "—" glyph made it read as minimize and surprised everyone who tapped it.
 -- ===== Feature search =====
@@ -2775,8 +2782,20 @@ do
         if S._refreshFloatTab then pcall(S._refreshFloatTab) end
     end
 
+    -- Pages whose controls make no sense as a permanent on-screen button: they are
+    -- one-shot, context-bound actions (hop to another server, rejoin, vote) that you
+    -- press from the menu, not something you keep parked over the game.
+    local NO_FLOAT_PAGES = { Servers = true, Config = true, Buttons = true }
+
     -- The chip that sits at the right edge of a control row on mobile.
     S._floatChip = function(parent, entry, rightOffset)
+        -- Walk up to the owning page and skip the chip there.
+        local node = parent
+        for _ = 1, 8 do
+            if not node then break end
+            if NO_FLOAT_PAGES[node.Name] then return nil end
+            node = node.Parent
+        end
         local id = S._floatRegisterEntry(entry)
         if not id then return nil end
         local chip = Instance.new("TextButton")
@@ -6578,17 +6597,24 @@ local HUDEls = {}
 local function attachHUDDrag(frame, handle)
     local dragHandle = handle or frame
     local dragging, dragStart, startPos = false, nil, nil
+    local moved, startOrigin = false, nil
+    -- Every HUD readout is laid out in desktop pixels; on a phone those plates eat a
+    -- huge share of a much smaller screen. Scale the whole family from one constant
+    -- instead of re-tuning each element's Size at its call site.
+    local hudBase = MOBILE and 0.78 or 1
     local scale = frame:FindFirstChild("HUDScale")
     if not scale then
         scale = Instance.new("UIScale")
         scale.Name = "HUDScale"
         scale.Parent = frame
     end
+    scale.Scale = hudBase
     local stroke = frame:FindFirstChildOfClass("UIStroke")
     local restStrokeTransparency = stroke and stroke.Transparency or 0.24
     local function dragVisual(active)
         TweenService:Create(scale, TweenInfo.new(active and 0.14 or 0.2, active and Enum.EasingStyle.Quad or Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Scale = active and 1.018 or 1
+            -- Relative to the base, or finishing a drag would snap a mobile plate back to full size.
+            Scale = hudBase * (active and 1.018 or 1)
         }):Play()
         if stroke then
             TweenService:Create(stroke, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -6605,15 +6631,37 @@ local function attachHUDDrag(frame, handle)
     dragHandle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
+            moved = false
             dragStart = input.Position
             startPos = frame.Position
+            startOrigin = frame.Parent and (frame.AbsolutePosition - frame.Parent.AbsolutePosition) or nil
             dragVisual(true)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
             local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
+            -- menu on a tap (under 10px of travel), so without this the finger wobble
+            -- of a normal tap would also shove the island across the screen.
+            if not moved and math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then return end
+            moved = true
+            -- Keep the whole element on screen and store the result as Scale, so a HUD
+            -- element cannot be flung somewhere unreachable and survives a rotation.
+            local host = frame.Parent and frame.Parent.AbsoluteSize
+            if host and host.X > 0 and host.Y > 0 and startOrigin then
+                local size = frame.AbsoluteSize
+                local function fit(v, extent, span)
+                    if span >= extent then return (extent - span) / 2 end
+                    return math.clamp(v, 0, extent - span)
+                end
+                local x = fit(startOrigin.X + delta.X, host.X, size.X)
+                local y = fit(startOrigin.Y + delta.Y, host.Y, size.Y)
+                local pivot = Vector2.new(x, y) + frame.AnchorPoint * size
+                frame.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
+            else
+                frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
@@ -7032,7 +7080,9 @@ local function mkWatermark()
     HUD.islandPing = metric(201, 48, "PING")
     HUD.islandFPS = metric(254, 44, "FPS")
     HUD.islandSession = metric(303, 60, "TIME")
-    if not MOBILE then attachHUDDrag(f) end
+    -- Draggable on mobile too now that a tap is distinguished from a drag by an
+    -- 8px threshold; it used to be pinned, so a badly placed island stayed there.
+    attachHUDDrag(f)
     HUDEls["Watermark"] = { frame = f, content = f }
     
     local startPos, startTick
@@ -7243,6 +7293,10 @@ S._SetHUDVisible = function(el, visible)
     local frame = el and el.frame
     if not frame then return end
     frame:SetAttribute("HUDTargetVisible", visible == true)
+    -- Every HUD readout is laid out in desktop pixels; on a phone those plates eat a
+    -- huge share of a much smaller screen. Scale the whole family from one constant
+    -- instead of re-tuning each element's Size at its call site.
+    local hudBase = MOBILE and 0.78 or 1
     local scale = frame:FindFirstChild("HUDScale")
     if not scale then
         scale = Instance.new("UIScale")
@@ -7252,8 +7306,10 @@ S._SetHUDVisible = function(el, visible)
     local restTransparency = frame:GetAttribute("HUDRestTransparency")
     if type(restTransparency) ~= "number" then restTransparency = frame.BackgroundTransparency end
     -- MobileFit shrinks a fixed-pixel HUD (the 382px island foremost) to the
-    -- phone's width; 1 everywhere else, so desktop behaviour is untouched.
-    local fit = tonumber(frame:GetAttribute("MobileFit")) or 1
+    -- phone's width; 1 everywhere else, so desktop behaviour is untouched.  hudBase
+    -- folds the global mobile shrink into the SAME factor, so the show/hide tweens
+    -- below animate to the right size instead of springing back to desktop scale.
+    local fit = (tonumber(frame:GetAttribute("MobileFit")) or 1) * hudBase
     if visible then
         frame.Visible = true
         scale.Scale = 0.94 * fit
@@ -7276,7 +7332,7 @@ S._SetHUDVisible = function(el, visible)
             if frame.Parent and frame:GetAttribute("HUDTargetVisible") ~= true then
                 frame.Visible = false
                 frame.BackgroundTransparency = restTransparency
-                scale.Scale = 1
+                scale.Scale = fit
             end
         end)
     end
@@ -8356,6 +8412,29 @@ do
         end
     end
 
+    -- Position of the nearest live murderer, or nil when there is none / role is unknown.
+    local function murdererPosition()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character and getRole(p) == "Murderer" then
+                local mHrp = p.Character:FindFirstChild("HumanoidRootPart")
+                local mHum = p.Character:FindFirstChildOfClass("Humanoid")
+                if mHrp and (not mHum or mHum.Health > 0) then return mHrp.Position end
+            end
+        end
+        return nil
+    end
+
+    -- Shortest distance from `point` to the segment a->b.  Rejecting a coin only by its OWN
+    -- distance to the murderer still routed us straight through them on the way there, which
+    -- is how the farm kept feeding itself to the knife; the approach path has to be checked too.
+    local function distToSegment(point, a, b)
+        local ab = b - a
+        local len2 = ab:Dot(ab)
+        if len2 < 1e-4 then return (point - a).Magnitude end
+        local t = math.clamp((point - a):Dot(ab) / len2, 0, 1)
+        return (point - (a + ab * t)).Magnitude
+    end
+
     -- Fly STRAIGHT THROUGH WALLS to a point. The HRP is ANCHORED during the glide so it has zero
     -- physics — it passes cleanly through glass, floors and thin textures instead of the velocity-driven
     -- version snagging on / bouncing off them (that was the "autofarm gets stuck on some geometry" bug:
@@ -8386,7 +8465,10 @@ do
             -- target in one jump, while a slow frame still covers the real-time-correct distance.
             -- The old version clamped dt itself to 1/30, which silently HALVED autofarm speed any
             -- time the game ran below 30 FPS, no matter what the speed slider said.
-            local step = math.min(spd * dt, 40)
+            -- Safe Mode tightens that cap hard: what trips MM2's "invalid position" is the size of
+            -- a SINGLE step, so a 40-stud jump on one long frame is exactly the thing to avoid.
+            -- Small steps at the same studs/s look like ordinary fast movement.
+            local step = math.min(spd * dt, S.AutofarmSafe and 10 or 40)
             if dist <= math.max(4.0, step) then
                 hrp.CFrame = CFrame.new(targetCF.Position)
                 arrived = true
@@ -8417,6 +8499,11 @@ do
     mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
     -- Studs/s (1-120). Speed up to 120 studs/s.
     mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
+    -- Safe Mode does three things: clamps the per-frame step (what actually trips
+    -- "invalid position"), refuses coins whose approach path crosses the murderer,
+    -- and waits instead of grabbing a coin when nothing is reachable safely.
+    mkToggle(secAuto, "Safe Mode", true, function(v) S.AutofarmSafe = v end, 3)
+    mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
     -- Vote Farm: just teleport to the map-vote slot's coords, reset, repeat — no gating, per explicit
     -- user request. Coords are the slot's own live-measured standing position (user walked to each pad
@@ -8714,22 +8801,16 @@ do
                     if hrp and hum and hum.Health > 0 and isRoundActive() then
                         local myPos = hrp.Position
                         local coins = {}
-                        local murderPos = nil
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= LP and p.Character and getRole(p) == "Murderer" then
-                                local mHrp = p.Character:FindFirstChild("HumanoidRootPart")
-                                if mHrp then
-                                    murderPos = mHrp.Position
-                                    break
-                                end
-                            end
-                        end
+                        local murderPos = murdererPosition()
+                        local avoidR = math.max(tonumber(S.AutofarmAvoidRadius) or 60, 0)
                         eachCoin(function(coin)
                             if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
                                 local isSafe = true
-                                if murderPos then
-                                    local distToMurd = (coin.Position - murderPos).Magnitude
-                                    if distToMurd < 45 then
+                                if murderPos and avoidR > 0 then
+                                    -- Reject the coin if EITHER it sits inside the murderer's bubble
+                                    -- or the straight flight path to it would cut through that bubble.
+                                    if (coin.Position - murderPos).Magnitude < avoidR
+                                        or distToSegment(murderPos, myPos, coin.Position) < avoidR then
                                         isSafe = false
                                     end
                                 end
@@ -8738,7 +8819,10 @@ do
                                 end
                             end
                         end)
-                        if #coins == 0 then
+                        -- No coin is reachable without entering the murderer's bubble.  In Safe Mode
+                        -- that means WAIT (the loop below idles) rather than take the least-bad coin:
+                        -- grabbing one anyway is exactly how the farm used to walk into the knife.
+                        if #coins == 0 and not (S.AutofarmSafe and murderPos) then
                             eachCoin(function(coin)
                                 if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
                                     table.insert(coins, coin)
@@ -8755,7 +8839,7 @@ do
                                     end)
                                 end
                             end
-                        else
+                        elseif #coins > 0 then
                             table.sort(coins, function(a, b)
                                 return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
                             end)
@@ -8776,6 +8860,14 @@ do
                             end
                             local reached = moveTo(targetCoin.CFrame, S.FastAutofarmSpeed or 20, function()
                                 vacuum()
+                                -- Bail out MID-FLIGHT if the murderer closes in: they move while we
+                                -- fly, so a path that was clear when the coin was picked can put us
+                                -- right on top of them by the time we arrive.
+                                if avoidR > 0 then
+                                    local mp = murdererPosition()
+                                    local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                                    if mp and h and (h.Position - mp).Magnitude < avoidR then return false end
+                                end
                                 return targetCoin and targetCoin.Parent and targetCoin.Transparency < 1 and c and c.Parent and hum and hum.Health > 0
                             end)
                             vacuum()
@@ -10795,7 +10887,12 @@ tc(RunService.Stepped:Connect(function()
                     end
                 end
             end
-            if c ~= S._ncChar or (tick() - (S._ncAt or 0)) > 2 then
+            -- Re-scan every 0.35s while farming instead of every 2s: an accessory or a
+            -- tool welded on mid-flight kept its collisions for up to two seconds, and
+            -- one colliding part is enough to snag the whole assembly on geometry —
+            -- the "it still gets stuck on some textures" report.
+            local rescan = S.FastAutofarm and 0.35 or 2
+            if c ~= S._ncChar or (tick() - (S._ncAt or 0)) > rescan then
                 S._ncChar = c; S._ncAt = tick(); S._ncParts = {}
                 for _, pt in ipairs(c:GetDescendants()) do if pt:IsA("BasePart") then table.insert(S._ncParts, pt) end end
             end

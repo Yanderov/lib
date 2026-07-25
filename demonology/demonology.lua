@@ -3424,10 +3424,13 @@ end
 --// PAGE: EVIDENCE
 ------------------------------------------------------------------
 local StatEvidence, StatGhostInfo, GuesserLabel, EvidenceProgress
+-- Section registry shared by EVERY page builder below.  It used to be declared
+-- inside this first `do` block, so every later page (Ghost Tools, Teleport, HUD,
+-- ...) was writing to a nil global instead — "attempt to index nil with 'tools'"
+-- the moment the Ghost Tools page was built.
+local Sec = {}
 do
 	local page = Pages["Main"]
-
-	local Sec = {}
 
     local prog = mkSection(page, "Evidence Progress", 1); Sec.prog = prog
 	local progLbl = Instance.new("TextLabel")
