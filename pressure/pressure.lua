@@ -1609,6 +1609,31 @@ local function mkSBItem(name, iconKind, page, order)
 	-- tab reuses the settings glyph), so the rail can lead with the
 	-- icon instead of falling back to a uniform text strip.
 	local icon = S._MakeNavIcon(btn, iconKind)
+	if icon and MOBILE then
+		-- Rail item: glyph centred near the top, caption underneath it.
+		icon.slot.AnchorPoint = Vector2.new(0.5, 0)
+		icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
+		icon.slot.Size = UDim2.fromOffset(24, 24)
+		icon.image.Size = UDim2.fromOffset(18, 18)
+	end
+	local label = Instance.new("TextLabel")
+	label.Parent = btn; label.BackgroundTransparency = 1
+	if MOBILE then
+		-- getcustomasset is missing on some executors, so the icon can be nil; the
+		-- caption then owns the whole pill instead of leaving a gap where the
+		-- glyph would have been.
+		label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
+		label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
+		label.TextSize = icon and 9 or 11
+	else
+		label.Position = UDim2.new(0, icon and 38 or 13, 0, 0)
+		label.Size = UDim2.new(1, icon and -48 or -20, 1, 0)
+		label.TextSize = 14
+	end
+	label.Font = F; label.TextColor3 = T.Tx2
+	label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd; label.Text = name
+
 	local item = { btn = btn, bar = barInd, icon = icon, label = label, page = page }
 
 	btn.MouseEnter:Connect(function()
