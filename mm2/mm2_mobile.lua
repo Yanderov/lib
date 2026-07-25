@@ -85,6 +85,9 @@ local S = {
     -- ("invalid position" / snap-back), and that limit is per-step, not per-second:
     -- 120 studs/s in small steps is fine, one 40-stud jump is not.
     AutofarmSafe = true, AutofarmAvoidRadius = 60,
+    -- Takeover: once the coin bag hits this many, fling the Sheriff for his gun
+    -- and finish the Murderer with it.
+    AutoTakeover = false, AutoTakeoverCoins = 50,
     FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
     FakeLag = false, FakeLagLimit = 15,
@@ -2427,8 +2430,11 @@ local function mkSBItem(name, iconKind, page, order)
         label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
         label.TextSize = icon and 9 or 11
     else
-        label.Position = UDim2.new(0, icon and 38 or 14, 0, 0)
-        label.Size = UDim2.new(1, icon and -54 or -32, 1, 0)
+        label.Position = UDim2.new(0, icon and 36 or 14, 0, 0)
+        -- Reserve only what the corner markers need. At -54 the caption ended exactly
+        -- where the search dot sat (measured: "Combat" wanted 52px of the 54 available),
+        -- so any larger text size truncated it to "Comba...".
+        label.Size = UDim2.new(1, icon and -42 or -32, 1, 0)
         label.TextSize = 14
     end
     label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
@@ -2444,7 +2450,8 @@ local function mkSBItem(name, iconKind, page, order)
     dot.AnchorPoint = Vector2.new(1, 0.5)
     -- Centred pill on mobile: the search dot moves to the top-right corner so it
     -- can't sit on top of the label.
-    dot.Position = MOBILE and UDim2.new(1, -6, 0, 7) or UDim2.new(1, -18, 0.5, 0)
+    dot.AnchorPoint = Vector2.new(1, 0)
+    dot.Position = UDim2.new(1, -6, 0, 6)
     dot.Size = UDim2.new(0, 6, 0, 6)
     dot.BackgroundColor3 = T.Accent; pcall(function() dot:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     dot.BorderSizePixel = 0
@@ -2456,7 +2463,8 @@ local function mkSBItem(name, iconKind, page, order)
     pin.Parent = btn
     pin.AnchorPoint = Vector2.new(1, 0.5)
     -- Favourites are a right-click feature, so the pin marker is desktop-only.
-    pin.Position = MOBILE and UDim2.new(0, 8, 0, 7) or UDim2.new(1, -8, 0.5, 0)
+    pin.AnchorPoint = Vector2.new(1, 1)
+    pin.Position = UDim2.new(1, -6, 1, -6)
     pin.Size = UDim2.new(0, 6, 0, 6)
     pin.BackgroundColor3 = Color3.fromRGB(255, 200, 70)
     pin.BorderSizePixel = 0
@@ -8557,6 +8565,112 @@ do
     mkToggle(secAuto, "Safe Mode", true, function(v) S.AutofarmSafe = v end, 3)
     mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
+    -- ===== TAKEOVER: at N coins, take the Sheriff's gun and finish the round =====
+    -- Chain: wait for the coin bag to reach the threshold -> fling the Sheriff so he
+    -- drops the gun -> grab the drop -> shoot the Murderer.  The shot reuses the same
+    -- point-blank origin the Piercing option uses, so a wall in between does not
+    -- matter: the server raycasts origin -> target and the origin already sits next to
+    -- him.  Every step retries, because each one can lose a race.
+    local function coinCount()
+        local pg = LP:FindFirstChildOfClass("PlayerGui")
+        local node = pg and pg:FindFirstChild("MainGUI")
+        node = node and node:FindFirstChild("Game")
+        node = node and node:FindFirstChild("CoinBags")
+        node = node and node:FindFirstChild("Container")
+        if not node then return 0 end
+        -- Seasonal events swap the bag (Coin / Egg / Candy / SnowToken / ...), so read
+        -- whichever one actually carries a count instead of hardcoding "Coin".
+        local best = 0
+        for _, bag in ipairs(node:GetChildren()) do
+            local lbl = bag:FindFirstChild("Coins", true)
+            if lbl and lbl:IsA("TextLabel") then
+                local n = tonumber((tostring(lbl.Text):gsub("%D", "")))
+                if n and n > best then best = n end
+            end
+        end
+        return best
+    end
+    S._CoinCount = coinCount
+
+    local function sheriffPlayer()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character and not isWhitelisted(p) then
+                local role = getRole(p)
+                if role == "Sheriff" or role == "Hero" then
+                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then return p end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function gunOnGround()
+        return workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
+    end
+
+    local function heldGun()
+        local c = LP.Character
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        return (c and (c:FindFirstChild("Gun") or c:FindFirstChild("Revolver")))
+            or (bp and (bp:FindFirstChild("Gun") or bp:FindFirstChild("Revolver")))
+    end
+
+    local function shootMurderer()
+        local gun = heldGun()
+        local shoot = gun and gun:FindFirstChild("Shoot")
+        if not (shoot and shoot:IsA("RemoteEvent")) then return false end
+        local targetChar = S._GetMurdererChar and S._GetMurdererChar()
+        local hrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+        if not hrp then return false end
+        local hit = hrp.Position
+        local vel = hrp.AssemblyLinearVelocity
+        local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2) or Vector3.new(0, 1.25, 0)
+        pcall(function() shoot:FireServer(CFrame.lookAt(hit + back, hit), CFrame.new(hit)) end)
+        return true
+    end
+
+    local takeoverBusy = false
+    tc(RunService.Heartbeat:Connect(function()
+        if not S.AutoTakeover or takeoverBusy then return end
+        if not isRoundActive() then return end
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if not (hum and hum.Health > 0) then return end
+        if coinCount() < (tonumber(S.AutoTakeoverCoins) or 50) then return end
+
+        takeoverBusy = true
+        task.spawn(function()
+            pcall(function()
+                if heldGun() then
+                    -- Armed already: the only job left is finishing the Murderer.
+                    for _ = 1, 40 do
+                        if not S.AutoTakeover then break end
+                        if not (S._GetMurdererChar and S._GetMurdererChar()) then break end
+                        if not shootMurderer() then break end
+                        task.wait(0.12)
+                    end
+                elseif gunOnGround() then
+                    if S.GrabGunNow then pcall(S.GrabGunNow, true) end
+                    task.wait(0.35)
+                else
+                    local sheriff = sheriffPlayer()
+                    if sheriff and S._FlingPlayer then
+                        Notify("Takeover", "Flinging " .. sheriff.Name .. " for the gun", 2)
+                        pcall(S._FlingPlayer, sheriff)
+                        task.wait(1.1)
+                        if gunOnGround() and S.GrabGunNow then pcall(S.GrabGunNow, true) end
+                    end
+                end
+            end)
+            task.wait(0.3)
+            takeoverBusy = false
+        end)
+    end))
+
+    mkToggle(secAuto, "Takeover at N coins", false, function(v) S.AutoTakeover = v end, 5)
+    mkSlider(secAuto, "Takeover Coins", 5, 200, 50, function(v) S.AutoTakeoverCoins = v end, 6)
+
     -- Vote Farm: just teleport to the map-vote slot's coords, reset, repeat — no gating, per explicit
     -- user request. Coords are the slot's own live-measured standing position (user walked to each pad
     -- and read them off the coords HUD). Updated 2026-07-23 — the lobby's vote-pad coords changed
@@ -10948,10 +11062,31 @@ tc(RunService.Stepped:Connect(function()
                 S._ncChar = c; S._ncAt = tick(); S._ncParts = {}
                 for _, pt in ipairs(c:GetDescendants()) do if pt:IsA("BasePart") then table.insert(S._ncParts, pt) end end
             end
-            for _, pt in ipairs(S._ncParts) do if pt.Parent then pt.CanCollide = false end end
+            -- Remember the ORIGINAL value the first time each part is disabled, so the
+            -- else-branch below can hand it back. Without this nothing ever restored
+            -- CanCollide and the character stayed non-solid after the farm stopped —
+            -- which is the "it falls through the floor when it finishes" report.
+            S._ncTouched = S._ncTouched or {}
+            for _, pt in ipairs(S._ncParts) do
+                if pt.Parent then
+                    if S._ncTouched[pt] == nil then S._ncTouched[pt] = pt.CanCollide end
+                    pt.CanCollide = false
+                end
+            end
         end
     else
         if ncPlat then ncPlat.CanCollide = false end
+        -- Put collisions back exactly as they were, once, on the first frame after the
+        -- state ends. Forcing every part to true instead would break accessories and
+        -- any part the game deliberately keeps non-collidable.
+        if S._ncTouched then
+            for pt, wasCollidable in pairs(S._ncTouched) do
+                if pt and pt.Parent then pcall(function() pt.CanCollide = wasCollidable end) end
+            end
+            S._ncTouched = nil
+            S._ncParts = {}
+            S._ncChar = nil
+        end
         -- While Fly is on it manages PlatformStand itself; don't fight it here.
         if not S.Fly then
             local c = LP.Character
