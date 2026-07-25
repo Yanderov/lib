@@ -120,6 +120,10 @@ local M = MOBILE and {
 	btnH = 42,
 	titleH = 84, footerH = 0,
 	navH = 56, navItemW = 72,
+	-- Mobile navigation is a LEFT ICON RAIL, not a bottom strip: the compact
+	-- panel is short, so vertical space is the scarce axis and a bottom bar
+	-- would eat it.  railItemH keeps each target above the 44px touch minimum.
+	railW = 62, railItemH = 48,
 	sectionPadX = 10, sectionPadY = 10, corner = 12,
 } or {
 	rowH = 32, rowFont = 14, rowGap = 7,
@@ -655,6 +659,7 @@ end
 
 -- Lucide navigation icons (ISC): https://github.com/lucide-icons/lucide
 S._NavIconData = {
+	["grid"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAiklEQVR42u3YwQmAMAwF0I7k5h2tI0QPHhWstoXIC+RoyjsIyS8RUTJ3AQCYA9iOrtFf9fx22dy7R1q8r3bz2JS5V4Aa36uumnsFGFVL5j4BPP2hegFD5gIAAAAAAPwekG6VSL/MpV+n0x80bmIAAKmEVEIqYRsFAAAAAACQSkglpBJSCUc9wOzeATuXLnOq/wAcAAAAAElFTkSuQmCC",
 	["eye"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAC+klEQVRoge2YwU8TQRTGvwWCxEQu9VLTyAkPeCF6ABKTEjnI34EHCByoV2uix14ketMLfwFq8A9ADAcBb8iJg6AmkBAhJBATG9Kfh50mzXS2O20XEN0v2bTbfd/33kxn3r55UooUKVKk+J8RJCECXJU0LOme+bwhKSPpujH5KelA0q6kVUkrktaCIPiVhP+WAHQC48AboEzzKBvuONB5noF3AVPAtxaCjsKO0ew66+DHgC8JBm5jAxhrJiavPQBckfRS0mSESUXh2v4kaU3SlsI1f2CeZ8x1S9KQpBGFe6UjQu+1pNkgCH77xBcXfB/wOWLGtoHHQK4F3ZzhbkdorwM32w3+NrDvED8EZoHuthyEPrqN1qHDzz4w0KpwP7DnEF0EMu0G7vCXMdo29oD+ZsVywA9LqGL+8qh1W+VmgRKwSZgqy+Z7CcjGcDuMj4rl+zu+y5Qwv390zMREDC8AZoATB7eKE2PTMHkAEw7uMj7vC+CJg1zwCH6uQeA25jwG8cjBK8YFPwicWqR5j0HPNBF8FdMeuvMW5xQYbER4bxG+AtdinGSpXzZrQB7oMVfe/FaLY+L3RC/1aXYxyviuY5bue8xSyRF83Vol3Fv2IEoe+mOOuO64DN9ZRh/ixA1v0+LlG9jmLdtNTx/LFu+ty+jIMhr1FLcr0Z4Gtj2WbdnTx6jFO6o+a5jTLwNqB2AvmaeeGlvW/VADW/uZzY3CM+t+qc6Cy76JjbErjfbGOPg70qghXO4XmSGdRynxnLMoJQyxnWJumnBpROHY2MQF/9DB9SvmjECOsIStRQUocvbldJF2yukasYs40NhJBGCXZg80NaIDRB8pCyR3pCyQ9JGyxkEf4QHbhW3zl7d6qC/S5qG+mbbKC0lTESbVtsqq/NoqwwpbK1H+X0kqJNJWqQXhW3EjYsaSwAYeb/92B1FtLe4kGPgOMMk590g7gQfAAq03dxeMRstVcZLt9SGF7fURSVm52+t7CtuPK5LWL7S9niJFihQp/gn8AXDP9oufq13tAAAAAElFTkSuQmCC",
 	["crosshair"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAADC0lEQVRoge2asU4bQRCGZ1NHsmiSgspIRlCE4BeAIsg1ooMOpeJVQrpQQEpcQIVS8AJ5AqSk4ApIGihMAZGgASG+FLe213Nre+98Z/sk/sq+nX/2n7u93dmdE3nFZGHycAIYEVkSkXURqYvIgojMishba/IgItciEonImYj8EJFfxhjy6D8zgDqwC1ySHpeWW5+E8CpwnEF0PxwD1XEIrwBfgcccxbfxaH1XihI/D0QDBFwB+8AmsOJpX7Ft+9a2HyKglrf4NeDO09kT8A1YJn6RXU4PVJuxnD3rQ+MWWMtL/DbwrDp4AQ4ZMG4HBaDsqtbXi6I8A9ujil/ziL8DGgHcoAAc+wbJp/wMfMoqvuZxGAHzgfxUAViO7z27Je07QTzbaEcRMJPCR+oALG+mT9/hsxPxdObiLvTOOz5aDr+VkjsP/FMadkPJc/TO8y8EjHmPnw0bRAvYyMBv0PtiPxKy2JFcYQ/Tdp4XgKbScjSMUFeEp6CoC4IdDXqd6Mmd3ijOlvp/YIz5W6zM/jDG/BGR7+rypteYeHXUWeVy4SqHwDMqLlCrftvwozK88hqOGfbGXittS+12dwitK+7pxDccImI1nKrLHa1uAHpj8bMoURmgtXS0ugEsKKPrwuSkh9aymLAA7glDpoVpGOgufCG4b/OM4yDNeL8xxrzPOYCWiLwLtTfGGJHkOlA6uAE8BHJuRGSnAC071ncIklpJprArucobAcCq0ha129wnECne7HjkBUFrOW//cAM4U0arhclJD61Fay1vKqENS5fMdYaQzTlOFP/zuIQOgNZw0jdH80Q79RsaH6m8W0pLqlLmTb0ll/dYxToo98GWdVQjPtbTjqb/aNFxOO7DXT1ssh/uOo77Ha83gblRAyCeKpsUcbzudDKowLFHvH6kLXDUGVzgGO3Oe4KoMbzEdABskUx/sde2rI3ObVzkX2JygqgQl0aLKvLtUlSRTwVSBY5yFH/EJFIW4nH8hWyF7gvLHanQneenBh+k+6nBovg/NTiX7qcGv6fh5O8Vo+I/UeCznCCfR4oAAAAASUVORK5CYII=",
 	["gauge"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAC0UlEQVRoge2YO2wTQRRF30ZyA1WKgEiiSEGKQCAiFCdKlSJpcBUpjatItFBSRuLT86ncuAGJXwFJGsA0/BooAFNF0EVJAYWdQIkUJPtQeCyG5xln197dpNgrrWR577vvzHp2Zz0imTJlynSQCuIKAsZFZF5EpkXkuIgcM4eISN0cNRGpisi7IAi24urds4CzQBnYJrq2Te2ZtKEDYB6o9ADtU8VkxjYjfPBDwHoEsF1zhNUaMJQU/CJQ69J8A7gDFIARIGfV5sx3BePZ6JJTAxbjhr/hadYAngBTPWTmTW3Tk309LvhrngavgYkY8idMlktX+w1fcYTuAVeAgX7hrT4DJnPP0W+l19CCI+wXMBMXuKPnjOmhdSFq0CDwwwEfea5HFTDlGMR3YDBKyEMV8BvIJ8it++dNT1sPwhbPOn7CSwkzuzguOzhmwxSuqqJnJLBCAkWgbo4lx/kAeK5Ynu4XOk7r2d7WH2A0Afhl1afu8Y0ahrYatF4avcG31YjvpgDvHYDx31PeW93Cv1nGJnAqBfgGUOxSc5r/V+uvPuOICv6cEvxyiNqqqhtun7NX0wVV9ypOeBG5r/o1ReRiEASPQkRoFs0qApTUKDtNPaifK29lLKj6ksu0pkwnDgO8yRlWGasu0wdlyjmyojQtxgFvsnIq573LtGkZfvYDb/LqccBbefb70Wb7e/umslfbvq6+Q1FuWJ+6MwGf1BU70kczAZb496rgfc6HzDqq2D66TC+Vyb9kpyzgpGKrtM/ZU2hH1Z1PBy+UNMtu+4M9gC/KFO1fULLSLNUOBzCpfqYtkt5oCiFar9V65++cyzhA5ybU3AEwa645xbSDb0MBeKzML1LmdTHpLUz/o5jWroDWZIq8mkdPa4Dp/YreqoJySrwulrJieaM9rrl0MwW2XrU/G627vkRrl6wKjKUA5mMZMwx7hunAn4qZMmXKlOlw6S+/znsQLzCvmQAAAABJRU5ErkJggg==",
@@ -1265,10 +1270,20 @@ end
 -- Keep the fallback after all camera work in case Pressure overrides Modal.
 -- Unbound in Destroy since BindToRenderStep isn't a Connection.
 if not MOBILE then
-	RunService:BindToRenderStep("PressureMouseUnlock", Enum.RenderPriority.Last.Value, function()
-		if menuOpen and Main.Visible then
-			pcall(function() UIS.MouseBehavior = Enum.MouseBehavior.Default; UIS.MouseIconEnabled = true end)
+	-- Assign only when the value actually drifted.  This runs EVERY frame for as
+	-- long as the menu is open, and the old version both re-wrote MouseBehavior
+	-- unconditionally and allocated a fresh pcall closure each frame — per-frame
+	-- work and GC churn for a property that is already correct almost always.
+	local function unlockMouse()
+		if UIS.MouseBehavior ~= Enum.MouseBehavior.Default then
+			UIS.MouseBehavior = Enum.MouseBehavior.Default
 		end
+		if not UIS.MouseIconEnabled then
+			UIS.MouseIconEnabled = true
+		end
+	end
+	RunService:BindToRenderStep("PressureMouseUnlock", Enum.RenderPriority.Last.Value, function()
+		if menuOpen and Main.Visible then pcall(unlockMouse) end
 	end)
 end
 
@@ -1340,23 +1355,23 @@ Body.Name = "Body"
 Body.Parent = Main
 Body.BackgroundTransparency = 1
 Body.Position = UDim2.new(0, 0, 0, M.titleH)
--- Desktop reserves the footer strip; mobile reserves the bottom tab bar.
-Body.Size = UDim2.new(1, 0, 1, -(M.titleH + (MOBILE and (M.navH + 8) or 32)))
+-- Desktop reserves the footer strip; mobile has no bottom bar to reserve now
+-- that navigation is a left rail, so the body runs to the bottom edge.
+Body.Size = UDim2.new(1, 0, 1, -(M.titleH + (MOBILE and 8 or 32)))
 
--- Navigation.  Desktop = vertical sidebar. Mobile = bottom tab bar, the layout
--- every phone app uses, horizontally scrollable so the tab count can grow past
--- what fits.  Same instance, different axis: one set of tab buttons downstream.
+-- Navigation is a vertical rail on BOTH builds — desktop labelled, mobile a
+-- narrow icon rail.  Same instance and the same tab buttons downstream; only
+-- the width and the item shape differ.
 local Sidebar = Instance.new(MOBILE and "ScrollingFrame" or "Frame")
 Sidebar.Name = "Sidebar"
-Sidebar.Parent = MOBILE and Main or Body
+Sidebar.Parent = Body
 Sidebar.BackgroundColor3 = T.Sidebar
 Sidebar.BorderSizePixel = 0
 if MOBILE then
-	Sidebar.AnchorPoint = Vector2.new(0.5, 1)
-	Sidebar.Position = UDim2.new(0.5, 0, 1, -8)
-	Sidebar.Size = UDim2.new(1, -16, 0, M.navH)
-	Sidebar.ScrollingDirection = Enum.ScrollingDirection.X
-	Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.X
+	Sidebar.Position = UDim2.fromOffset(6, 0)
+	Sidebar.Size = UDim2.new(0, M.railW, 1, -6)
+	Sidebar.ScrollingDirection = Enum.ScrollingDirection.Y
+	Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	Sidebar.CanvasSize = UDim2.new()
 	Sidebar.ScrollBarThickness = 0
 	Sidebar.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
@@ -1376,10 +1391,11 @@ Pad(Sidebar, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
 local SBLayout = Instance.new("UIListLayout")
 SBLayout.Parent = Sidebar
 SBLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SBLayout.FillDirection = MOBILE and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
--- Centering is for the mobile strip only; the desktop list must stay top-aligned
--- or the profile card and tabs drift to the middle of the sidebar.
-SBLayout.VerticalAlignment = MOBILE and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top
+SBLayout.FillDirection = Enum.FillDirection.Vertical
+-- Both builds stack from the top: a centred rail would drift the tabs into the
+-- middle as soon as they no longer fill the column.
+SBLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+SBLayout.HorizontalAlignment = MOBILE and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Left
 SBLayout.Padding = UDim.new(0, MOBILE and 6 or 4)
 
 local openAppearance
@@ -1458,10 +1474,9 @@ ContentArea.Name = "Content"
 ContentArea.Parent = Body
 ContentArea.BackgroundTransparency = 1
 ContentArea.BorderSizePixel = 0
--- Mobile gets the full width (no sidebar to clear) and a fat scrollbar-free
--- surface; the tab bar below Body is what navigates.
-ContentArea.Position = MOBILE and UDim2.new(0, 6, 0, 0) or UDim2.new(0, 164, 0, 0)
-ContentArea.Size = MOBILE and UDim2.new(1, -12, 1, 0) or UDim2.new(1, -172, 1, 0)
+-- Both builds clear the nav rail on the left; mobile's is just narrower.
+ContentArea.Position = MOBILE and UDim2.new(0, M.railW + 12, 0, 0) or UDim2.new(0, 164, 0, 0)
+ContentArea.Size = MOBILE and UDim2.new(1, -(M.railW + 18), 1, 0) or UDim2.new(1, -172, 1, 0)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ContentArea.ScrollBarThickness = MOBILE and 0 or 3
@@ -1471,8 +1486,8 @@ SearchEmpty = Instance.new("TextLabel")
 SearchEmpty.Name = "SearchEmpty"
 SearchEmpty.Parent = Main
 SearchEmpty.BackgroundTransparency = 1
-SearchEmpty.Position = UDim2.new(0, MOBILE and 6 or 164, 0, M.titleH)
-SearchEmpty.Size = MOBILE and UDim2.new(1, -12, 1, -(M.titleH + M.navH + 8)) or UDim2.new(1, -172, 1, -83)
+SearchEmpty.Position = UDim2.new(0, MOBILE and (M.railW + 12) or 164, 0, M.titleH)
+SearchEmpty.Size = MOBILE and UDim2.new(1, -(M.railW + 18), 1, -(M.titleH + 8)) or UDim2.new(1, -172, 1, -83)
 SearchEmpty.Font = FM; SearchEmpty.TextSize = 14; SearchEmpty.TextColor3 = T.Tx3
 SearchEmpty.TextXAlignment = Enum.TextXAlignment.Center; SearchEmpty.TextYAlignment = Enum.TextYAlignment.Center
 SearchEmpty.Text = "No matching functions"
@@ -1578,7 +1593,7 @@ local function mkSBItem(name, iconKind, page, order)
 	-- Offset height, not Scale: inside a ScrollingFrame a Scale height measures
 	-- the frame, not the padded content box, so a Scale=1 pill would overflow
 	-- the tab bar by exactly the padding and drag the canvas with it.
-	btn.Size = MOBILE and UDim2.new(0, M.navItemW, 0, M.navH - 12) or UDim2.new(1, 0, 0, 34)
+	btn.Size = MOBILE and UDim2.new(0, M.railW - 12, 0, M.railItemH) or UDim2.new(1, 0, 0, 34)
 	btn.AutoButtonColor = false
 	btn.BackgroundTransparency = 1
 	btn.BorderSizePixel = 0
@@ -1587,23 +1602,40 @@ local function mkSBItem(name, iconKind, page, order)
 
 	local barInd = Instance.new("Frame")
 	barInd.Parent = btn
-	-- Active marker: a left rail on desktop, an underline on a mobile pill.
-	barInd.Size = MOBILE and UDim2.new(0, 22, 0, 3) or UDim2.new(0, 3, 0, 20)
-	barInd.Position = MOBILE and UDim2.new(0.5, -11, 1, -7) or UDim2.new(0, 0, 0.5, -10)
+	-- Active marker: a short accent bar on the leading edge in both builds.
+	barInd.Size = MOBILE and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 20)
+	barInd.Position = MOBILE and UDim2.new(0, -4, 0.5, -12) or UDim2.new(0, 0, 0.5, -10)
 	barInd.BackgroundColor3 = T.Accent
 	barInd.BorderSizePixel = 0
 	barInd.Visible = false
 	Corner(barInd, 2)
 
-	-- Mobile: text-only pills. The nav icons are a fixed 7-item set decoded from
-	-- embedded PNGs, so any new tab would silently render icon-less next to its
-	-- neighbours; a uniform text strip has no such hole and reads fine at 78px.
-	local icon = not MOBILE and S._MakeNavIcon(btn, iconKind) or nil
+	-- Icons on BOTH builds: every tab now has a glyph (the mobile-only "Buttons"
+	-- tab was the one hole, and it has "grid" now), so the rail can lead with the
+	-- icon instead of falling back to a uniform text strip.
+	local icon = S._MakeNavIcon(btn, iconKind)
+	if icon and MOBILE then
+		-- Rail item: glyph centred near the top, caption underneath it.
+		icon.slot.AnchorPoint = Vector2.new(0.5, 0)
+		icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
+		icon.slot.Size = UDim2.fromOffset(24, 24)
+		icon.image.Size = UDim2.fromOffset(18, 18)
+	end
 	local label = Instance.new("TextLabel")
 	label.Parent = btn; label.BackgroundTransparency = 1
-	label.Position = MOBILE and UDim2.new(0, 2, 0, 0) or UDim2.new(0, icon and 38 or 13, 0, 0)
-	label.Size = MOBILE and UDim2.new(1, -4, 1, -6) or UDim2.new(1, icon and -48 or -20, 1, 0)
-	label.Font = F; label.TextSize = MOBILE and 13 or 14; label.TextColor3 = T.Tx2
+	if MOBILE then
+		-- getcustomasset is missing on some executors, so the icon can be nil; the
+		-- caption then owns the whole pill instead of leaving a gap where the
+		-- glyph would have been.
+		label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
+		label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
+		label.TextSize = icon and 9 or 11
+	else
+		label.Position = UDim2.new(0, icon and 38 or 13, 0, 0)
+		label.Size = UDim2.new(1, icon and -48 or -20, 1, 0)
+		label.TextSize = 14
+	end
+	label.Font = F; label.TextColor3 = T.Tx2
 	label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 	label.TextTruncate = Enum.TextTruncate.AtEnd; label.Text = name
 
@@ -2464,6 +2496,7 @@ end
 -- chunk past Luau's 200-register ceiling. Pressure has no sub-tabs.)
 
 do
+local COLLAPSED_PAGE = UDim2.new(1, 0, 0, 0)
 local pageLayoutQueued = false
 local pageLayoutSearchMode = false
 local function relayoutPage(page)
@@ -2530,7 +2563,17 @@ local function refreshPageLayouts()
     -- done makes those self-triggered signals no-ops instead of re-entrant task.defer calls
     -- stacking inside the same Deferred-signal drain.
     ContentArea.ScrollingEnabled = true
-    for _, page in pairs(Pages) do relayoutPage(page) end
+    -- Only the page(s) actually on screen need laying out.  Sorting and
+    -- repositioning every card on every page each pass — re-queued by any live
+    -- label that changes size — is the bulk of the "menu is laggy" cost.  Hidden
+    -- pages collapse to zero height so they cannot inflate the scroll canvas.
+    for _, page in pairs(Pages) do
+        if page.Visible then
+            relayoutPage(page)
+        elseif page.Size ~= COLLAPSED_PAGE then
+            page.Size = COLLAPSED_PAGE
+        end
+    end
     pageLayoutQueued = false
 end
 local function queuePageLayout()

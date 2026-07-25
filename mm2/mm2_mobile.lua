@@ -1225,6 +1225,10 @@ local M = MOBILE and {
     rowH = 38, rowFont = 13, trackW = 46, trackH = 26, knobShell = 22, knob = 16,
     sliderH = 54, barH = 8, grab = 17, actionH = 38,
     cycleW = 118, cycleH = 28, titleH = 78, navH = 54, navItemW = 76,
+    -- Mobile navigation is a LEFT ICON RAIL, not a bottom strip: the compact
+    -- panel is short, so vertical space is the scarce axis and a bottom bar
+    -- would eat it.  railItemH keeps each target above the 44px touch minimum.
+    railW = 62, railItemH = 48,
     badgeGap = 64, cycleLabelGap = 134,
 } or {
     -- These are the exact numbers the desktop build has always used; changing
@@ -1614,12 +1618,11 @@ SB.Parent = Main
 SB.BackgroundColor3 = T.Sidebar; pcall(function() SB:SetAttribute("ThemeColorRole_BackgroundColor3", "Sidebar") end)
 SB.BorderSizePixel = 0
 if MOBILE then
-    SB.AnchorPoint = Vector2.new(0.5, 1)
-    SB.Position = UDim2.new(0.5, 0, 1, -8)
-    SB.Size = UDim2.new(1, -16, 0, M.navH)
+    SB.Position = UDim2.new(0, 6, 0, M.titleH)
+    SB.Size = UDim2.new(0, M.railW, 1, -(M.titleH + 8))
     SB.CanvasSize = UDim2.new()
-    SB.AutomaticCanvasSize = Enum.AutomaticSize.X
-    SB.ScrollingDirection = Enum.ScrollingDirection.X
+    SB.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    SB.ScrollingDirection = Enum.ScrollingDirection.Y
     SB.ScrollBarThickness = 0
 else
     SB.Position = UDim2.new(0, 8, 0, 110)
@@ -1641,9 +1644,10 @@ SBLine.Visible = not MOBILE
 local SBLayout = Instance.new("UIListLayout")
 SBLayout.Parent = SB
 SBLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SBLayout.FillDirection = MOBILE and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
+SBLayout.FillDirection = Enum.FillDirection.Vertical
+SBLayout.HorizontalAlignment = MOBILE and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Left
 -- Centering is for the mobile strip only; the desktop list must stay top-aligned.
-SBLayout.VerticalAlignment = MOBILE and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top
+SBLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 SBLayout.Padding = UDim.new(0, MOBILE and 6 or 3)
 Pad(SB, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
 
@@ -2061,8 +2065,8 @@ ContentArea.BackgroundTransparency = 1
 ContentArea.BorderSizePixel = 0
 -- Mobile takes the full width (no sidebar to clear) and reserves the bottom tab
 -- bar instead of the desktop status strip.
-ContentArea.Position = MOBILE and UDim2.new(0, 6, 0, M.titleH) or UDim2.new(0, 146, 0, 41)
-ContentArea.Size = MOBILE and UDim2.new(1, -12, 1, -(M.titleH + M.navH + 8)) or UDim2.new(1, -152, 1, -67)
+ContentArea.Position = MOBILE and UDim2.new(0, M.railW + 12, 0, M.titleH) or UDim2.new(0, 146, 0, 41)
+ContentArea.Size = MOBILE and UDim2.new(1, -(M.railW + 18), 1, -(M.titleH + 8)) or UDim2.new(1, -152, 1, -67)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ContentArea.ScrollBarThickness = 0
@@ -2191,6 +2195,7 @@ if MOBILE then mkPage("Buttons") end
 -- Pages use a compact masonry layout instead of one tall list. Normal tabs never scroll; search can
 -- still combine hits from several tabs, but its scrollbar stays hidden.
 do
+local COLLAPSED_PAGE = UDim2.new(1, 0, 0, 0)
 local pageLayoutQueued = false
 local pageLayoutSearchMode = false
 local function relayoutPage(page)
@@ -2294,7 +2299,18 @@ local function refreshPageLayouts()
     -- overflow. Scroll position is only reset on an actual tab switch / search toggle, NOT on every
     -- relayout, so a live label resizing mid-scroll no longer snaps the view back to the top.
     ContentArea.ScrollingEnabled = true
-    for _, page in pairs(Pages) do relayoutPage(page) end
+    -- Only the page(s) actually on screen need laying out.  Sorting and
+    -- repositioning every card on all 10 pages ran ~53 cards per pass, and a
+    -- single live-updating label inside one card is enough to re-queue that pass
+    -- every frame — which is most of the "menu is laggy" cost.  Hidden pages
+    -- collapse to zero height so they cannot inflate the scroll canvas.
+    for _, page in pairs(Pages) do
+        if page.Visible then
+            relayoutPage(page)
+        elseif page.Size ~= COLLAPSED_PAGE then
+            page.Size = COLLAPSED_PAGE
+        end
+    end
     pageLayoutQueued = false
 end
 local function queuePageLayout()
@@ -2368,7 +2384,7 @@ local function mkSBItem(name, iconKind, page, order)
     -- Offset height, not Scale: inside a ScrollingFrame a Scale height measures
     -- the frame, not the padded content box, so a Scale=1 pill would overflow
     -- the tab bar by exactly the padding and drag the canvas with it.
-    btn.Size = MOBILE and UDim2.new(0, M.navItemW, 0, M.navH - 12) or UDim2.new(1, 0, 0, 32)
+    btn.Size = MOBILE and UDim2.new(0, M.railW - 12, 0, M.railItemH) or UDim2.new(1, 0, 0, 32)
     btn.AutoButtonColor = false
     btn.BackgroundTransparency = 1
     btn.BorderSizePixel = 0
@@ -2377,25 +2393,40 @@ local function mkSBItem(name, iconKind, page, order)
     local btnStroke = Stroke(btn, T.Bd, 1, 1)
     local bar = Instance.new("Frame")
     bar.Parent = btn
-    -- Active marker: a left rail on desktop, an underline on a mobile pill.
-    bar.Size = MOBILE and UDim2.new(0, 22, 0, 3) or UDim2.new(0, 2, 0, 18)
-    bar.Position = MOBILE and UDim2.new(0.5, -11, 1, -6) or UDim2.new(0, 0, 0.5, -9)
+    -- Active marker: a short accent bar on the leading edge in both builds.
+    bar.Size = MOBILE and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 2, 0, 18)
+    bar.Position = MOBILE and UDim2.new(0, -4, 0.5, -12) or UDim2.new(0, 0, 0.5, -9)
     bar.BackgroundColor3 = T.Accent; pcall(function() bar:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     bar.BorderSizePixel = 0
     bar.Visible = false
     Corner(bar, 2)
-    -- Mobile: text-only pills. The nav icons are a fixed embedded set, so a tab
-    -- without one would render icon-less next to its neighbours.
-    local icon = (not MOBILE) and S._MakeNavIcon and S._MakeNavIcon(btn, iconKind) or nil
+    -- Icons on BOTH builds: every tab has a glyph, so the mobile rail leads with
+    -- the icon instead of falling back to a uniform text strip.
+    local icon = S._MakeNavIcon and S._MakeNavIcon(btn, iconKind) or nil
+    if icon and MOBILE then
+        -- Rail item: glyph centred near the top, caption underneath it.
+        icon.slot.AnchorPoint = Vector2.new(0.5, 0)
+        icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
+        icon.slot.Size = UDim2.fromOffset(24, 24)
+        icon.image.Size = UDim2.fromOffset(18, 18)
+    end
     local label = Instance.new("TextLabel")
     label.Parent = btn
     label.BackgroundTransparency = 1
-    label.Position = MOBILE and UDim2.new(0, 3, 0, 0) or UDim2.new(0, icon and 38 or 14, 0, 0)
-    label.Size = MOBILE and UDim2.new(1, -6, 1, -6) or UDim2.new(1, icon and -54 or -32, 1, 0)
+    if MOBILE then
+        -- getcustomasset is missing on some executors, so the icon can be nil; the
+        -- caption then owns the whole pill instead of leaving a gap.
+        label.Position = icon and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
+        label.Size = icon and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
+        label.TextSize = icon and 9 or 11
+    else
+        label.Position = UDim2.new(0, icon and 38 or 14, 0, 0)
+        label.Size = UDim2.new(1, icon and -54 or -32, 1, 0)
+        label.TextSize = 14
+    end
     label.TextXAlignment = MOBILE and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
-    label.TextWrapped = MOBILE
+    label.TextWrapped = false
     label.Font = F
-    label.TextSize = MOBILE and 12 or 14
     label.TextTruncate = Enum.TextTruncate.AtEnd
     label.TextColor3 = T.Tx2; pcall(function() label:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     bindLocalizedText(label, name, name, false)
@@ -4112,39 +4143,55 @@ do
         pcall(function() ping = LP:GetNetworkPing() * 1000 end)
         return math.clamp(ping, 50, 500)
     end
+    -- One frame of knife-chams cleanup after the toggle goes off, so turning it
+    -- off still removes the highlights without scanning workspace forever.
+    local knifeChamsWasOn = false
     tc(RunService.Heartbeat:Connect(function()
-        MSP.Latency = getPing() / 1000
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local hrp = p.Character.HumanoidRootPart
-                local now = tick()
-                local entry = MSP.History[p.Name]
-                if entry then
-                    local dt = now - entry.Time
-                    if dt > 0 then
-                        local newVel = (hrp.Position - entry.Pos) / dt
-                        local prevVel = entry.Vel or newVel
-                        local rawAcc = (newVel - prevVel) / dt
-                        local prevAcc = entry.Acc or Vector3.new()
-                        local smoothAcc = prevAcc:Lerp(rawAcc, 0.3)
-                        MSP.History[p.Name] = { Pos = hrp.Position, Time = now, Vel = newVel, Acc = smoothAcc }
+        -- This history is read ONLY by getPredictedPosition (knife silent aim).
+        -- It used to run unconditionally and REPLACE a table per player per frame:
+        -- on a full server that is a steady allocation drip straight into the GC,
+        -- which shows up as periodic stutter for everyone, aim features or not.
+        -- Track only while something can consume it, and mutate the entry in place.
+        if S.KnifeSilentAim then
+            MSP.Latency = getPing() / 1000
+            local now = tick()
+            for _, p in ipairs(Players:GetPlayers()) do
+                local character = p.Character
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local entry = MSP.History[p.Name]
+                    if not entry then
+                        MSP.History[p.Name] = { Pos = hrp.Position, Time = now, Vel = Vector3.new(), Acc = Vector3.new() }
+                    else
+                        local dt = now - entry.Time
+                        if dt > 0 then
+                            local newVel = (hrp.Position - entry.Pos) / dt
+                            local rawAcc = (newVel - (entry.Vel or newVel)) / dt
+                            entry.Acc = (entry.Acc or Vector3.new()):Lerp(rawAcc, 0.3)
+                            entry.Vel = newVel
+                            entry.Pos = hrp.Position
+                            entry.Time = now
+                        end
                     end
-                else
-                    MSP.History[p.Name] = { Pos = hrp.Position, Time = now, Vel = Vector3.new(), Acc = Vector3.new() }
                 end
             end
         end
         -- Flying knife CHAMS only here; the speed control moved to its own Stepped connection below
         -- (physics-synced, right before each physics step) so it reliably wins against the game's own
         -- velocity updates instead of fighting them a frame late on Heartbeat.
-        for _, v in ipairs(workspace:GetChildren()) do
-            if v.Name == "Knife" or v.Name == "NormalKnife" or v.Name == "ThrowingKnife" then
-                local h = v:FindFirstChild("Handle") or v:FindFirstChild("KnifeVisual") or v:FindFirstChildWhichIsA("BasePart")
-                if h and not h.Anchored then
-                    if S.KnifeChams then
-                        createHighlight(v, Color3.fromRGB(255, 0, 0), "KnifeChamsHighlight")
-                    else
-                        removeCham(v, "KnifeChamsHighlight")
+        -- Walking workspace's children every frame to call removeCham on knives that
+        -- have no highlight was pure waste while the toggle was off.
+        if S.KnifeChams or knifeChamsWasOn then
+            knifeChamsWasOn = S.KnifeChams == true
+            for _, v in ipairs(workspace:GetChildren()) do
+                if v.Name == "Knife" or v.Name == "NormalKnife" or v.Name == "ThrowingKnife" then
+                    local h = v:FindFirstChild("Handle") or v:FindFirstChild("KnifeVisual") or v:FindFirstChildWhichIsA("BasePart")
+                    if h and not h.Anchored then
+                        if S.KnifeChams then
+                            createHighlight(v, Color3.fromRGB(255, 0, 0), "KnifeChamsHighlight")
+                        else
+                            removeCham(v, "KnifeChamsHighlight")
+                        end
                     end
                 end
             end
@@ -13839,6 +13886,11 @@ do
 
     local lastNear, lastSheriff, lastAura = 0, 0, 0
     tc(RunService.Heartbeat:Connect(function()
+        -- Check the toggles BEFORE the lookup: all three are off by default, and
+        -- getKnifeEvents() walks Character/Backpack with several FindFirstChild
+        -- calls — that was running every single frame for every player, forever,
+        -- just to discover there was nothing to do.
+        if not (S.AutoKillSheriff or S.AutoKillNearest or S.KillAura) then return end
         local stab = getKnifeEvents()
         if not stab then return end  -- not holding the Knife (not the Murderer): nothing to do
         local now = tick()
