@@ -1142,6 +1142,23 @@ local function mkSBItem(name, iconKind, page, order)
 	label.TextWrapped = false
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 	label.Text = name
+	if icon and MOBILE then
+		-- Some shipped glyph bitmaps never decode in-engine.  Without this the tab
+		-- would render an empty gap above its caption; fall back to the text-only
+		-- pill instead (same layout the nil-icon path already uses).
+		task.defer(function()
+			local t0 = os.clock()
+			while icon.image.Parent and icon.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
+				task.wait(0.3)
+			end
+			if icon.image.Parent and icon.image.ContentImageSize.X == 0 then
+				icon.slot.Visible = false
+				label.Position = UDim2.new(0, 1, 0, 0)
+				label.Size = UDim2.new(1, -2, 1, 0)
+				label.TextSize = 11
+			end
+		end)
+	end
 	local item = { btn = btn, bar = bar, icon = icon, label = label, page = page }
 	btn.MouseButton1Click:Connect(function()
 		for _, pg in pairs(Pages) do
@@ -1607,6 +1624,22 @@ do
 		scale.Scale = 0.6
 		TweenService:Create(scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
+		if glyph then
+			-- Same self-heal as the nav rail: a bitmap that never decodes would leave a
+			-- gap above the caption, so drop back to the caption-only layout.
+			task.defer(function()
+				local t0 = os.clock()
+				while glyph.image.Parent and glyph.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
+					task.wait(0.3)
+				end
+				if glyph.image.Parent and glyph.image.ContentImageSize.X == 0 then
+					glyph.slot.Visible = false
+					label.Position = UDim2.new(0, 4, 0, 20)
+					label.Size = UDim2.new(1, -8, 1, -26)
+					label.TextSize = size <= 60 and 11 or 12
+				end
+			end)
+		end
 		local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
 		Buttons[id] = record
 

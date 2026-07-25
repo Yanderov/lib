@@ -2455,6 +2455,23 @@ local function mkSBItem(name, iconKind, page, order)
     pin.BorderSizePixel = 0
     pin.Visible = false
     Corner(pin, 3)
+    if icon and MOBILE then
+        -- Some shipped glyph bitmaps never decode in-engine.  Without this the tab
+        -- would render an empty gap above its caption; fall back to the text-only
+        -- pill instead (same layout the nil-icon path already uses).
+        task.defer(function()
+            local t0 = os.clock()
+            while icon.image.Parent and icon.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
+                task.wait(0.3)
+            end
+            if icon.image.Parent and icon.image.ContentImageSize.X == 0 then
+                icon.slot.Visible = false
+                label.Position = UDim2.new(0, 1, 0, 0)
+                label.Size = UDim2.new(1, -2, 1, 0)
+                label.TextSize = 11
+            end
+        end)
+    end
     local item = { name = name, btn = btn, bar = bar, icon = icon, label = label, stroke = btnStroke, page = page, dot = dot, pin = pin, order = order, fav = false }
     btn.MouseButton1Click:Connect(function()
         SFX.Click()
@@ -2495,8 +2512,8 @@ mkSBItem("Player", "player", Pages.Player, 4)
 mkSBItem("Misc", "misc", Pages.Misc, 5)
 mkSBItem("Teleport", "teleport", Pages.Teleport, 6)
 mkSBItem("Servers", "servers", Pages.Servers, 7)
-mkSBItem("Config", "config", Pages.Config, 8)
-if MOBILE and Pages.Buttons then mkSBItem("Buttons", "config", Pages.Buttons, 9) end
+mkSBItem("Config", "misc", Pages.Config, 8)
+if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9) end
 refreshSB()
 local BindReg = {}
 local PendingBind = nil
@@ -2582,7 +2599,7 @@ do
     -- wrapped shouty text inside a 48px circle.  First match wins, so the more
     -- specific words are listed first.
     local FLOAT_ICON_RULES = {
-        { "menu", "config" },
+        { "menu", "misc" },
         { "esp", "eye" }, { "cham", "eye" }, { "visual", "eye" }, { "tracer", "eye" },
         { "aim", "combat" }, { "kill", "combat" }, { "shoot", "combat" }, { "gun", "combat" },
         { "knife", "combat" }, { "fling", "combat" },
@@ -2591,7 +2608,7 @@ do
         { "tp", "teleport" }, { "teleport", "teleport" }, { "goto", "teleport" }, { "map", "teleport" },
         { "server", "servers" }, { "hop", "servers" }, { "rejoin", "servers" },
         { "player", "player" }, { "god", "player" }, { "spectat", "player" },
-        { "config", "config" }, { "setting", "config" },
+        { "config", "misc" }, { "setting", "misc" },
     }
     local function floatIconKind(id, label)
         local hay = string.lower(tostring(id) .. " " .. tostring(label or ""))
@@ -2697,6 +2714,22 @@ do
         scale.Scale = 0.6
         TweenService.Create(TweenService, scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
+        if glyph then
+            -- Same self-heal as the nav rail: a bitmap that never decodes would leave a
+            -- gap above the caption, so drop back to the caption-only layout.
+            task.defer(function()
+                local t0 = os.clock()
+                while glyph.image.Parent and glyph.image.ContentImageSize.X == 0 and os.clock() - t0 < 4 do
+                    task.wait(0.3)
+                end
+                if glyph.image.Parent and glyph.image.ContentImageSize.X == 0 then
+                    glyph.slot.Visible = false
+                    label.Position = UDim2.new(0, 4, 0, 20)
+                    label.Size = UDim2.new(1, -8, 1, -26)
+                    label.TextSize = size <= 60 and 11 or 12
+                end
+            end)
+        end
         local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
         Buttons[id] = record
 
