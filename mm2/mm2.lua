@@ -13041,12 +13041,18 @@ do
     local emSearchQ = ""
     local function refreshEmotes()
         for _, ch in ipairs(emScroll:GetChildren()) do if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end end
-        -- Render the complete catalog; search only filters it.
+        -- Rendering the WHOLE catalog built ~2500 rows at roughly four instances each,
+        -- which alone was ~10000 of the GUI's ~11700 GuiObjects. Every time the menu was
+        -- shown the engine had to walk that tree, which is the hitch on opening the GUI.
+        -- Cap it like the animation-pack list already does and let search reach the rest.
+        local EMOTE_RENDER_CAP = 120
         local function render(items)
             for _, ch in ipairs(emScroll:GetChildren()) do if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end end
-            local order = 0
+            local order, matches = 0, 0
             for _, item in ipairs(items) do
                 if emSearchQ == "" or tostring(item.name):lower():find(emSearchQ, 1, true) then
+                    matches = matches + 1
+                    if order < EMOTE_RENDER_CAP then
                     order = order + 1
                     local row = mkThumbRow(emScroll, order, tostring(item.id), item.name, function()
                         playEmoteById(item.name, item.id)
@@ -13100,18 +13106,24 @@ do
                         if pinBtn.Text == "PIN" then TweenService:Create(pinBtn, TweenInfo.new(0.12), { BackgroundColor3 = T.Card }):Play() end
                         TweenService:Create(pinBtnStroke, TweenInfo.new(0.12), { Transparency = pinBtn.Text == "PIN" and 0.48 or 0.08 }):Play()
                     end)
+                    end
                 end
             end
-            if order == 0 then
+            if order == 0 or matches > order then
                 local lbl = Instance.new("TextLabel")
                 lbl.Name = "Status"
                 lbl.Parent = emScroll
+                lbl.LayoutOrder = (order == 0) and 0 or 99999
                 lbl.BackgroundTransparency = 1
                 lbl.Size = UDim2.new(1, 0, 0, 30)
                 lbl.Font = F
                 lbl.TextSize = 12
                 lbl.TextColor3 = T.Tx4; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
-                lbl.Text = (#items == 0) and "No official emotes found (Roblox catalog unavailable right now)." or "No matches."
+                if order == 0 then
+                    lbl.Text = (#items == 0) and "No official emotes found (Roblox catalog unavailable right now)." or "No matches."
+                else
+                    lbl.Text = string.format("Showing %d of %d — type to find the rest.", order, matches)
+                end
             end
         end
         if officialEmotes then
