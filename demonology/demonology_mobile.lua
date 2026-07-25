@@ -1455,6 +1455,45 @@ do
 	local Buttons = {}
 	local spawnIndex = 0
 
+	-- Binds are registered freely by each feature, so there is no icon per bind.
+	-- Keyword-map onto the embedded nav set instead: a glyph reads far better than
+	-- wrapped shouty text inside a 48px circle.  First match wins, so the more
+	-- specific words are listed first.
+	local FLOAT_ICON_RULES = {
+		{ "menu", "grid" },
+		{ "esp", "scan-eye" },
+		{ "cham", "scan-eye" },
+		{ "visual", "eye" },
+		{ "tracer", "scan-eye" },
+		{ "evidence", "search-check" },
+		{ "ghost", "ghost" },
+		{ "hunt", "ghost" },
+		{ "fly", "footprints" },
+		{ "speed", "footprints" },
+		{ "jump", "footprints" },
+		{ "walk", "footprints" },
+		{ "noclip", "footprints" },
+		{ "sprint", "footprints" },
+		{ "tp", "map-pin" },
+		{ "teleport", "map-pin" },
+		{ "goto", "map-pin" },
+		{ "room", "map-pin" },
+		{ "auto", "workflow" },
+		{ "farm", "workflow" },
+		{ "photo", "workflow" },
+		{ "player", "user-round" },
+		{ "hud", "panels-top-left" },
+		{ "config", "settings-2" },
+		{ "setting", "settings-2" },
+	}
+	local function floatIconKind(id, label)
+		local hay = string.lower(tostring(id) .. " " .. tostring(label or ""))
+		for _, rule in ipairs(FLOAT_ICON_RULES) do
+			if string.find(hay, rule[1], 1, true) then return rule[2] end
+		end
+		return "wrench"
+	end
+
 	local function buttonSize()
 		local camera = workspace.CurrentCamera
 		local vp = camera and camera.ViewportSize
@@ -1532,19 +1571,32 @@ do
 		local dot = Instance.new("Frame")
 		dot.Parent = frame
 		dot.AnchorPoint = Vector2.new(0.5, 0)
-		dot.Position = UDim2.new(0.5, 0, 0, 9)
-		dot.Size = UDim2.fromOffset(7, 7)
+		dot.Position = UDim2.new(0.5, 0, 0, 5)
+		dot.Size = UDim2.fromOffset(6, 6)
 		dot.BackgroundColor3 = T.Tx4
 		dot.BorderSizePixel = 0
 		Corner(dot, 99)
 
+		-- Glyph between the state dot and the caption.  Nil when the executor has no
+		-- getcustomasset, in which case the caption keeps the old full-height layout
+		-- instead of leaving a hole where the icon would have been.
+		local glyph = MakeNavIcon and MakeNavIcon(frame, floatIconKind(id, entry.label))
+		if glyph then
+			glyph.slot.AnchorPoint = Vector2.new(0.5, 0)
+			glyph.slot.Position = UDim2.new(0.5, 0, 0, 12)
+			glyph.slot.Size = UDim2.fromOffset(20, 20)
+			glyph.slot.BackgroundTransparency = 1
+			glyph.image.Size = UDim2.fromOffset(18, 18)
+			glyph.image.ImageColor3 = T.Tx2
+		end
+
 		local label = Instance.new("TextLabel")
 		label.Parent = frame
 		label.BackgroundTransparency = 1
-		label.Position = UDim2.new(0, 4, 0, 20)
-		label.Size = UDim2.new(1, -8, 1, -26)
+		label.Position = glyph and UDim2.new(0, 3, 0, 34) or UDim2.new(0, 4, 0, 20)
+		label.Size = glyph and UDim2.new(1, -6, 1, -37) or UDim2.new(1, -8, 1, -26)
 		label.Font = FM
-		label.TextSize = size <= 60 and 11 or 12
+		label.TextSize = glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
 		label.TextColor3 = T.Tx2
 		label.TextWrapped = true
 		label.TextXAlignment = Enum.TextXAlignment.Center
@@ -1556,7 +1608,7 @@ do
 		scale.Scale = 0.6
 		TweenService:Create(scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
-		local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale }
+		local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
 		Buttons[id] = record
 
 		-- Drag vs tap: anything under 8px of travel is a tap.  Without the
@@ -1725,7 +1777,8 @@ do
 			local size = buttonSize()
 			for _, button in pairs(Buttons) do
 				button.frame.Size = UDim2.fromOffset(size, size)
-				button.label.TextSize = size <= 60 and 11 or 12
+				-- Keep the caption in step with the glyph layout chosen in createButton.
+				button.label.TextSize = button.glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
 			end
 		end))
 	end
@@ -2862,7 +2915,7 @@ do
 		-- closed would pop the collapsed (0,0) window back onto the screen.
 		if Main.Visible and not minimized then Main.Size = expandedSize end
 		NHost.Size = UDim2.fromOffset(
-			math.clamp(math.floor(vp.X * (MOBILE and 0.3 or 0.4)), MOBILE and 180 or 220, MOBILE and 250 or 360), 240)
+			math.clamp(math.floor(vp.X * (MOBILE and 0.3 or 0.4)), MOBILE and 150 or 220, MOBILE and 210 or 360), 240)
 	end
 	relayout()
 	local camera = workspace.CurrentCamera

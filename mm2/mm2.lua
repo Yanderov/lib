@@ -742,8 +742,10 @@ S._NavIconFiles = {
     teleport = "InertiaAssets/nav_teleport.png",
     servers = "InertiaAssets/nav_servers.png",
     config = "InertiaAssets/nav_config.png",
+    grid = "InertiaAssets/nav_grid.png",
 }
 S._NavIconData = {
+    grid = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAiklEQVR42u3YwQmAMAwF0I7k5h2tI0QPHhWstoXIC+RoyjsIyS8RUTJ3AQCYA9iOrtFf9fx22dy7R1q8r3bz2JS5V4Aa36uumnsFGFVL5j4BPP2hegFD5gIAAAAAAPwekG6VSL/MpV+n0x80bmIAAKmEVEIqYRsFAAAAAACQSkglpBJSCUc9wOzeATuXLnOq/wAcAAAAAElFTkSuQmCC",
     eye = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAB6ElEQVR42u2cQXLEMAgEzVT+/2XnlMtWHK83khhE9weAIRGyFjgOAAAAAAAAAAAAAAAAmEq4O3ie5/nvICOCBCwUvFJCoovorsmIjqI7JSMQPjcRgfC5iRDiJ18IED73vyGqCP+JAC5+LE3AqKBn/MU5+hYuAWZcAR38jexgHL5KM32PzsI7xBKrHXZ+GMuI66vLm8snvlp/BzxxbrT4f9leaWuE7Zjp1Egxso+7WTFrV/FHHyHvxvPUZjiLnyHgag3UQfyMr+B37amD+M5JUMdrplO8GpFFh4LrWlfu7MnpPX+VPae4VO12sdvTtFyOnt3rwZWeQj7DxqwKhfc3+xWeK17tqWQ32YV9V78e1QD3Toa7IN3r0qu+1IBkxBdv7jGkzs1WDt8XHEFuR1C1Ilb9EqGKPZ9X9l39+ugXsd1eQR0/wqgBztfQEW/d3Hzu9dTO3dAVntG1oyiVkq0VP7s5ieNQeKcU4W71YFS8yuwKWz6PZdicpezWvGWzWKadcbFzb2iFBl25NKnOELFCdzTzARXnAxyS4HbTsR9R+glm1xkxpiQ7TkkyJ2wwJ8ykPLsiDnZFsC2FfUHsC9o0EbNrkw7WFKT6zdbELlsT2RvK5lw257I7mu3pAAAAAAAAAAAAAAAAy/kGzEXEcfIZXyUAAAAASUVORK5CYII=",
     combat = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAACQ0lEQVR42u2dSXYEMQhDg17f/8qVTS+T19VlG2HzuYCRGDzDzw+CIAjSVWIXRa/rur4GFxEYIInsXY0SXYivaojoRHpFY0Rn4isYIiDea4iAeK8hBPlevQPivdEgyPfiEeR7cQnyvfi0E/l38nC8ZRcjRGXy/yLy0zj/kZ+ln8UAUz3iA6inBnDpuzwFzQKTkTpWjDWKX27yM4lfNfYID3KR7yR+hS5P+ZCL/BN3u094Uaez94r6Kcv7K6Wclbp+y09kkd9t53sXs7qnHLf+4ozHGznC+7041PlR1Go8d3gTnu/FJXK/dy4Q3u/FJ7zfGwXC+704hX96RXi/F6/I/955gBR0Qgrqln5m4iYCKkYA+T9vHiACdp8Duub/WfhfGRcPHa8k+SHTbSeMETZYhmKEBXMAnzA2MED3lRI74cIOgwHMRniRXsaxWf4HIEVSUPelpfWLErIoAlg25s0pRMAJ+4Cu88AM3ERA1QhgHsjZU4iTTi9eUtBJh3FdomAmTnGM7D1TomJW9YpZRMHaE1WK9u1QtG/VF83Tyb/Dm3gF4cUhbr68t2niLZC5FGe18i2j48+M1AysyiLyessuXp/laKKBg1c/7VLcbgfyn/AiZ4XBKoaYoctTPuR+lOU0xKyxR3go80Up0xAzxxrFT/X0E6qnZ/YPuGuACr0MLE18OtyKlS5XQ8WsApfyFO0rsBOmbGWhVoY7zwtlShd3jIYMvemm2qWbKv2E6ahNR216yhc3QIYhqi0Iovu7HARBkMbyC8NruLR56eRtAAAAAElFTkSuQmCC",
     motion = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAACGklEQVR42u2d23LDIAxEYSf//8vuS9vpTDtJbKNKK86+5mb2GAchAWMghBBCKEXT+eKP4zi+GzLnBECC8b8aZAZCncx/53UABJrvCEHdzHeDoI7mO0FQV/NdIKiz+Q4Q1N386hC0g/mVIWgX86tC0E7mV4Sg3cyvBkFu5q+c66kAwWoq4l3zV78PABfMeuf99IAfZn1p5Z3qMDWt6nf6XROffZ5H0AtjVhn01/dU6R3tMmJuWTENBAAAIAAAAAEAAAgAu+kRFRy51mr+dy2qoiJTtxLBs208PpUO4NlFdIEQ2UZ1LnpySG8q8ke7/A9EJndElXIuBLkk0LuWxgvz17fnjE/C/FwIwvxcCML8XAjC/FwIkyArFxqzoclDWXH3D/IBAEC1AOw2oqEHMAqiF2TFDdMxEq5QnLvKF2XNAu6SAXvlnzKnYnc3/9SfMBBiHseqkJTY1fxLw9BdIUQtfVWli3HvAVfaq4qlGruYfzsSJli774Mif3yHwqy7bVT3dbiRC8hXtJF1woPZ0MF0NAIAABAAAIAAAAA0LNcJRwRbkVtUVgnWSu8dHbl7Ohu3nlgQ3Xkd88PlYJ4rjwxO0Ch+hgzbViYvFa3QQ+auu6fTA5LNYBiaaEqlhI06JbgdCwnUrcrALVWpjqUeTnlida23cUnSq3PRk0OFhDpXnnGCRvEzZABAVbZfRuyVuW4lkZOdbBFCCKEcfQAn5IjMmmj8MAAAAABJRU5ErkJggg==",
@@ -2573,6 +2575,30 @@ do
         return math.clamp(math.floor(base * 0.13), 48, 70)
     end
 
+    -- Binds are registered freely by each feature, so there is no icon per bind.
+    -- Keyword-map onto the embedded nav set instead: a glyph reads far better than
+    -- wrapped shouty text inside a 48px circle.  First match wins, so the more
+    -- specific words are listed first.
+    local FLOAT_ICON_RULES = {
+        { "menu", "grid" },
+        { "esp", "eye" }, { "cham", "eye" }, { "visual", "eye" }, { "tracer", "eye" },
+        { "aim", "combat" }, { "kill", "combat" }, { "shoot", "combat" }, { "gun", "combat" },
+        { "knife", "combat" }, { "fling", "combat" },
+        { "fly", "motion" }, { "speed", "motion" }, { "jump", "motion" }, { "walk", "motion" },
+        { "noclip", "motion" }, { "sprint", "motion" }, { "dodge", "motion" },
+        { "tp", "teleport" }, { "teleport", "teleport" }, { "goto", "teleport" }, { "map", "teleport" },
+        { "server", "servers" }, { "hop", "servers" }, { "rejoin", "servers" },
+        { "player", "player" }, { "god", "player" }, { "spectat", "player" },
+        { "config", "config" }, { "setting", "config" },
+    }
+    local function floatIconKind(id, label)
+        local hay = string.lower(tostring(id) .. " " .. tostring(label or ""))
+        for _, rule in ipairs(FLOAT_ICON_RULES) do
+            if string.find(hay, rule[1], 1, true) then return rule[2] end
+        end
+        return "misc"
+    end
+
     local function repaintChips(id)
         for _, paint in ipairs(Chips[id] or {}) do pcall(paint) end
     end
@@ -2632,19 +2658,32 @@ do
         local dot = Instance.new("Frame")
         dot.Parent = frame
         dot.AnchorPoint = Vector2.new(0.5, 0)
-        dot.Position = UDim2.new(0.5, 0, 0, 9)
-        dot.Size = UDim2.fromOffset(7, 7)
+        dot.Position = UDim2.new(0.5, 0, 0, 5)
+        dot.Size = UDim2.fromOffset(6, 6)
         dot.BackgroundColor3 = T.Tx4
         dot.BorderSizePixel = 0
         Corner(dot, 99)
 
+        -- Glyph between the state dot and the caption.  Nil when the executor has
+        -- no getcustomasset, in which case the caption keeps the old full-height
+        -- layout instead of leaving a hole where the icon would have been.
+        local glyph = S._MakeNavIcon and S._MakeNavIcon(frame, floatIconKind(id, entry.label))
+        if glyph then
+            glyph.slot.AnchorPoint = Vector2.new(0.5, 0)
+            glyph.slot.Position = UDim2.new(0.5, 0, 0, 12)
+            glyph.slot.Size = UDim2.fromOffset(20, 20)
+            glyph.slot.BackgroundTransparency = 1
+            glyph.image.Size = UDim2.fromOffset(18, 18)
+            glyph.image.ImageColor3 = T.Tx2
+        end
+
         local label = Instance.new("TextLabel")
         label.Parent = frame
         label.BackgroundTransparency = 1
-        label.Position = UDim2.new(0, 4, 0, 20)
-        label.Size = UDim2.new(1, -8, 1, -26)
+        label.Position = glyph and UDim2.new(0, 3, 0, 34) or UDim2.new(0, 4, 0, 20)
+        label.Size = glyph and UDim2.new(1, -6, 1, -37) or UDim2.new(1, -8, 1, -26)
         label.Font = FM
-        label.TextSize = size <= 60 and 11 or 12
+        label.TextSize = glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
         label.TextColor3 = T.Tx2
         label.TextWrapped = true
         label.TextXAlignment = Enum.TextXAlignment.Center
@@ -2656,7 +2695,7 @@ do
         scale.Scale = 0.6
         TweenService.Create(TweenService, scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
-        local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale }
+        local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
         Buttons[id] = record
 
         -- Drag vs tap: anything under 8px of travel is a tap. Without the
@@ -2833,7 +2872,8 @@ do
             local size = buttonSize()
             for _, button in pairs(Buttons) do
                 button.frame.Size = UDim2.fromOffset(size, size)
-                button.label.TextSize = size <= 60 and 11 or 12
+                -- Keep the caption in step with the glyph layout chosen in createButton.
+                button.label.TextSize = button.glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
             end
         end))
     end
