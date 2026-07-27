@@ -466,11 +466,33 @@ end
 -- RightLeg = 139607718 on a live client; re-derive them the same way if Roblox republishes it.
 -- Own do-block to keep these three off the main chunk's register budget (200-local ceiling).
 do
-local KORBLOX_LEG = {
-    RightUpperLeg = { mesh = "rbxassetid://9598310133", tex = "rbxassetid://902843398" },
-    RightLowerLeg = { mesh = "rbxassetid://9598310138", tex = "rbxassetid://902843398" },
-    RightFoot     = { mesh = "rbxassetid://9598310128", tex = "rbxassetid://902843398" },
-}
+-- Korblox is resolved at runtime instead of hardcoded. Swapping only MeshId left each part at its
+-- original Size, so the skeletal mesh got stretched to fill a normal leg and rendered as detached
+-- blobs. Size has to come across too — and it depends on the wearer's body scale, so the only
+-- correct source is a rig built from THIS player's own description with the leg overridden.
+local KORBLOX_PARTS = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local korbloxLook = nil
+local function resolveKorblox()
+    if korbloxLook then return korbloxLook end
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return nil end
+    local ok, look = pcall(function()
+        local desc = hum:GetAppliedDescription():Clone()
+        desc.RightLeg = 139607718
+        local model = Players:CreateHumanoidModelFromDescription(desc, hum.RigType)
+        local out = {}
+        for _, name in ipairs(KORBLOX_PARTS) do
+            local p = model:FindFirstChild(name)
+            if p and p:IsA("MeshPart") then
+                out[name] = { mesh = p.MeshId, tex = p.TextureID, size = p.Size }
+            end
+        end
+        model:Destroy()
+        return out
+    end)
+    if ok and look and look.RightUpperLeg then korbloxLook = look end
+    return korbloxLook
+end
 local savedLimb = setmetatable({}, { __mode = "k" })
 local savedHead = nil
 S._UpdateAvatarMods = function()
@@ -489,17 +511,21 @@ S._UpdateAvatarMods = function()
     end
 
     -- R6 has no RightUpperLeg/RightFoot, so those look-ups simply miss and the leg stays stock.
-    for name, look in pairs(KORBLOX_LEG) do
+    local look = S.FakeKorblox and resolveKorblox() or nil
+    for _, name in ipairs(KORBLOX_PARTS) do
         local part = char:FindFirstChild(name)
         if part and part:IsA("MeshPart") then
-            if S.FakeKorblox then
+            if look and look[name] then
                 if not savedLimb[part] then
-                    savedLimb[part] = { mesh = part.MeshId, tex = part.TextureID }
+                    savedLimb[part] = { mesh = part.MeshId, tex = part.TextureID, size = part.Size }
                 end
-                pcall(function() part.MeshId = look.mesh end)
-                pcall(function() part.TextureID = look.tex end)
+                local want = look[name]
+                pcall(function() part.Size = want.size end)
+                pcall(function() part.MeshId = want.mesh end)
+                pcall(function() part.TextureID = want.tex end)
             elseif savedLimb[part] then
                 local orig = savedLimb[part]
+                pcall(function() part.Size = orig.size end)
                 pcall(function() part.MeshId = orig.mesh end)
                 pcall(function() part.TextureID = orig.tex end)
                 savedLimb[part] = nil
