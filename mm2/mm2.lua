@@ -2031,34 +2031,44 @@ end
 
 
 mkModalLabel("UI Wallpaper", 11)
-mkCycle(mScroll, "Wallpaper Style", {"None", "Space", "Abstract", "Anime", "Dark Cyber", "Vaporwave"}, "None", function(v)
-    S.UIWallpaper = v
-    local urls = {
-        ["Space"] = "rbxassetid://1045964490",
-        ["Abstract"] = "rbxassetid://14414605917",
-        ["Anime"] = "rbxassetid://6026569107",
-        ["Dark Cyber"] = "rbxassetid://7142907406",
-        ["Vaporwave"] = "rbxassetid://6880010959"
-    }
-    local main = SG:FindFirstChild("Main", true)
-    local settings = SG:FindFirstChild("InertiaSettings", true)
+local wallBtn = Instance.new("TextButton")
+wallBtn.Parent = mScroll; wallBtn.LayoutOrder = 12; wallBtn.Size = UDim2.new(1, 0, 0, 28)
+wallBtn.BackgroundColor3 = T.Elev; pcall(function() wallBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+wallBtn.BorderSizePixel = 0; wallBtn.Font = F; wallBtn.TextSize = 13
+wallBtn.TextColor3 = T.White; pcall(function() wallBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+wallBtn.Text = S.UIWallpaper or "None"; wallBtn.ZIndex = 1001; Corner(wallBtn, 6); Stroke(wallBtn, T.Bd, 1, 0.4)
+local wallOptions = {"None", "Space", "Abstract", "Anime", "Dark Cyber", "Vaporwave"}
+local urls = { ["Space"] = "rbxassetid://1045964490", ["Abstract"] = "rbxassetid://14414605917", ["Anime"] = "rbxassetid://6026569107", ["Dark Cyber"] = "rbxassetid://7142907406", ["Vaporwave"] = "rbxassetid://6880010959" }
+local function applyWall()
+    local v = S.UIWallpaper or "None"
     local url = urls[v] or ""
-    if main then 
-        main.Image = url
-        main.ImageTransparency = (v == "None") and 1 or (1 - (tonumber(S.UIWallpaperOpacity) or 0.2))
-    end
-    if settings then 
-        settings.Image = url
-        settings.ImageTransparency = (v == "None") and 1 or (1 - (tonumber(S.UIWallpaperOpacity) or 0.2))
-    end
-end, 12)
-mkSlider(mScroll, "Wallpaper Opacity (%)", 0, 100, 20, function(v)
-    S.UIWallpaperOpacity = v / 100
     local main = SG:FindFirstChild("Main", true)
     local settings = SG:FindFirstChild("InertiaSettings", true)
-    if main and main.Image ~= "" then main.ImageTransparency = 1 - (v / 100) end
-    if settings and settings.Image ~= "" then settings.ImageTransparency = 1 - (v / 100) end
-end, 13, true)
+    local opacity = 1 - (tonumber(S.UIWallpaperOpacity) or 0.2)
+    if main then main.Image = url; main.ImageTransparency = (v == "None") and 1 or opacity end
+    if settings then settings.Image = url; settings.ImageTransparency = (v == "None") and 1 or opacity end
+end
+wallBtn.MouseButton1Click:Connect(function()
+    local idx = 1
+    for i, v in ipairs(wallOptions) do if v == (S.UIWallpaper or "None") then idx = i break end end
+    local n = wallOptions[idx % #wallOptions + 1]
+    S.UIWallpaper = n; wallBtn.Text = n; applyWall()
+    SFX.Click()
+end)
+
+mkModalLabel("Wallpaper Opacity (%)", 13)
+local opSlider = Instance.new("TextBox")
+opSlider.Parent = mScroll; opSlider.LayoutOrder = 14; opSlider.Size = UDim2.new(1, 0, 0, 28)
+opSlider.BackgroundColor3 = T.Elev; pcall(function() opSlider:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+opSlider.BorderSizePixel = 0; opSlider.Font = F; opSlider.TextSize = 13; opSlider.ClearTextOnFocus = false
+opSlider.TextColor3 = T.White; pcall(function() opSlider:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 100))
+opSlider.ZIndex = 1001; Corner(opSlider, 6); Stroke(opSlider, T.Bd, 1, 0.4)
+opSlider.FocusLost:Connect(function()
+    local v = tonumber(opSlider.Text)
+    if v then S.UIWallpaperOpacity = math.clamp(v, 0, 100) / 100; applyWall() end
+    opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 100))
+end)
 
 mkModalLabel("Executor", 14)
 local executorValue = Instance.new("TextLabel")
