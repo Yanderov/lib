@@ -10595,61 +10595,136 @@ end
 -- Targeted fling: IY spin + ride inside the victim until they're launched, then come home.
 -- FallenPartsDestroyHeight is NaN'd for the duration so nobody void-dies mid-throw.
 local flingBusy = false
-local function flingPlayer(target)
+local function flingPlayer(TargetPlayer)
     if flingBusy then
         local waitUntil = tick() + 2
         repeat task.wait(0.05) until not flingBusy or tick() > waitUntil
         if flingBusy then return false end
     end
-    local c = LP.Character
-    local hum = c and c:FindFirstChildOfClass("Humanoid")
-    local root = c and c:FindFirstChild("HumanoidRootPart")
-    if not (c and hum and root and hum.Health > 0) then return false end
-    local tchar = target and target.Character
-    local thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
-    local troot = tchar and tchar:FindFirstChild("HumanoidRootPart")
-    if not (thum and thum.Health > 0 and troot) then return false end
-
+    local Character = LP.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart = Humanoid and Humanoid.RootPart
+    if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then return false end
+    
+    local TCharacter = TargetPlayer and TargetPlayer.Character
+    if not TCharacter then return false end
+    
+    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    local TRootPart = THumanoid and THumanoid.RootPart
+    local THead = TCharacter:FindFirstChild("Head")
+    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    local Handle = Accessory and Accessory:FindFirstChild("Handle")
+    
+    if not (TRootPart or THead or Handle) then return false end
+    
     flingBusy = true
-    local oldCF = root.CFrame
+    local OldPos = RootPart.CFrame
     local origFPDH = workspace.FallenPartsDestroyHeight
-    local ownSpin = not iyFlinging
     local flung = false
     
-    local anims = hum:GetPlayingAnimationTracks()
+    local anims = Humanoid:GetPlayingAnimationTracks()
     for _, track in ipairs(anims) do track:Stop() end
     
     pcall(function()
-        workspace.FallenPartsDestroyHeight = 0 / 0
-        if ownSpin and not startIYFling() then return end
-
-        local deadline = tick() + math.clamp(tonumber(S.FlingDuration) or 6, 1, 15)
-        repeat
-            tchar = target.Character
-            troot = tchar and tchar:FindFirstChild("HumanoidRootPart")
-            thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
-            if not (troot and thum and thum.Health > 0) then break end
-            
-            -- Teleport inside target, the startIYFling thread will apply massive velocity spikes
-            root.CFrame = troot.CFrame * CFrame.new(0, 0, 0)
-            
-            task.wait()
-            flung = troot and troot.Parent and (troot.AssemblyLinearVelocity.Magnitude > 300 or troot.Velocity.Magnitude > 300)
-        until flung or tick() > deadline or hum.Health <= 0
+        if THumanoid and THumanoid.Sit then return end
+        
+        if THead then
+            workspace.CurrentCamera.CameraSubject = THead
+        elseif Handle then
+            workspace.CurrentCamera.CameraSubject = Handle
+        elseif THumanoid and TRootPart then
+            workspace.CurrentCamera.CameraSubject = THumanoid
+        end
+        
+        local FPos = function(BasePart, Pos, Ang)
+            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
+        
+        local SFBasePart = function(BasePart)
+            local TimeToWait = tonumber(S.FlingDuration) or 6
+            local Time = tick()
+            local Angle = 0
+            repeat
+                if RootPart and THumanoid then
+                    if BasePart.Velocity.Magnitude < 50 then
+                        Angle = Angle + 100
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                    end
+                end
+                flung = BasePart.Velocity.Magnitude > 300
+            until tick() > Time + TimeToWait or flung or Humanoid.Health <= 0
+        end
+        
+        workspace.FallenPartsDestroyHeight = 0/0
+        
+        local BV = Instance.new("BodyVelocity")
+        BV.Parent = RootPart
+        BV.Velocity = Vector3.new(0, 0, 0)
+        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        
+        if TRootPart then
+            SFBasePart(TRootPart)
+        elseif THead then
+            SFBasePart(THead)
+        elseif Handle then
+            SFBasePart(Handle)
+        end
+        
+        if BV and BV.Parent then BV:Destroy() end
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     end)
-    if ownSpin and not S.TouchFling then stopIYFling() end
+    
+    pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
+    
     pcall(function()
         local returnT = tick()
         repeat
-            root.CFrame = oldCF
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
+            RootPart.CFrame = OldPos * CFrame.new(0, 0.5, 0)
+            Character:SetPrimaryPartCFrame(OldPos * CFrame.new(0, 0.5, 0))
+            Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            for _, part in ipairs(Character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.Velocity = Vector3.new(0,0,0)
+                    part.RotVelocity = Vector3.new(0,0,0)
+                end
+            end
             task.wait()
-        until (root.Position - oldCF.Position).Magnitude < 15 or tick() > returnT + 1.5
-        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+        until (RootPart.Position - OldPos.Position).Magnitude < 15 or tick() > returnT + 1.5
     end)
+    
     pcall(function() workspace.FallenPartsDestroyHeight = origFPDH end)
-    pcall(function() workspace.CurrentCamera.CameraSubject = hum end)
     flingBusy = false
     return flung
 end
