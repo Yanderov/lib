@@ -2050,9 +2050,13 @@ local function applyWall()
     local url = urls[v] or ""
     local main = SG:FindFirstChild("Main", true)
     local settings = SG:FindFirstChild("InertiaSettings", true)
-    local opacity = 1 - (tonumber(S.UIWallpaperOpacity) or 0.2)
-    if main then main.Image = url; main.ImageTransparency = (v == "None") and 1 or opacity end
-    if settings then settings.Image = url; settings.ImageTransparency = (v == "None") and 1 or opacity end
+    -- ImageTransparency is 0 when fully visible and 1 when invisible.  The
+    -- previous inverse calculation made the default 20% setting nearly hide
+    -- every wallpaper instead of showing it with 20% transparency.
+    local transparency = math.clamp(tonumber(S.UIWallpaperOpacity) or 0.2, 0, 1)
+    local hidden = v == "None" or url == ""
+    if main then main.Image = url; main.ImageTransparency = hidden and 1 or transparency end
+    if settings then settings.Image = url; settings.ImageTransparency = hidden and 1 or transparency end
 end
 wallBtn.MouseButton1Click:Connect(function()
     local idx = 1
@@ -2062,7 +2066,7 @@ wallBtn.MouseButton1Click:Connect(function()
     SFX.Click()
 end)
 
-mkModalLabel("Wallpaper Opacity (%)", 13)
+mkModalLabel("Wallpaper Transparency (%)", 13)
 local opSlider = Instance.new("TextBox")
 opSlider.Parent = mScroll; opSlider.LayoutOrder = 14; opSlider.Size = UDim2.new(1, 0, 0, 28)
 opSlider.BackgroundColor3 = T.Elev; pcall(function() opSlider:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
@@ -2075,6 +2079,7 @@ opSlider.FocusLost:Connect(function()
     if v then S.UIWallpaperOpacity = math.clamp(v, 0, 100) / 100; applyWall() end
     opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 100))
 end)
+task.defer(applyWall)
 
 mkModalLabel("Executor", 14)
 local executorValue = Instance.new("TextLabel")
@@ -4218,10 +4223,10 @@ local function setGlobalOpacity(v)
 end
 -- ==========================================================
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
-    mkToggle(secCustoms, "Enable Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
+    mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
     -- Slider for custom crosshairs
-    mkSlider(secCustoms, "Crosshair ID", 1, #cursorPaths, 1, function(v)
+    mkSlider(secCustoms, "Custom Cursor / Crosshair ID", 1, #cursorPaths, 1, function(v)
         S.CrosshairStyle = "Custom"
         S.CrosshairIndex = v
         S.CrosshairAssetId = nil
@@ -4541,7 +4546,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         for _, section in ipairs({sec1, sec2, sec5, secFov}) do
             if section and section.Parent then section.Parent.Visible = isESP end
         end
-        for _, section in ipairs({sec4, secFx, secSky, secFog}) do
+        for _, section in ipairs({secCam, sec4, secFx, secSky, secFog}) do
             if section and section.Parent then section.Parent.Visible = isEnvironment end
         end
         for _, section in ipairs({secShaders, secHandShaders}) do
