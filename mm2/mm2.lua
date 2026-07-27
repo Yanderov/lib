@@ -1471,6 +1471,11 @@ accGrad.Transparency = NumberSequence.new({
 local TBar = Instance.new("Frame")
 TBar.Name = "TBar"
 TBar.Parent = Main
+-- The title bar never got a colour, so it kept Roblox's default 163,162,165. Invisible while
+-- BackgroundTransparency stayed 1, but updateGuiTransparency() drives it to the UI transparency
+-- setting — at 0% transparency that default grey went fully opaque and became the grey strip
+-- across the top of the window. Give it a themed colour so the theme system owns it.
+TBar.BackgroundColor3 = T.Card; pcall(function() TBar:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
 TBar.BackgroundTransparency = 1
 TBar.Size = UDim2.new(1, 0, 0, M.titleH - 1)
 TBar.Position = UDim2.new(0, 0, 0, 1)
@@ -5445,6 +5450,10 @@ do
         end end
     end, 2)
     mkSlider(sec2, "Fly Speed", 10, 200, 50, function(v) S.FlySpeed = v end, 3)
+    mkToggle(sec2, "Fly Animation", false, function(v) S.FlyAnim = v end, 3.1)
+    mkCycle(sec2, "Fly Anim Style", {"Superman", "Superhero", "Iron Man", "Swim"}, "Superman", function(v)
+        S.FlyAnimStyle = v
+    end, 3.2)
     mkToggle(sec2, "Infinite Jump", false, function(v) S.InfiniteJump = v end, 4)
     mkToggle(sec2, "Freeze", false, function(v) S.Freeze = v end, 7)
     mkToggle(sec2, "Auto Sprint", false, function(v) S.AutoSprint = v end, 8)
@@ -7612,6 +7621,13 @@ do
 
     mkAction(secM, "Trip", function() doTrip() end, 4)
     mkAction(secM, "Fake Out (Flinger Kill)", function() doFakeOut() end, 5)
+    -- startInvisibleFE/stopInvisibleFE have existed all along, but the row that drove them was
+    -- deleted with the old "Camera & Body" section, leaving the whole feature unreachable and
+    -- `toggleInvisible` permanently nil — which also broke Blink, since startBlink turns Invisible
+    -- off through exactly that handle.
+    toggleInvisible = mkToggle(secM, "Invisible", false, function(v)
+        if v then startInvisibleFE() else stopInvisibleFE() end
+    end, 6)
     local secTr = mkSection(Pages.Motion, "Troll", 12)
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(secTr) end
     mkToggle(secTr, "Spinbot", false, function(v) S.Spinbot = v end, 1)
@@ -10288,6 +10304,10 @@ end
 local function applyConfig(data)
     if type(data) ~= "table" then return end
     configApplying = true
+    -- configApplying gates auto-save. If anything below throws past its pcalls, the flag would
+    -- stay true for the rest of the session and silently kill every later save, so the reset is
+    -- scheduled up front rather than relying on reaching the end of the function.
+    task.delay(5, function() configApplying = false end)
     if type(data.SelectedTheme) == "string" and Themes[data.SelectedTheme] then
         pcall(applyTheme, data.SelectedTheme)
     end
@@ -10387,10 +10407,21 @@ local function loadConfig(name)
     if not ok then return false end
     local ok2, data = pcall(function() return CfgHttp:JSONDecode(content) end)
     if not ok2 then return false end
+    -- Movement toggles that must not come back on by themselves: a config restored while a round
+    -- is live would drop you through the map or start flinging before you could react.
+    -- Matched on the exact control label (the last segment of "Page/Section/Label"), never as a
+    -- substring — the old kl:find("fling") also disabled the protective "Anti-Fling" on every
+    -- single load, and kl:find("fly") would catch any future "Fly Animation" or a "Butterfly"
+    -- aura style and silently switch them off too.
     if name == "_autoload" and type(data.controls) == "table" then
-        for k, v in pairs(data.controls) do
-            local kl = k:lower()
-            if kl:find("noclip") or kl:find("autofarm") or kl:find("fly") or kl:find("blink") or kl:find("invisible") or kl:find("fling") or kl:find("gravity") then
+        local unsafeOnLoad = {
+            ["fly"] = true, ["no clip"] = true, ["noclip"] = true, ["blink"] = true,
+            ["invisible"] = true, ["walk fling"] = true, ["touch fling"] = true,
+            ["click fling"] = true, ["moon gravity"] = true, ["auto farm"] = true,
+        }
+        for k in pairs(data.controls) do
+            local label = tostring(k):match("([^/]+)$") or tostring(k)
+            if unsafeOnLoad[label:lower()] then
                 data.controls[k] = false
             end
         end
@@ -12118,6 +12149,24 @@ tc(RunService.RenderStepped:Connect(function()
             if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then md = md - Vector3.new(0,1,0) end
             if md.Magnitude > 0 then md = md.Unit end
             bv.Velocity = md * spd; bg.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
+            -- Fly Animation: tilt the whole body instead of posing limbs. This rig's joints are
+            -- AnimationConstraints whose Transform is animator output — writes to it do not hold,
+            -- verified on a live client even with the Animate script disabled and every track
+            -- stopped — so per-limb superhero posing is not reachable from the client here.
+            -- Pitching the BodyGyro is, and it is the part that actually reads as flight.
+            if S.FlyAnim then
+                local style = S.FlyAnimStyle or "Superman"
+                local pitch, roll = -72, 0
+                if style == "Superhero" then
+                    pitch = -46
+                elseif style == "Iron Man" then
+                    pitch = 14
+                elseif style == "Swim" then
+                    pitch = -84
+                    roll = math.sin(os.clock() * 3) * 16
+                end
+                bg.CFrame = bg.CFrame * CFrame.Angles(math.rad(pitch), 0, math.rad(roll))
+            end
             if h then h.PlatformStand = true end
         end end
 
@@ -15918,3 +15967,4 @@ end
 
 -- Initial controls were sized by the final bulk pass; future descendants can now update individually.
 S._UIBuildReady = true
+
