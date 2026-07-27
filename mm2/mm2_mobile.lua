@@ -4222,6 +4222,24 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end
     end, 4)
 
+    mkAction(secCustoms, "Preview Gun Sound", function()
+        if S.CustomGunSoundId then
+            local s = Instance.new("Sound")
+            s.SoundId = S.CustomGunSoundId
+            s.Volume = 1.5
+            s.Parent = workspace
+            s:Play()
+            game.Debris:AddItem(s, 3)
+        else
+            local s = Instance.new("Sound")
+            s.SoundId = "rbxassetid://342080352"
+            s.Volume = 1
+            s.Parent = workspace
+            s:Play()
+            game.Debris:AddItem(s, 3)
+        end
+    end, 4.1)
+
     
     local mobileCrosshairGui = Instance.new("ScreenGui")
     mobileCrosshairGui.Name = "MM2MobileCrosshair"
