@@ -86,11 +86,8 @@ local S = {
     -- position that jumps further than a player could plausibly travel in a step
     -- ("invalid position" / snap-back), and that limit is per-step, not per-second:
     -- 120 studs/s in small steps is fine, one 40-stud jump is not.
-    AutofarmSafe = true, AutofarmAvoidRadius = 60,
-    -- Takeover: once the coin bag hits this many, fling the Sheriff for his gun
-    -- and finish the Murderer with it.
-    AutoTakeover = false, AutoTakeoverCoins = 50,
-    FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
+    AutofarmAvoidRadius = 60,
+        FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
     FakeLag = false, FakeLagLimit = 15,
     CrosshairShape = "Cross", CrosshairColor = "White", CrosshairSize = 12, CrosshairThickness = 2, CrosshairGap = 4, CrosshairRotation = 0,
@@ -212,13 +209,33 @@ local function snd(id, pitch, vol)
         s.PlaybackSpeed = pitch; s.Volume = vol or 0.3; s:Play()
     end) end)
 end
+-- Notification tones. Every id here was checked on a live client (PreloadAsync + TimeLength) —
+-- a candidate that failed to load was dropped rather than shipped, which is exactly how the old
+-- built-in wallpaper list ended up full of assets that render nothing.
+-- The rbxasset://sounds/* entries ship with the client, so they cannot be moderated away.
+S.NotifySounds = {
+    { name = "Pop (default)", id = "rbxassetid://4590662766", pitch = 1.2 },
+    { name = "Chime",         id = "rbxasset://sounds/electronicpingshort.wav", pitch = 1.0 },
+    { name = "Soft Ding",     id = "rbxassetid://6026984224", pitch = 1.0 },
+    { name = "Snap",          id = "rbxassetid://6895079853", pitch = 1.2 },
+    { name = "Ping",          id = "rbxassetid://12221967",   pitch = 1.0 },
+    { name = "Button",        id = "rbxasset://sounds/button.wav", pitch = 1.0 },
+    { name = "Switch",        id = "rbxasset://sounds/switch.wav", pitch = 1.0 },
+    { name = "Tick",          id = "rbxasset://sounds/clickfast.wav", pitch = 1.0 },
+    { name = "Low Thud",      id = "rbxasset://sounds/bass.wav", pitch = 1.0 },
+    { name = "Silent",        id = "", pitch = 1.0 },
+}
 local SFX = {
     On = function() snd("rbxassetid://6895079853", 1.35, 0.4) end,
     Off = function() snd("rbxassetid://6895079853", 0.8, 0.25) end,
     Bind = function() snd("rbxassetid://6895079853", 1.7, 0.35) end,
     Unbind = function() snd("rbxassetid://6895079853", 0.55, 0.2) end,
     Click = function() snd("rbxassetid://6895079853", 1.05, 0.3) end,
-    Pop = function() snd("rbxassetid://4590662766", 1.2, 0.35) end,
+    Pop = function()
+        local choice = S.NotifySounds[S.NotifySoundIndex or 1] or S.NotifySounds[1]
+        if choice.id == "" then return end
+        snd(choice.id, choice.pitch, 0.35)
+    end,
     Ready = function() snd("rbxassetid://4590662766", 1.5, 0.45) end,
 }
 local T = {
@@ -446,37 +463,65 @@ local function updateTextSizes()
 end
 
 
-local originalAvatarDescription = nil
+-- Humanoid:ApplyDescription() is server-only — a live client answers with "can only be called by
+-- the backend server" — so the old implementation pcall-swallowed every attempt and both toggles
+-- were dead. Both looks are local-visual anyway, so drive the character parts directly instead.
+-- Mesh/texture ids were read off Players:CreateHumanoidModelFromDescription with
+-- RightLeg = 139607718 on a live client; re-derive them the same way if Roblox republishes it.
+-- Own do-block to keep these three off the main chunk's register budget (200-local ceiling).
+do
+local KORBLOX_LEG = {
+    RightUpperLeg = { mesh = "rbxassetid://9598310133", tex = "rbxassetid://902843398" },
+    RightLowerLeg = { mesh = "rbxassetid://9598310138", tex = "rbxassetid://902843398" },
+    RightFoot     = { mesh = "rbxassetid://9598310128", tex = "rbxassetid://902843398" },
+}
+local savedLimb = setmetatable({}, { __mode = "k" })
+local savedHead = nil
 S._UpdateAvatarMods = function()
     local char = LP.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    
-    if not originalAvatarDescription then
-        local ok, current = pcall(function() return hum:GetAppliedDescription() end)
-        if not ok then return end
-        originalAvatarDescription = current and current:Clone() or Instance.new("HumanoidDescription")
+    if not char then return end
+
+    local head = char:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        if S.FakeHeadless then
+            if savedHead == nil then savedHead = head.Transparency end
+            head.Transparency = 1
+        elseif savedHead ~= nil then
+            head.Transparency = savedHead
+            savedHead = nil
+        end
     end
-    
-    local desc = originalAvatarDescription:Clone()
-    
-    if S.FakeKorblox then
-        desc.RightLeg = 139607718
+
+    -- R6 has no RightUpperLeg/RightFoot, so those look-ups simply miss and the leg stays stock.
+    for name, look in pairs(KORBLOX_LEG) do
+        local part = char:FindFirstChild(name)
+        if part and part:IsA("MeshPart") then
+            if S.FakeKorblox then
+                if not savedLimb[part] then
+                    savedLimb[part] = { mesh = part.MeshId, tex = part.TextureID }
+                end
+                pcall(function() part.MeshId = look.mesh end)
+                pcall(function() part.TextureID = look.tex end)
+            elseif savedLimb[part] then
+                local orig = savedLimb[part]
+                pcall(function() part.MeshId = orig.mesh end)
+                pcall(function() part.TextureID = orig.tex end)
+                savedLimb[part] = nil
+            end
+        end
     end
-    if S.FakeHeadless then
-        desc.Head = 134082579
-    end
-    
-    pcall(function() hum:ApplyDescription(desc) end)
 end
 
 LP.CharacterAdded:Connect(function()
+    -- A fresh character means fresh parts; the old saved originals belong to the corpse.
+    savedHead = nil
     task.delay(1.5, function()
         if S.FakeKorblox or S.FakeHeadless then
             S._UpdateAvatarMods()
         end
     end)
 end)
+end
 
 local function updateGuiTransparency()
     -- Keep enough opacity for controls and notifications to remain readable even
@@ -1664,7 +1709,7 @@ end)
 do
     -- Touch counts as a drag: matching only MouseButton1/MouseMovement (as this
     -- did) makes the window impossible to move on a phone.
-    local dr, ds, sp, so, activeInput
+    local dr, ds, sp, so, di
     TBar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             -- The search box and the header buttons bubble input through TBar;
@@ -1675,9 +1720,8 @@ do
                 return p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y
             end
             if over(SearchBox) or over(CloseBtn)  then return end
-            if activeInput then return end
-            activeInput = i
             dr = true
+            di = i
             ds = i.Position
             sp = Main.Position
             -- Top-left at drag start, in parent space: the clamp below offsets from
@@ -1687,7 +1731,9 @@ do
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseMovement) then
+        local mouseDrag = di and di.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
+        local touchDrag = di and di.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
+        if dr and (i == di or mouseDrag or touchDrag) then
             local d = i.Position - ds
             -- A compact floating panel dragged past the screen edge is unrecoverable
             -- on touch (no window list to get it back) and the spot is remembered as
@@ -1710,9 +1756,9 @@ do
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i == activeInput and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+        if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
-            activeInput = nil
+            di = nil
         end
     end))
 end
@@ -1761,6 +1807,10 @@ Pad(SB, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
 -- Settings Modal definition
 do
 S.ExecutorName = "Unknown executor"
+-- The sidebar profile slot is ~64px wide, so "name  ·  version" always clipped there and
+-- showed as "Potassium...". Keep the bare name for that slot; the full string still goes
+-- to the settings modal, which has the room for it.
+S.ExecutorShort = S.ExecutorName
 pcall(function()
     local resolver = identifyexecutor or getexecutorname
     if type(resolver) == "function" then
@@ -1769,10 +1819,12 @@ pcall(function()
         version = tostring(version or ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
         if name ~= "" then
             S.ExecutorName = name
+            S.ExecutorShort = name
             if version ~= "" and version ~= name then S.ExecutorName = name .. "  ·  " .. version end
         end
     elseif type(syn) == "table" then
         S.ExecutorName = "Synapse"
+        S.ExecutorShort = "Synapse"
     end
 end)
 local SettingsModal = Instance.new("ImageLabel")
@@ -2050,8 +2102,12 @@ wallBtn.BackgroundColor3 = T.Elev; pcall(function() wallBtn:SetAttribute("ThemeC
 wallBtn.BorderSizePixel = 0; wallBtn.Font = F; wallBtn.TextSize = 13
 wallBtn.TextColor3 = T.White; pcall(function() wallBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end)
 wallBtn.Text = S.UIWallpaper or "None"; wallBtn.ZIndex = 1001; Corner(wallBtn, 6); Stroke(wallBtn, T.Bd, 1, 0.4)
-local wallOptions = {"None", "Space", "Abstract", "Anime", "Dark Cyber", "Vaporwave"}
-local urls = { ["Space"] = "rbxassetid://1045964490", ["Abstract"] = "rbxassetid://14414605917", ["Anime"] = "rbxassetid://6026569107", ["Dark Cyber"] = "rbxassetid://7142907406", ["Vaporwave"] = "rbxassetid://6880010959" }
+-- The five built-in rbxassetid wallpapers (Space/Abstract/Anime/Dark Cyber/Vaporwave) were all
+-- verified dead on a live client — every one came back IsLoaded=false after PreloadAsync — so the
+-- wallpaper feature could never show anything. The real library is the GitHub backgrounds folder,
+-- filled in below by S._BuildWallpaperPicker once that list and fetchCustomAsset exist.
+local wallOptions = {"None"}
+local urls = {}
 local function applyWall()
     local v = S.UIWallpaper or "None"
     local url = urls[v] or ""
@@ -2065,13 +2121,49 @@ local function applyWall()
     if main then main.Image = url; main.ImageTransparency = hidden and 1 or transparency end
     if settings then settings.Image = url; settings.ImageTransparency = hidden and 1 or transparency end
 end
-wallBtn.MouseButton1Click:Connect(function()
-    local idx = 1
-    for i, v in ipairs(wallOptions) do if v == (S.UIWallpaper or "None") then idx = i break end end
-    local n = wallOptions[idx % #wallOptions + 1]
-    S.UIWallpaper = n; wallBtn.Text = n; applyWall()
-    SFX.Click()
-end)
+-- Same deferred-factory trick as S._BuildTransparencySetting above: this closure keeps the
+-- settings-scope locals (wallBtn / urls / applyWall) while the background list and
+-- fetchCustomAsset only exist much further down the file. The old code instead reached at those
+-- locals from the Custom Assets section, where they are simply out of scope — a live client threw
+-- "attempt to index nil with 'GitHub Custom'" the moment that slider moved.
+S._BuildWallpaperPicker = function(items, fetch)
+    for _, bg in ipairs(items) do table.insert(wallOptions, bg.Name) end
+
+    local previews = {}
+    for i = 2, #wallOptions do
+        local bg = items[i - 1]
+        previews[i] = function() return fetch(bg.Path, "backgrounds") end
+    end
+
+    wallBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        local idx = 1
+        for i, v in ipairs(wallOptions) do if v == (S.UIWallpaper or "None") then idx = i break end end
+        S._OpenOptionPicker("UI Wallpaper", wallOptions, idx, function(pick)
+            local name = wallOptions[pick]
+            wallBtn.Text = name
+            if name == "None" then
+                S.UIWallpaper = "None"
+                applyWall()
+            else
+                local bg = items[pick - 1]
+                task.spawn(function()
+                    if not urls[name] and bg then
+                        local id = fetch(bg.Path, "backgrounds")
+                        if id == "" then
+                            Notify("Wallpaper", "Could not download " .. name, 3)
+                            return
+                        end
+                        urls[name] = id
+                    end
+                    S.UIWallpaper = name
+                    applyWall()
+                end)
+            end
+            pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+        end, { previews = previews })
+    end)
+end
 
 mkModalLabel("Wallpaper Transparency (%)", 13)
 local opSlider = Instance.new("TextBox")
@@ -2087,6 +2179,30 @@ opSlider.FocusLost:Connect(function()
     opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 100))
 end)
 task.defer(applyWall)
+
+mkModalLabel("Notification Sound", 15)
+local notifyBtn = Instance.new("TextButton")
+notifyBtn.Parent = mScroll; notifyBtn.LayoutOrder = 16; notifyBtn.Size = UDim2.new(1, 0, 0, 28)
+notifyBtn.BackgroundColor3 = T.Elev; pcall(function() notifyBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+notifyBtn.BorderSizePixel = 0; notifyBtn.Font = F; notifyBtn.TextSize = 13
+notifyBtn.TextColor3 = T.White; pcall(function() notifyBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end)
+notifyBtn.Text = (S.NotifySounds[S.NotifySoundIndex or 1] or S.NotifySounds[1]).name
+notifyBtn.ZIndex = 1001; Corner(notifyBtn, 6); Stroke(notifyBtn, T.Bd, 1, 0.4)
+-- Deferred for the same reason as the wallpaper picker: S._OpenOptionPicker is declared later.
+S._BuildNotifySoundSetting = function()
+    local names = {}
+    for i, entry in ipairs(S.NotifySounds) do names[i] = entry.name end
+    notifyBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        S._OpenOptionPicker("Notification Sound", names, S.NotifySoundIndex or 1, function(pick)
+            S.NotifySoundIndex = pick
+            notifyBtn.Text = names[pick]
+            -- Play the pick straight away so the list is auditionable, not guesswork.
+            SFX.Pop()
+            pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+        end, { keepOpen = true })
+    end)
+end
 
 mkModalLabel("Executor", 14)
 local executorValue = Instance.new("TextLabel")
@@ -2170,7 +2286,7 @@ SubLabel.Font = F
 SubLabel.TextSize = 10
 SubLabel.TextColor3 = T.Tx3; pcall(function() SubLabel:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
 SubLabel.TextXAlignment = Enum.TextXAlignment.Left
-SubLabel.Text = S.ExecutorName
+SubLabel.Text = S.ExecutorShort or S.ExecutorName
 SubLabel.TextTruncate = Enum.TextTruncate.AtEnd
 SubLabel.ZIndex = 50
 
@@ -2190,22 +2306,21 @@ mScroll.Active = true
 
 -- Make settings modal draggable by header
 do
-    local dr, ds, sp, so, activeInput
+    local dr, di, ds, sp, so
     mHdr.Active = true
     mHdr.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            if activeInput then return end
-            activeInput = i
             dr = true
+            di = i
             ds = i.Position
             sp = SettingsModal.Position
             so = SettingsModal.Parent and (SettingsModal.AbsolutePosition - SettingsModal.Parent.AbsolutePosition) or nil
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        local mouseDrag = activeInput and activeInput.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
-        local touchDrag = activeInput and activeInput.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
-        if dr and (i == activeInput or mouseDrag or touchDrag) then
+        local mouseDrag = di and di.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
+        local touchDrag = di and di.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
+        if dr and (i == di or mouseDrag or touchDrag) then
             local d = i.Position - ds
             local host = so and SettingsModal.Parent and SettingsModal.Parent.AbsoluteSize
             if host and host.X > 0 and host.Y > 0 then
@@ -2224,9 +2339,9 @@ do
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i == activeInput or i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
-            activeInput = nil
+            di = nil
         end
     end))
 end
@@ -2491,7 +2606,7 @@ local function queuePageLayout()
     if pageLayoutQueued then return end
     pageLayoutQueued = true
     task.defer(function()
-        RunService.Heartbeat:Wait()
+        task.wait()
         refreshPageLayouts()
     end)
 end
@@ -2921,12 +3036,9 @@ do
             pressPos, dragging = nil, false
         end
 
-        local activeInput = nil
         tc(frame.InputBegan:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.Touch
                 and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-            if activeInput then return end
-            activeInput = input
             -- A second finger landing on the same button would otherwise orphan
             -- the first press's connections, leaking one per multi-touch.
             if moveConn then moveConn:Disconnect(); moveConn = nil end
@@ -2934,7 +3046,7 @@ do
             pressPos, dragging = input.Position, false
             local startCentre = frame.AbsolutePosition + frame.AbsoluteSize / 2
             moveConn = UIS.InputChanged:Connect(function(moved)
-                if moved ~= activeInput then return end
+                if moved ~= input then return end
                 if not pressPos then return end
                 if moved.UserInputType ~= Enum.UserInputType.Touch
                     and moved.UserInputType ~= Enum.UserInputType.MouseMovement then return end
@@ -2951,10 +3063,7 @@ do
                 end
             end)
             endConn = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End and input == activeInput then 
-                    activeInput = nil
-                    finish() 
-                end
+                if input.UserInputState == Enum.UserInputState.End then finish() end
             end)
         end))
 
@@ -3164,7 +3273,22 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(lbl, label, label, false)
-    local badge = Instance.new("TextLabel")
+    -- The badge/chip lane is only occupied when a bind badge is showing (desktop) or a
+    -- float chip was actually created (mobile). Reserving it unconditionally cost every
+    -- plain toggle ~50px of its own width and truncated names that otherwise fit —
+    -- that is why "Gun Chams Rainbow" rendered as "Gun Chams...".
+    local hasChip = false
+    local badge
+    local function syncLabelLane()
+        local lane = M.trackW + 16
+        if badge and badge.Visible then
+            lane = M.trackW + (MOBILE and 74 or 68)
+        elseif hasChip then
+            lane = M.trackW + 74
+        end
+        lbl.Size = UDim2.new(1, -lane, 1, 0)
+    end
+    badge = Instance.new("TextLabel")
     badge.Name = "BindBadge"
     badge.Parent = row
     badge.BackgroundTransparency = 0.08
@@ -3283,6 +3407,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
         else
             badge.Visible = false
         end
+        syncLabelLane()
         setVis(entry.state, false)
     end
     function entry.playBindEffect(bound)
@@ -3319,7 +3444,10 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     track.MouseButton1Click:Connect(function()
         if not PendingBind then toggle() end
     end)
-    if MOBILE and S._floatChip then S._floatChip(row, entry, -(M.trackW + 16)) end
+    if MOBILE and S._floatChip then
+        hasChip = S._floatChip(row, entry, -(M.trackW + 16)) ~= nil
+        syncLabelLane()
+    end
     row.InputBegan:Connect(function(i)
         if MOBILE then return end
         if i.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -3327,6 +3455,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
             PendingBind = entry
             badge.Text = "..."
             badge.Visible = true
+            syncLabelLane()
             badgeScale.Scale = 0.88
             badgeSt.Color = T.Accent
             badgeSt.Transparency = 0.08
@@ -3448,7 +3577,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(lbl, label, label, false)
-    local vlbl = Instance.new("TextLabel")
+    local vlbl = Instance.new("TextBox")
     vlbl.Parent = frame
     vlbl.BackgroundTransparency = 1
     vlbl.AnchorPoint = Vector2.new(1, 0)
@@ -3458,6 +3587,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     vlbl.TextSize = 13
     vlbl.TextColor3 = T.White; pcall(function() vlbl:SetAttribute("ThemeColorRole_TextColor3", "White") end)
     vlbl.TextXAlignment = Enum.TextXAlignment.Right
+    vlbl.ClearTextOnFocus = false
     local bar = Instance.new("Frame")
     bar.Parent = frame
     bar.AnchorPoint = Vector2.new(0.5, 0)
@@ -3497,7 +3627,23 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         vlbl.Text = tostring(v)
     end
     upd(val)
+    vlbl.FocusLost:Connect(function()
+        local num = tonumber(vlbl.Text)
+        if num then
+            num = math.clamp(math.floor(num + 0.5), min, max)
+            if num ~= val then
+                val = num
+                upd(val)
+                pcall(callback, val)
+            else
+                vlbl.Text = tostring(val)
+            end
+        else
+            vlbl.Text = tostring(val)
+        end
+    end)
     local active = false
+    local activeInput = nil
     local function fromMouse(input)
         local bp = bar.AbsolutePosition
         local bs = bar.AbsoluteSize
@@ -3513,17 +3659,15 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     -- this did) leaves every slider dead on a phone. Freezing the page scroll
     -- for the drag is the other half: a touch drag inside a ScrollingFrame
     -- scrolls the page as well as moving the slider.
-    local activeInput = nil
     frame.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            if activeInput then return end
             local p = i.Position
             local vp, vs = vlbl.AbsolutePosition, vlbl.AbsoluteSize
             if p.X >= vp.X and p.X <= vp.X + vs.X and p.Y >= vp.Y and p.Y <= vp.Y + vs.Y then
                 return -- Let the user click the textbox to type
             end
-            activeInput = i
             active = true
+            activeInput = i
             if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if sf then sf.ScrollingEnabled = false end
@@ -3532,18 +3676,17 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if active and i == activeInput then
+        if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseMovement) then
             fromMouse(i)
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i == activeInput then
-            if active and MOBILE then
+        if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseButton1) then
+            if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if sf then sf.ScrollingEnabled = true end
             end
             active = false
-            activeInput = nil
         end
     end))
     if not skipSearchRegistry then
@@ -3567,13 +3710,17 @@ end
 
 
 -- ================== OPTION PICKER MODAL ==================
+-- Own do-block so its seven widgets do not each burn a main-chunk register: this file sits on
+-- Luau's 200-register ceiling for the top-level function, and the executor enforces it even
+-- though a newer standalone luau-compile accepts the file. Only S._OpenOptionPicker escapes.
+do
 local OptionPickerModal = Instance.new("Frame")
 OptionPickerModal.Name = "OptionPicker"
 OptionPickerModal.Parent = SG
 OptionPickerModal.Active = true
 OptionPickerModal.AnchorPoint = Vector2.new(0.5, 0.5)
 OptionPickerModal.Position = UDim2.new(0.5, 0, 0.5, 0)
-OptionPickerModal.Size = UDim2.fromOffset(300, 400)
+OptionPickerModal.Size = UDim2.fromOffset(360, 440)
 OptionPickerModal.BackgroundColor3 = T.Card; pcall(function() OptionPickerModal:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
 OptionPickerModal.BorderSizePixel = 0
 OptionPickerModal.ZIndex = 2000
@@ -3603,12 +3750,34 @@ opClose.TextSize = 14
 opClose.TextColor3 = T.Tx2; pcall(function() opClose:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
 opClose.MouseButton1Click:Connect(function() OptionPickerModal.Visible = false; SFX.Off() end)
 
+-- Asset lists (44 gun sounds, 38 wallpapers, 19 skyboxes, 30 cursors) are far too long to
+-- scroll blind, so the picker carries its own filter box.
+local opSearch = Instance.new("TextBox")
+opSearch.Name = "OptionSearch"
+opSearch.Parent = OptionPickerModal
+opSearch.Position = UDim2.new(0, 16, 0, 42)
+opSearch.Size = UDim2.new(1, -32, 0, 26)
+opSearch.BackgroundColor3 = T.Elev; pcall(function() opSearch:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+opSearch.BorderSizePixel = 0
+opSearch.Font = F
+opSearch.TextSize = 13
+opSearch.TextColor3 = T.Tx; pcall(function() opSearch:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+opSearch.PlaceholderText = "Search..."
+opSearch.PlaceholderColor3 = T.Tx4
+opSearch.Text = ""
+opSearch.ClearTextOnFocus = false
+opSearch.TextXAlignment = Enum.TextXAlignment.Left
+opSearch.ZIndex = 2001
+Corner(opSearch, 6)
+Stroke(opSearch, T.Bd2, 1, 0.45)
+Pad(opSearch, 0, 0, 10, 10)
+
 local opScroll = Instance.new("ScrollingFrame")
 opScroll.Parent = OptionPickerModal
 opScroll.BackgroundTransparency = 1
 opScroll.BorderSizePixel = 0
-opScroll.Position = UDim2.new(0, 16, 0, 44)
-opScroll.Size = UDim2.new(1, -32, 1, -60)
+opScroll.Position = UDim2.new(0, 16, 0, 76)
+opScroll.Size = UDim2.new(1, -32, 1, -92)
 opScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 opScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 opScroll.ScrollBarThickness = 0
@@ -3618,33 +3787,133 @@ opList.Parent = opScroll
 opList.SortOrder = Enum.SortOrder.LayoutOrder
 opList.Padding = UDim.new(0, 4)
 
-S._OpenOptionPicker = function(title, options, currentIndex, callback)
+-- opts (all optional):
+--   previews[i] : rbxassetid string, or a function returning one. Functions are resolved in the
+--                 background so a 38-image GitHub list does not stall the modal on open.
+--   action      : { label = "PLAY", fn = function(i) end } — a per-row side button, used by the
+--                 gun-sound list so a sound can be auditioned without selecting it.
+--   keepOpen    : leave the modal up after a pick (auditioning several in a row).
+local opFilterRows = {}
+opSearch:GetPropertyChangedSignal("Text"):Connect(function()
+    local q = string.lower(opSearch.Text)
+    for _, row in ipairs(opFilterRows) do
+        row.frame.Visible = q == "" or string.find(string.lower(row.name), q, 1, true) ~= nil
+    end
+end)
+
+S._OpenOptionPicker = function(title, options, currentIndex, callback, opts)
     callback = type(callback) == "function" and callback or function() end
+    opts = type(opts) == "table" and opts or {}
     opHdr.Text = "Select: " .. title
-    for _, c in ipairs(opScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    
+    for _, c in ipairs(opScroll:GetChildren()) do
+        if not c:IsA("UIListLayout") then c:Destroy() end
+    end
+    opFilterRows = {}
+    opSearch.Text = ""
+    opSearch.Visible = #options > 8
+
+    local previews = type(opts.previews) == "table" and opts.previews or nil
+    local action = type(opts.action) == "table" and opts.action or nil
+    local pending = {}
+
     for i, opt in ipairs(options) do
+        local name = tostring(opt)
+        local row = Instance.new("Frame")
+        row.Parent = opScroll
+        row.LayoutOrder = i
+        row.Size = UDim2.new(1, 0, 0, previews and 44 or 32)
+        row.BackgroundColor3 = (i == currentIndex) and T.ActiveBg or T.Elev
+        pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", (i == currentIndex) and "ActiveBg" or "Elev") end)
+        row.BorderSizePixel = 0
+        row.ZIndex = 2000
+        Corner(row, 6)
+
+        local textInset = 10
+        if previews then
+            local thumb = Instance.new("ImageLabel")
+            thumb.Parent = row
+            thumb.Position = UDim2.new(0, 5, 0.5, -17)
+            thumb.Size = UDim2.fromOffset(34, 34)
+            thumb.BackgroundColor3 = T.Card
+            pcall(function() thumb:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+            thumb.BorderSizePixel = 0
+            thumb.ScaleType = Enum.ScaleType.Crop
+            thumb.ZIndex = 2001
+            Corner(thumb, 5)
+            local src = previews[i]
+            if type(src) == "string" then
+                thumb.Image = src
+            elseif type(src) == "function" then
+                table.insert(pending, { thumb = thumb, resolve = src })
+            end
+            textInset = 46
+        end
+
         local btn = Instance.new("TextButton")
-        btn.Parent = opScroll
-        btn.Size = UDim2.new(1, 0, 0, 32)
-        btn.BackgroundColor3 = (i == currentIndex) and T.ActiveBg or T.Elev
-        pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", (i == currentIndex) and "ActiveBg" or "Elev") end)
-        btn.BorderSizePixel = 0
+        btn.Parent = row
+        btn.BackgroundTransparency = 1
+        btn.Position = UDim2.new(0, textInset, 0, 0)
+        btn.Size = UDim2.new(1, -textInset - (action and 58 or 8), 1, 0)
         btn.Font = FM
         btn.TextSize = 14
+        btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.TextColor3 = (i == currentIndex) and T.White or T.Tx
         pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", (i == currentIndex) and "White" or "Tx") end)
-        btn.Text = tostring(opt)
-        Corner(btn, 6)
-        
+        btn.Text = name
+        btn.ZIndex = 2001
         btn.MouseButton1Click:Connect(function()
             SFX.Click()
-            OptionPickerModal.Visible = false
+            if not opts.keepOpen then OptionPickerModal.Visible = false end
             pcall(callback, i)
         end)
+
+        if action then
+            local side = Instance.new("TextButton")
+            side.Parent = row
+            side.AnchorPoint = Vector2.new(1, 0.5)
+            side.Position = UDim2.new(1, -6, 0.5, 0)
+            side.Size = UDim2.fromOffset(46, 22)
+            side.BackgroundColor3 = T.Card
+            pcall(function() side:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+            side.BorderSizePixel = 0
+            side.AutoButtonColor = false
+            side.Font = FM
+            side.TextSize = 10
+            side.TextColor3 = T.Tx2
+            pcall(function() side:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+            side.Text = tostring(action.label or "PLAY")
+            side.ZIndex = 2002
+            Corner(side, 5)
+            Stroke(side, T.Bd2, 1, 0.5)
+            side.MouseButton1Click:Connect(function()
+                SFX.Click()
+                task.spawn(function() pcall(action.fn, i) end)
+            end)
+        end
+
+        table.insert(opFilterRows, { frame = row, name = name })
     end
+
     OptionPickerModal.Visible = true
     SFX.On()
+
+    -- Thumbnails download one at a time in the background: the list is usable immediately and a
+    -- closed modal abandons the queue instead of pulling dozens of files nobody is looking at.
+    if #pending > 0 then
+        task.spawn(function()
+            for _, item in ipairs(pending) do
+                if not OptionPickerModal.Visible then return end
+                if item.thumb.Parent then
+                    local ok, id = pcall(item.resolve)
+                    if ok and type(id) == "string" and id ~= "" and item.thumb.Parent then
+                        item.thumb.Image = id
+                    end
+                end
+                task.wait(0.03)
+            end
+        end)
+    end
+end
 end
 -- =========================================================
 
@@ -4214,6 +4483,16 @@ for _, gs in ipairs(CustomAssets.GunSounds) do
     table.insert(gunPaths, gs.Path)
 end
 
+-- Both halves finally exist here: the settings-modal closure and the asset list + fetcher.
+if S._BuildWallpaperPicker then
+    S._BuildWallpaperPicker(bgPaths, fetchCustomAsset)
+    S._BuildWallpaperPicker = nil
+end
+if S._BuildNotifySoundSetting then
+    S._BuildNotifySoundSetting()
+    S._BuildNotifySoundSetting = nil
+end
+
 local originalTrans = {}
 local function setGlobalOpacity(v)
     local opacity = v / 100
@@ -4233,54 +4512,51 @@ end
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
-    -- Slider for custom crosshairs
-    mkSlider(secCustoms, "Custom Cursor / Crosshair ID", 1, #cursorPaths, 1, function(v)
-        S.CrosshairStyle = "Custom"
-        S.CrosshairIndex = v
-        S.CrosshairAssetId = nil
-        local path = cursorPaths[v]
-        task.spawn(function()
-            local fetchedId = fetchCustomAsset(path, "cursors")
-            if fetchedId ~= "" then
-                S.CrosshairAssetId = fetchedId
-            end
-        end)
+    -- Picking one of 30 cursors / 19 skyboxes / 44 sounds by dragging a numeric slider gave no
+    -- idea what you were selecting. All three now open the searchable picker with thumbnails.
+    -- Wrapped in its own block: these lists would otherwise sit in the main chunk's register
+    -- budget for the rest of the file, and that budget is already at Luau's ceiling.
+    do
+    local cursorNames = {}
+    local cursorPreviews = {}
+    for i, path in ipairs(cursorPaths) do
+        cursorNames[i] = CustomAssets.Cursors[i] and CustomAssets.Cursors[i].Name or ("Cursor " .. i)
+        cursorPreviews[i] = function() return fetchCustomAsset(path, "cursors") end
+    end
+    mkAction(secCustoms, "Choose Cursor / Crosshair", function()
+        S._OpenOptionPicker("Cursor / Crosshair", cursorNames, S.CrosshairIndex or 1, function(pick)
+            S.CrosshairStyle = "Custom"
+            S.CrosshairIndex = pick
+            S.CrosshairAssetId = nil
+            task.spawn(function()
+                local fetchedId = fetchCustomAsset(cursorPaths[pick], "cursors")
+                if fetchedId ~= "" then
+                    S.CrosshairAssetId = fetchedId
+                else
+                    Notify("Cursor", "Could not download " .. cursorNames[pick], 3)
+                end
+            end)
+        end, { previews = cursorPreviews })
     end, 2)
 
-    mkSlider(secCustoms, "Client Wallpaper ID", 0, #bgPaths, 0, function(v)
-        if v <= 0 then
-            S.UIWallpaper = "None"
-            wallBtn.Text = "None"
-            applyWall()
-            return
-        end
-
-        local bg = bgPaths[v]
-        if not bg then return end
-        task.spawn(function()
-            local fetchedId = fetchCustomAsset(bg.Path, "backgrounds")
-            if fetchedId ~= "" then
-                urls["GitHub Custom"] = fetchedId
-                local hasCustomOption = false
-                for _, option in ipairs(wallOptions) do
-                    if option == "GitHub Custom" then hasCustomOption = true break end
-                end
-                if not hasCustomOption then table.insert(wallOptions, "GitHub Custom") end
-                S.UIWallpaper = "GitHub Custom"
-                wallBtn.Text = "GitHub Custom " .. tostring(v)
-                applyWall()
-            end
-        end)
-    end, 2.4)
-    
-    mkSlider(secCustoms, "Custom Skybox ID", 0, #skyPaths, 0, function(v)
-        if v == 0 then
+    local skyNames = { "None" }
+    local skyPreviews = {}
+    for i, sky in ipairs(skyPaths) do
+        skyNames[i + 1] = sky.Name
+        skyPreviews[i + 1] = function() return fetchCustomAsset(sky.Files.ro, "skyboxes") end
+    end
+    mkAction(secCustoms, "Choose Skybox", function()
+        S._OpenOptionPicker("Skybox", skyNames, (S.SkyboxIndex or 0) + 1, function(pick)
             local lighting = game:GetService("Lighting")
-            local skyboxObj = lighting:FindFirstChild("CustomSkyboxUI")
-            if skyboxObj then skyboxObj:Destroy() end
-        else
+            if pick <= 1 then
+                S.SkyboxIndex = 0
+                local old = lighting:FindFirstChild("CustomSkyboxUI")
+                if old then old:Destroy() end
+                return
+            end
+            S.SkyboxIndex = pick - 1
             task.spawn(function()
-                local sky = skyPaths[v]
+                local sky = skyPaths[pick - 1]
                 local bk = fetchCustomAsset(sky.Files.Bk, "skyboxes")
                 local dn = fetchCustomAsset(sky.Files.Dn, "skyboxes")
                 local ft = fetchCustomAsset(sky.Files.Ft, "skyboxes")
@@ -4302,9 +4578,9 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 skyboxObj.SkyboxRt = rt
                 skyboxObj.SkyboxUp = up
             end)
-        end
+        end, { previews = skyPreviews })
     end, 3)
-    
+
     local gunSoundOptions = {"Game Default", "Use Equipped Skin Sound"}
     for i = 1, #gunPaths do
         table.insert(gunSoundOptions, "Custom " .. i)
@@ -4314,47 +4590,89 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         local character = LP.Character
         if not character then return nil end
 
+        -- A gun Tool holds equip/holster/reload sounds too, so "first Sound under the tool" was
+        -- as likely to hand back the equip click as the shot. Prefer a shot-named sound and only
+        -- fall back to the first one if nothing matches.
+        local fallback = nil
         for _, descendant in ipairs(character:GetDescendants()) do
             if descendant:IsA("Sound") and descendant.SoundId ~= "" then
                 local tool = descendant:FindFirstAncestorWhichIsA("Tool")
                 if tool and tool.Name:lower():find("gun", 1, true) then
-                    return descendant.SoundId
+                    local n = descendant.Name:lower()
+                    if n:find("fire", 1, true) or n:find("shoot", 1, true) or n:find("shot", 1, true)
+                        or n:find("bang", 1, true) or n:find("blast", 1, true) then
+                        return descendant.SoundId
+                    end
+                    fallback = fallback or descendant.SoundId
                 end
             end
         end
-        return nil
+        return fallback
     end
 
+    -- Auditioning one of 44 sounds by clicking a cycle button 44 times was the complaint; the
+    -- picker lists them all with a PLAY button so you can hear one without selecting it.
     local gunSoundRequest = 0
-    mkCycle(secCustoms, "Gun Sound", gunSoundOptions, "Game Default", function(v)
-        gunSoundRequest = gunSoundRequest + 1
-        local requestId = gunSoundRequest
-
-        if v == "Game Default" then
-            S.CustomGunSoundId = nil
-            return
-        end
-
-        if v == "Use Equipped Skin Sound" then
-            local soundId = getEquippedSkinGunSound()
-            if soundId then
-                S.CustomGunSoundId = soundId
-            else
-                Notify("Gun Sound", "Equip a gun skin first, then choose this option again.", 3)
-            end
-            return
-        end
-
-        local index = tonumber(v:match("^Custom (%d+)$"))
-        local path = index and gunPaths[index]
+    local function auditionGunSound(index)
+        local path = gunPaths[index]
         if not path then return end
-        task.spawn(function()
-            local fetchedId = fetchCustomAsset(path, "gun_sounds")
-            if requestId == gunSoundRequest and fetchedId ~= "" then
-                S.CustomGunSoundId = fetchedId
+        local id = fetchCustomAsset(path, "gun_sounds")
+        if id == "" then
+            Notify("Gun Sound", "Could not download Custom " .. index, 3)
+            return
+        end
+        local s = Instance.new("Sound")
+        s.SoundId = id
+        s.Volume = 1.5
+        s.Parent = SoundService
+        s:Play()
+        game:GetService("Debris"):AddItem(s, 5)
+    end
+
+    mkAction(secCustoms, "Choose Gun Sound", function()
+        local current = 1
+        for i, name in ipairs(gunSoundOptions) do
+            if name == (S.GunSoundChoice or "Game Default") then current = i break end
+        end
+        S._OpenOptionPicker("Gun Sound", gunSoundOptions, current, function(pick)
+            gunSoundRequest = gunSoundRequest + 1
+            local requestId = gunSoundRequest
+            local v = gunSoundOptions[pick]
+            S.GunSoundChoice = v
+
+            if v == "Game Default" then
+                S.CustomGunSoundId = nil
+                return
             end
-        end)
+            if v == "Use Equipped Skin Sound" then
+                local soundId = getEquippedSkinGunSound()
+                if soundId then
+                    S.CustomGunSoundId = soundId
+                else
+                    Notify("Gun Sound", "Equip a gun skin first, then choose this option again.", 3)
+                end
+                return
+            end
+
+            local index = tonumber(v:match("^Custom (%d+)$"))
+            local path = index and gunPaths[index]
+            if not path then return end
+            task.spawn(function()
+                local fetchedId = fetchCustomAsset(path, "gun_sounds")
+                if requestId == gunSoundRequest and fetchedId ~= "" then
+                    S.CustomGunSoundId = fetchedId
+                    Notify("Gun Sound", v .. " selected", 2)
+                end
+            end)
+        end, {
+            keepOpen = true,
+            action = { label = "PLAY", fn = function(pick)
+                local index = tonumber(tostring(gunSoundOptions[pick]):match("^Custom (%d+)$"))
+                if index then auditionGunSound(index) end
+            end },
+        })
     end, 4)
+    end
 
     mkAction(secCustoms, "Preview Gun Sound", function()
         if S.CustomGunSoundId then
@@ -4384,40 +4702,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end, 6)
 
     
-    local mobileCrosshairGui = Instance.new("ScreenGui")
-    mobileCrosshairGui.Name = "MM2MobileCrosshair"
-    mobileCrosshairGui.IgnoreGuiInset = true
-    pcall(function() mobileCrosshairGui.Parent = game:GetService("CoreGui") end)
-    if not mobileCrosshairGui.Parent then
-        mobileCrosshairGui.Parent = LP:WaitForChild("PlayerGui")
-    end
-    
-    local mobileCrosshairImage = Instance.new("ImageLabel")
-    mobileCrosshairImage.BackgroundTransparency = 1
-    mobileCrosshairImage.AnchorPoint = Vector2.new(0.5, 0.5)
-    mobileCrosshairImage.Position = UDim2.new(0.5, 0, 0.5, 0)
-    mobileCrosshairImage.Size = UDim2.new(0, 40, 0, 40)
-    mobileCrosshairImage.Visible = false
-    mobileCrosshairImage.Parent = mobileCrosshairGui
-
     RunService.RenderStepped:Connect(function()
         local mouse = Players.LocalPlayer:GetMouse()
-        local isShiftlock = (UIS.MouseBehavior == Enum.MouseBehavior.LockCenter)
-        
-        -- Touch devices do not use shift-lock, but they still need the centered
-        -- crosshair overlay when the custom crosshair setting is enabled.
-        if S.CustomCrosshair and (isShiftlock or UIS.TouchEnabled) then
+        if S.CustomCrosshair then
             local idx = ((tonumber(S.CrosshairIndex) or 1) - 1) % #CustomCrosshairs + 1
             local currentCustom = S.CrosshairAssetId or CustomCrosshairs[idx] or CustomCrosshairs[1]
             if currentCustom and currentCustom ~= "" then
                 mouse.Icon = currentCustom
-                mobileCrosshairImage.Image = currentCustom
-                mobileCrosshairImage.Visible = true
-            else
-                mobileCrosshairImage.Visible = false
             end
         else
-            mobileCrosshairImage.Visible = false
             for _, id in pairs(CustomCrosshairs) do
                 if mouse.Icon == id then
                     mouse.Icon = ""
@@ -7478,7 +7771,7 @@ local HUD = {}
 local HUDEls = {}
 local function attachHUDDrag(frame, handle)
     local dragHandle = handle or frame
-    local dragging, dragStart, startPos = false, nil, nil
+    local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
     local moved, startOrigin = false, nil
     -- Every HUD readout is laid out in desktop pixels; on a phone those plates eat a
     -- huge share of a much smaller screen. Scale the whole family from one constant
@@ -7516,6 +7809,7 @@ local function attachHUDDrag(frame, handle)
             if activeInput then return end
             activeInput = input
             dragging = true
+            dragInput = input
             moved = false
             dragStart = input.Position
             startPos = frame.Position
@@ -7526,15 +7820,34 @@ local function attachHUDDrag(frame, handle)
     tc(UIS.InputChanged:Connect(function(input)
         if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseMovement) and dragStart and startPos then
             local delta = input.Position - dragStart
+            -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
+            -- menu on a tap (under 10px of travel), so without this the finger wobble
+            -- of a normal tap would also shove the island across the screen.
             if not moved and math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then return end
             moved = true
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            -- Keep the whole element on screen and store the result as Scale, so a HUD
+            -- element cannot be flung somewhere unreachable and survives a rotation.
+            local host = frame.Parent and frame.Parent.AbsoluteSize
+            if host and host.X > 0 and host.Y > 0 and startOrigin then
+                local size = frame.AbsoluteSize
+                local function fit(v, extent, span)
+                    if span >= extent then return (extent - span) / 2 end
+                    return math.clamp(v, 0, extent - span)
+                end
+                local x = fit(startOrigin.X + delta.X, host.X, size.X)
+                local y = fit(startOrigin.Y + delta.Y, host.Y, size.Y)
+                local pivot = Vector2.new(x, y) + frame.AnchorPoint * size
+                frame.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
+            else
+                frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
         if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseButton1) then
             dragging = false
             activeInput = nil
+            dragInput = nil
             dragVisual(false)
             pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         end
@@ -7740,7 +8053,12 @@ do
     HUD.quickFrame.Name = "HUD_QuickStatus"
     HUD.quickFrame.Parent = Main
     HUD.quickFrame.Position = UDim2.fromOffset(8, 410)
-    HUD.quickFrame.Size = UDim2.fromOffset(124, 150)
+    -- 124 wide left the value column 60px after the 48px key gutter, which clipped every
+    -- 8-character role to "INNOCE...". NETWORK needs the full key gutter, so the panel itself
+    -- has to grow. S._ResizeQuickStatus rewrites this size on every window resize, so the width
+    -- lives in one constant instead of being repeated there and silently winning.
+    local QUICK_W = 162
+    HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, 150)
     HUD.quickFrame.BackgroundColor3 = T.Card; pcall(function() HUD.quickFrame:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
     HUD.quickFrame.BackgroundTransparency = 0.01
     HUD.quickFrame.BorderSizePixel = 0
@@ -7844,7 +8162,7 @@ do
     S._ResizeQuickStatus = function()
         local available = Main.AbsoluteSize.Y - 444
         local show = available >= 132
-        HUD.quickFrame.Size = UDim2.fromOffset(124, math.clamp(available, 132, 196))
+        HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, math.clamp(available, 132, 196))
         if show and not HUD.quickFrame.Visible then
             HUD.quickFrame.Visible = true
             quickScale.Scale = 0.96
@@ -9514,127 +9832,9 @@ do
     mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
     -- Studs/s (1-120). Speed up to 120 studs/s.
     mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
-    -- Safe Mode does three things: clamps the per-frame step (what actually trips
-    -- "invalid position"), refuses coins whose approach path crosses the murderer,
-    -- and waits instead of grabbing a coin when nothing is reachable safely.
-    mkToggle(secAuto, "Safe Mode", true, function(v) S.AutofarmSafe = v end, 3)
     mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
-    -- ===== TAKEOVER: at N coins, take the Sheriff's gun and finish the round =====
-    -- Chain: wait for the coin bag to reach the threshold -> fling the Sheriff so he
-    -- drops the gun -> grab the drop -> shoot the Murderer.  The shot reuses the same
-    -- point-blank origin the Piercing option uses, so a wall in between does not
-    -- matter: the server raycasts origin -> target and the origin already sits next to
-    -- him.  Every step retries, because each one can lose a race.
-    local function coinCount()
-        local pg = LP:FindFirstChildOfClass("PlayerGui")
-        local node = pg and pg:FindFirstChild("MainGUI")
-        node = node and node:FindFirstChild("Game")
-        node = node and node:FindFirstChild("CoinBags")
-        node = node and node:FindFirstChild("Container")
-        if not node then return 0 end
-        -- Seasonal events swap the bag (Coin / Egg / Candy / SnowToken / ...), so read
-        -- whichever one actually carries a count instead of hardcoding "Coin".
-        local best = 0
-        for _, bag in ipairs(node:GetChildren()) do
-            local lbl = bag:FindFirstChild("Coins", true)
-            if lbl and lbl:IsA("TextLabel") then
-                local n = tonumber((tostring(lbl.Text):gsub("%D", "")))
-                if n and n > best then best = n end
-            end
-        end
-        return best
-    end
-    S._CoinCount = coinCount
-
-    local function sheriffPlayer()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character and not isWhitelisted(p) then
-                local role = getRole(p)
-                if role == "Sheriff" or role == "Hero" then
-                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then return p end
-                end
-            end
-        end
-        return nil
-    end
-
-    local function gunOnGround()
-        return workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
-    end
-
-    local function heldGun()
-        local c = LP.Character
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        return (c and (c:FindFirstChild("Gun") or c:FindFirstChild("Revolver")))
-            or (bp and (bp:FindFirstChild("Gun") or bp:FindFirstChild("Revolver")))
-    end
-
-    local function shootMurderer()
-        local gun = heldGun()
-        local shoot = gun and gun:FindFirstChild("Shoot")
-        if not (shoot and shoot:IsA("RemoteEvent")) then return false end
-        local targetChar = S._GetMurdererChar and S._GetMurdererChar()
-        local hrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-        if not hrp then return false end
-        local hit = hrp.Position
-        local vel = hrp.AssemblyLinearVelocity
-        local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2) or Vector3.new(0, 1.25, 0)
-        pcall(function() shoot:FireServer(CFrame.lookAt(hit + back, hit), CFrame.new(hit)) end)
-        return true
-    end
-
-    local takeoverBusy = false
-    tc(RunService.Heartbeat:Connect(function()
-        if not S.AutoTakeover or takeoverBusy then return end
-        if not isRoundActive() then return end
-        local ch = LP.Character
-        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-        if not (hum and hum.Health > 0) then return end
-        if coinCount() < (tonumber(S.AutoTakeoverCoins) or 50) then return end
-
-        takeoverBusy = true
-        task.spawn(function()
-            pcall(function()
-                if heldGun() then
-                    -- Armed already: the only job left is finishing the Murderer.
-                    for _ = 1, 40 do
-                        if not S.AutoTakeover then break end
-                        if not (S._GetMurdererChar and S._GetMurdererChar()) then break end
-                        if not shootMurderer() then break end
-                        task.wait(0.12)
-                    end
-                elseif gunOnGround() then
-                    if S.GrabGunNow then pcall(S.GrabGunNow, true) end
-                    task.wait(0.35)
-                else
-                    local sheriff = sheriffPlayer()
-                    if sheriff and S._FlingPlayer then
-                        Notify("Takeover", "Flinging " .. sheriff.Name .. " for the gun", 2)
-                        -- Retry: a single fling attempt is flaky (the spin has to build up),
-                        -- and dropping the gun is the whole point of this step.
-                        for _ = 1, 3 do
-                            local ok, res = pcall(S._FlingPlayer, sheriff)
-                            if ok and res then break end
-                            if gunOnGround() then break end
-                            local sc = sheriff.Character
-                            local sh = sc and sc:FindFirstChildOfClass("Humanoid")
-                            if not (sh and sh.Health > 0) then break end
-                            task.wait(0.15)
-                        end
-                        task.wait(1.1)
-                        if gunOnGround() and S.GrabGunNow then pcall(S.GrabGunNow, true) end
-                    end
-                end
-            end)
-            task.wait(0.3)
-            takeoverBusy = false
-        end)
-    end))
-
-    mkToggle(secAuto, "Takeover at N coins", false, function(v) S.AutoTakeover = v end, 5)
-    mkSlider(secAuto, "Takeover Coins", 5, 200, 50, function(v) S.AutoTakeoverCoins = v end, 6)
+    
 
     -- Vote Farm: just teleport to the map-vote slot's coords, reset, repeat — no gating, per explicit
     -- user request. Coords are the slot's own live-measured standing position (user walked to each pad
@@ -9950,27 +10150,7 @@ do
                                 end
                             end
                         end)
-                        -- No coin is reachable without entering the murderer's bubble.  In Safe Mode
-                        -- that means WAIT (the loop below idles) rather than take the least-bad coin:
-                        -- grabbing one anyway is exactly how the farm used to walk into the knife.
-                        if #coins == 0 and not (S.AutofarmSafe and murderPos) then
-                            eachCoin(function(coin)
-                                if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
-                                    table.insert(coins, coin)
-                                end
-                            end)
-                            if #coins > 0 then
-                                if murderPos then
-                                    table.sort(coins, function(a, b)
-                                        return (a.Position - murderPos).Magnitude > (b.Position - murderPos).Magnitude
-                                    end)
-                                else
-                                    table.sort(coins, function(a, b)
-                                        return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
-                                    end)
-                                end
-                            end
-                        elseif #coins > 0 then
+                        if #coins > 0 then
                             table.sort(coins, function(a, b)
                                 return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
                             end)
@@ -10649,7 +10829,10 @@ do
         { label = "Save Server", callback = function()
             if addSaved(game.JobId, "Server " .. shortId(game.JobId)) then refreshSaved() end
         end },
-        { label = "Rejoin", callback = function() joinId(game.JobId) end },
+        -- joinId() deliberately refuses a teleport to the job you are already in, which is
+        -- right for the saved/by-ID lists but made this button a no-op. Rejoining the same
+        -- instance is the whole point here, so go straight at it.
+        { label = "Rejoin", callback = function() rejoinServer() end },
     })
 
     -- ---------- Add server by Job ID ----------
@@ -11466,7 +11649,7 @@ local function startIYFling()
 
     iyPulseToken = iyPulseToken + 1
     local myToken = iyPulseToken
-    task.spawn(function()
+        task.spawn(function()
         local movel = 0.1
         while iyFlinging and myToken == iyPulseToken do
             RunService.Heartbeat:Wait()
@@ -11500,69 +11683,136 @@ end
 -- Targeted fling: IY spin + ride inside the victim until they're launched, then come home.
 -- FallenPartsDestroyHeight is NaN'd for the duration so nobody void-dies mid-throw.
 local flingBusy = false
-local function flingPlayer(target)
-    -- Wait briefly instead of failing outright: a click that lands while the previous
-    -- fling (or the touch-fling loop) is still unwinding used to return false at once,
-    -- which is a large part of "sometimes it just doesn't fling".
+local function flingPlayer(TargetPlayer)
     if flingBusy then
         local waitUntil = tick() + 2
         repeat task.wait(0.05) until not flingBusy or tick() > waitUntil
         if flingBusy then return false end
     end
-    local c = LP.Character
-    local hum = c and c:FindFirstChildOfClass("Humanoid")
-    local root = c and c:FindFirstChild("HumanoidRootPart")
-    if not (c and hum and root and hum.Health > 0) then return false end
-    local tchar = target and target.Character
-    local thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
-    local troot = tchar and tchar:FindFirstChild("HumanoidRootPart")
-    if not (thum and thum.Health > 0 and troot) then return false end
-
+    local Character = LP.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart = Humanoid and Humanoid.RootPart
+    if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then return false end
+    
+    local TCharacter = TargetPlayer and TargetPlayer.Character
+    if not TCharacter then return false end
+    
+    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    local TRootPart = THumanoid and THumanoid.RootPart
+    local THead = TCharacter:FindFirstChild("Head")
+    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    local Handle = Accessory and Accessory:FindFirstChild("Handle")
+    
+    if not (TRootPart or THead or Handle) then return false end
+    
     flingBusy = true
-    local oldCF = root.CFrame
+    local OldPos = RootPart.CFrame
     local origFPDH = workspace.FallenPartsDestroyHeight
-    local ownSpin = not iyFlinging
     local flung = false
+    
+    local anims = Humanoid:GetPlayingAnimationTracks()
+    for _, track in ipairs(anims) do track:Stop() end
+    
     pcall(function()
-        workspace.FallenPartsDestroyHeight = 0 / 0
-        if ownSpin and not startIYFling() then return end
-
-        local bav = Instance.new("BodyAngularVelocity")
-        bav.Name = "FlingVelocityImpulse"
-        bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bav.AngularVelocity = Vector3.new(0, 999999, 0)
-        bav.Parent = root
-
-        local deadline = tick() + math.clamp(tonumber(S.FlingDuration) or 6, 1, 15)
-        repeat
-            tchar = target.Character
-            troot = tchar and tchar:FindFirstChild("HumanoidRootPart")
-            thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
-            if not (troot and thum and thum.Health > 0) then break end
-
-            local lead = troot.AssemblyLinearVelocity * 0.05
-            root.CFrame = troot.CFrame * CFrame.new(0, 0, 0) + lead
-            root.AssemblyLinearVelocity = Vector3.new(9999, 99999, 9999)
-            root.AssemblyAngularVelocity = Vector3.new(0, 999999, 0)
-            task.wait()
-            flung = troot and troot.Parent and (troot.AssemblyLinearVelocity.Magnitude > 300 or troot.Velocity.Magnitude > 300)
-        until flung or tick() > deadline or hum.Health <= 0
-
-        if bav and bav.Parent then bav:Destroy() end
+        if THumanoid and THumanoid.Sit then return end
+        
+        if THead then
+            workspace.CurrentCamera.CameraSubject = THead
+        elseif Handle then
+            workspace.CurrentCamera.CameraSubject = Handle
+        elseif THumanoid and TRootPart then
+            workspace.CurrentCamera.CameraSubject = THumanoid
+        end
+        
+        local FPos = function(BasePart, Pos, Ang)
+            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
+        
+        local SFBasePart = function(BasePart)
+            local TimeToWait = tonumber(S.FlingDuration) or 6
+            local Time = tick()
+            local Angle = 0
+            repeat
+                if RootPart and THumanoid then
+                    if BasePart.Velocity.Magnitude < 50 then
+                        Angle = Angle + 100
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                    end
+                end
+                flung = BasePart.Velocity.Magnitude > 300
+            until tick() > Time + TimeToWait or flung or Humanoid.Health <= 0
+        end
+        
+        workspace.FallenPartsDestroyHeight = 0/0
+        
+        local BV = Instance.new("BodyVelocity")
+        BV.Parent = RootPart
+        BV.Velocity = Vector3.new(0, 0, 0)
+        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        
+        if TRootPart then
+            SFBasePart(TRootPart)
+        elseif THead then
+            SFBasePart(THead)
+        elseif Handle then
+            SFBasePart(Handle)
+        end
+        
+        if BV and BV.Parent then BV:Destroy() end
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     end)
-    if ownSpin and not S.TouchFling then stopIYFling() end
+    
+    pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
+    
     pcall(function()
         local returnT = tick()
         repeat
-            root.CFrame = oldCF
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
+            RootPart.CFrame = OldPos * CFrame.new(0, 0.5, 0)
+            Character:SetPrimaryPartCFrame(OldPos * CFrame.new(0, 0.5, 0))
+            Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            for _, part in ipairs(Character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.Velocity = Vector3.new(0,0,0)
+                    part.RotVelocity = Vector3.new(0,0,0)
+                end
+            end
             task.wait()
-        until (root.Position - oldCF.Position).Magnitude < 15 or tick() > returnT + 1.5
-        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+        until (RootPart.Position - OldPos.Position).Magnitude < 15 or tick() > returnT + 1.5
     end)
+    
     pcall(function() workspace.FallenPartsDestroyHeight = origFPDH end)
-    pcall(function() workspace.CurrentCamera.CameraSubject = hum end)
     flingBusy = false
     return flung
 end
@@ -15375,12 +15625,30 @@ do
         return tool and tool.Name:lower():find("gun", 1, true) ~= nil
     end
 
+    -- A gun Tool carries more than its shot: equip, holster, reload and dry-click all live in
+    -- there too. Registering every one of them meant the custom shot got stamped onto all of
+    -- them, so it fired on equipping and reloading instead of only on the shot.
+    -- ponytail: shot detection is the known default id plus a shot-like name. A skin whose shot
+    -- sound uses an unusual name just keeps its own sound rather than hijacking the rest; add to
+    -- SHOT_NAME_HINTS if some skin turns out to be missed.
+    local SHOT_NAME_HINTS = { "fire", "shoot", "shot", "gunshot", "bang", "blast" }
+    local function looksLikeShot(sound)
+        local n = sound.Name:lower()
+        for _, hint in ipairs(SHOT_NAME_HINTS) do
+            if n:find(hint, 1, true) then return true end
+        end
+        return false
+    end
+
     local function trackAndReplaceGunSound(sound)
         if not sound:IsA("Sound") then return end
 
         local soundId = sound.SoundId
         if soundId == "" then return end
-        if isLocalGunSound(sound) then
+        -- Our own replacement re-fires this handler; never let the custom id register itself as
+        -- a "known gun sound" or it would drag unrelated sounds along after a switch.
+        if soundId == S.CustomGunSoundId then return end
+        if isLocalGunSound(sound) and looksLikeShot(sound) then
             localGunSoundIds[soundId] = true
         end
 
@@ -15389,8 +15657,13 @@ do
         end
     end
 
+    -- The workspace sweep, DescendantAdded and the CharacterAdded re-sweep overlap, so the same
+    -- Sound used to collect a fresh SoundId listener on every pass.
+    local watchedSounds = setmetatable({}, { __mode = "k" })
     local function watchGunSound(instance)
         if not instance:IsA("Sound") then return end
+        if watchedSounds[instance] then return end
+        watchedSounds[instance] = true
         trackAndReplaceGunSound(instance)
         tc(instance:GetPropertyChangedSignal("SoundId"):Connect(function()
             trackAndReplaceGunSound(instance)
