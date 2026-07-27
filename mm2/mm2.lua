@@ -4412,6 +4412,34 @@ do
     local activeMotionSubTab = "Movement"
 
     local sec1 = mkSection(Pages.Motion, "Speed & Jump", 1)
+    
+    local secChar = mkSection(Pages.Motion, "Character", 1.5)
+    mkToggle(secChar, "Instant Respawn", false, function(v) 
+        S.InstantRespawn = v 
+        if v then
+            pcall(function() game:GetService("Players").RespawnTime = 0 end)
+        else
+            pcall(function() game:GetService("Players").RespawnTime = 5 end)
+        end
+    end, 1)
+    
+    task.spawn(function()
+        local function onChar(char)
+            local hum = char:WaitForChild("Humanoid", 3)
+            if hum then
+                hum.Died:Connect(function()
+                    if S.InstantRespawn then
+                        task.wait(0.1)
+                        pcall(function() char:Destroy() end)
+                        pcall(function() LP.Character = nil end)
+                    end
+                end)
+            end
+        end
+        if LP.Character then onChar(LP.Character) end
+        LP.CharacterAdded:Connect(onChar)
+    end)
+
     mkSlider(sec1, "WalkSpeed", 16, 100, 16, function(v) S.CustomWalkSpeed = v end, 1)
     mkSlider(sec1, "JumpPower", 50, 150, 50, function(v) S.CustomJumpPower = v end, 2)
     local sec2 = mkSection(Pages.Motion, "Movement", 2)
