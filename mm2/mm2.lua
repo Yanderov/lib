@@ -3847,18 +3847,11 @@ do
         local mouse = Players.LocalPlayer:GetMouse()
         if S.CustomCrosshair then
             local currentCustom = CustomCrosshairs[S.CrosshairStyle or "Neon Cyan"]
-            if mouse.Icon == "rbxasset://textures/MouseLockedCursor.png" then
-                mouse.Icon = currentCustom
-            end
-            for _, id in pairs(CustomCrosshairs) do
-                if mouse.Icon == id and id ~= currentCustom then
-                    mouse.Icon = currentCustom
-                end
-            end
+            mouse.Icon = currentCustom
         else
             for _, id in pairs(CustomCrosshairs) do
                 if mouse.Icon == id then
-                    mouse.Icon = "rbxasset://textures/MouseLockedCursor.png"
+                    mouse.Icon = ""
                 end
             end
         end
