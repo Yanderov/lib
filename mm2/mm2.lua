@@ -59,6 +59,7 @@ local S = {
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     LocalVisualAura = false, LocalAuraStyle = "Angel Wings Aura", LocalAuraColor = "Pink", LocalAuraIntensity = 70,
     UnlockAllKnifeEffects = false, LocalKnifeEffect = false, LocalKnifeEffectStyle = "Magic Heart Aura",
+    FakeHeadless = false, FakeKorblox = false,
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -446,7 +447,8 @@ S._UpdateAvatarMods = function()
     if not hum then return end
     
     if not originalAvatarDescription then
-        local current = hum:GetAppliedDescription()
+        local ok, current = pcall(function() return hum:GetAppliedDescription() end)
+        if not ok then return end
         originalAvatarDescription = current and current:Clone() or Instance.new("HumanoidDescription")
     end
     
@@ -4365,6 +4367,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             game.Debris:AddItem(s, 3)
         end
     end, 4.1)
+
+    mkToggle(secCustoms, "Fake Headless (Local)", false, function(v)
+        S.FakeHeadless = v
+        S._UpdateAvatarMods()
+    end, 5)
+    mkToggle(secCustoms, "Fake Korblox (Local)", false, function(v)
+        S.FakeKorblox = v
+        S._UpdateAvatarMods()
+    end, 6)
 
     
     RunService.RenderStepped:Connect(function()
@@ -14918,7 +14929,11 @@ do
         end
     end
     PackState.refreshPacksFn = refreshPacks
-    packSearch:GetPropertyChangedSignal("Text"):Connect(refreshPacks)
+    -- In rare executor/UI failures the search field can fail to construct; the
+    -- pack list must still load instead of crashing the entire script.
+    if packSearch then
+        packSearch:GetPropertyChangedSignal("Text"):Connect(refreshPacks)
+    end
     refreshPacks()
     -- Load the limited catalog slice in the background; the UI never renders more than 100 rows.
     fetchAllPacks(function() refreshPacks() end)
