@@ -14543,7 +14543,6 @@ do
     animsBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Animations"; updatePlSubTabs() end)
     updatePlSubTabs()
 end
-end
 
 do
     -- ===== FAST THROW / THROW WIND-UP =====
