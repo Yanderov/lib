@@ -4184,12 +4184,30 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end, 4)
 
     
+    local mobileCrosshairGui = Instance.new("ScreenGui")
+    mobileCrosshairGui.Name = "MM2MobileCrosshair"
+    mobileCrosshairGui.IgnoreGuiInset = true
+    pcall(function() mobileCrosshairGui.Parent = game:GetService("CoreGui") end)
+    
+    local mobileCrosshairImage = Instance.new("ImageLabel")
+    mobileCrosshairImage.BackgroundTransparency = 1
+    mobileCrosshairImage.AnchorPoint = Vector2.new(0.5, 0.5)
+    mobileCrosshairImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+    mobileCrosshairImage.Size = UDim2.new(0, 40, 0, 40)
+    mobileCrosshairImage.Visible = false
+    mobileCrosshairImage.Parent = mobileCrosshairGui
+
     RunService.RenderStepped:Connect(function()
         local mouse = Players.LocalPlayer:GetMouse()
-        if S.CustomCrosshair then
+        local isShiftlock = (UIS.MouseBehavior == Enum.MouseBehavior.LockCenter)
+        
+        if S.CustomCrosshair and isShiftlock then
             local currentCustom = CustomCrosshairs[S.CrosshairStyle or "Neon Cyan"]
             mouse.Icon = currentCustom
+            mobileCrosshairImage.Image = currentCustom
+            mobileCrosshairImage.Visible = true
         else
+            mobileCrosshairImage.Visible = false
             for _, id in pairs(CustomCrosshairs) do
                 if mouse.Icon == id then
                     mouse.Icon = ""
