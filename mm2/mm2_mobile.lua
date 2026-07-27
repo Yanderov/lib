@@ -3863,12 +3863,17 @@ do
     local envBtn = Instance.new("TextButton")
     local shaderBtn = Instance.new("TextButton")
 
-    local espStroke = mkSubTabBtn(visualsSubTabBar, espBtn, "ESP", 1, 1/3, -6)
-    local envStroke = mkSubTabBtn(visualsSubTabBar, envBtn, "Environment", 2, 1/3, -6)
-    local shaderStroke = mkSubTabBtn(visualsSubTabBar, shaderBtn, "Shaders", 3, 1/3, -6)
+    local customBtn = Instance.new("TextButton")
+    
+    local espStroke = mkSubTabBtn(visualsSubTabBar, espBtn, "ESP", 1, 1/4, -6)
+    local envStroke = mkSubTabBtn(visualsSubTabBar, envBtn, "Environment", 2, 1/4, -6)
+    local shaderStroke = mkSubTabBtn(visualsSubTabBar, shaderBtn, "Shaders", 3, 1/4, -6)
+    local customStroke = mkSubTabBtn(visualsSubTabBar, customBtn, "Customs", 4, 1/4, -6)
     bindLocalizedText(espBtn, "ESP", "ESP", false)
     bindLocalizedText(envBtn, "Environment", "Environment", false)
     bindLocalizedText(shaderBtn, "Shaders", "Shaders", false)
+    bindLocalizedText(customBtn, "Customs", "Customs", false)
+
 
 
     
@@ -4072,62 +4077,112 @@ local CustomAssets = {
 
 
 
--- Pre-fill CustomCrosshairs table with Roblox IDs + Custom GitHub assets
+-- Pre-fill CustomCrosshairs table with Roblox IDs
 local CustomCrosshairs = {
-    ["Neon Cyan"] = "rbxassetid://358650771",
-    ["Electric Purple"] = "rbxassetid://10891594364",
-    ["Precision Dot"] = "rbxassetid://2130621557",
-    ["Aim Cross"] = "rbxassetid://311756276",
-    ["Blue Spec"] = "rbxassetid://11759193017",
-    ["Circle Dot"] = "rbxassetid://13763954073",
-    ["Green Hit"] = "rbxassetid://2827093428",
-    ["Simple Dot"] = "rbxassetid://2130621557"
+    "rbxassetid://358650771", -- Neon Cyan
+    "rbxassetid://10891594364", -- Electric Purple
+    "rbxassetid://2130621557", -- Precision Dot
+    "rbxassetid://311756276", -- Aim Cross
+    "rbxassetid://11759193017", -- Blue Spec
+    "rbxassetid://13763954073", -- Circle Dot
+    "rbxassetid://2827093428", -- Green Hit
+    "rbxassetid://2130621557" -- Simple Dot
 }
 
-local crosshairNames = {"Neon Cyan", "Electric Purple", "Precision Dot", "Aim Cross", "Blue Spec", "Circle Dot", "Green Hit", "Simple Dot"}
-
+local cursorPaths = {}
 for _, cursor in ipairs(CustomAssets.Cursors) do
-    CustomCrosshairs[cursor.Name] = cursor.Path -- temporarily store path
-    table.insert(crosshairNames, cursor.Name)
+    table.insert(cursorPaths, cursor.Path)
 end
 
-local skyboxNames = {"Default"}
-local skyboxMap = {}
+local skyPaths = {}
 for _, sky in ipairs(CustomAssets.Skyboxes) do
-    table.insert(skyboxNames, sky.Name)
-    skyboxMap[sky.Name] = sky
+    table.insert(skyPaths, sky)
 end
 
-local backgroundNames = {"Default"}
-local backgroundMap = {}
+local bgPaths = {}
 for _, bg in ipairs(CustomAssets.Backgrounds) do
-    table.insert(backgroundNames, bg.Name)
-    backgroundMap[bg.Name] = bg
+    table.insert(bgPaths, bg)
 end
 
-local gunSoundNames = {"Default"}
-local gunSoundMap = {}
+local gunPaths = {}
 for _, gs in ipairs(CustomAssets.GunSounds) do
-    table.insert(gunSoundNames, gs.Name)
-    gunSoundMap[gs.Name] = gs
+    table.insert(gunPaths, gs.Path)
+end
+
+local originalTrans = {}
+local function setGlobalOpacity(v)
+    local opacity = v / 100
+    for _, obj in ipairs(SG:GetDescendants()) do
+        if obj:IsA("Frame") or obj:IsA("ScrollingFrame") or obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            if obj:GetAttribute("ThemeColorRole_BackgroundColor3") then
+                if not originalTrans[obj] then
+                    originalTrans[obj] = obj.BackgroundTransparency
+                end
+                local base = originalTrans[obj]
+                obj.BackgroundTransparency = base + (1 - base) * (1 - opacity)
+            end
+        end
+    end
 end
 -- ==========================================================
-local secCrosshair = mkSection(Pages.Visuals, "Custom Crosshair", 0.5)
-    mkToggle(secCrosshair, "Enable Custom Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
+local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
+    mkToggle(secCustoms, "Enable Custom Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
-    mkCycle(secCrosshair, "Crosshair Style", crosshairNames, "Neon Cyan", function(v) 
-        S.CrosshairStyle = v 
-        -- If it's a custom asset path, fetch it now
-        if CustomCrosshairs[v] and not string.match(CustomCrosshairs[v], "rbxassetid") and not string.match(CustomCrosshairs[v], "rbxasset://") then
-            local path = CustomCrosshairs[v]
+    -- Slider for custom crosshairs
+    mkSlider(secCustoms, "Crosshair ID", 1, #cursorPaths, 1, function(v)
+        S.CrosshairStyle = "Custom"
+        local path = cursorPaths[v]
+        task.spawn(function()
+            local fetchedId = fetchCustomAsset(path, "cursors")
+            if fetchedId ~= "" then
+                S.CrosshairAssetId = fetchedId
+            end
+        end)
+    end, 2)
+    
+    mkSlider(secCustoms, "Custom Skybox ID", 0, #skyPaths, 0, function(v)
+        if v == 0 then
+            local lighting = game:GetService("Lighting")
+            local skyboxObj = lighting:FindFirstChild("CustomSkyboxUI")
+            if skyboxObj then skyboxObj:Destroy() end
+        else
             task.spawn(function()
-                local fetchedId = fetchCustomAsset(path, "cursors")
-                if fetchedId ~= "" then
-                    CustomCrosshairs[v] = fetchedId
+                local sky = skyPaths[v]
+                local bk = fetchCustomAsset(sky.Files.Bk, "skyboxes")
+                local dn = fetchCustomAsset(sky.Files.Dn, "skyboxes")
+                local ft = fetchCustomAsset(sky.Files.Ft, "skyboxes")
+                local lf = fetchCustomAsset(sky.Files.Lf, "skyboxes")
+                local rt = fetchCustomAsset(sky.Files.Rt, "skyboxes")
+                local up = fetchCustomAsset(sky.Files.Up, "skyboxes")
+                
+                local lighting = game:GetService("Lighting")
+                local skyboxObj = lighting:FindFirstChild("CustomSkyboxUI")
+                if not skyboxObj then
+                    skyboxObj = Instance.new("Sky")
+                    skyboxObj.Name = "CustomSkyboxUI"
+                    skyboxObj.Parent = lighting
                 end
+                skyboxObj.SkyboxBk = bk
+                skyboxObj.SkyboxDn = dn
+                skyboxObj.SkyboxFt = ft
+                skyboxObj.SkyboxLf = lf
+                skyboxObj.SkyboxRt = rt
+                skyboxObj.SkyboxUp = up
             end)
         end
-    end, 2)
+    end, 3)
+    
+    mkSlider(secCustoms, "Custom Gun Sound ID", 0, #gunPaths, 0, function(v)
+        if v == 0 then
+            S.CustomGunSoundId = nil
+        else
+            task.spawn(function()
+                local soundPath = gunPaths[v]
+                S.CustomGunSoundId = fetchCustomAsset(soundPath, "gun_sounds")
+            end)
+        end
+    end, 4)
+
     
     RunService.RenderStepped:Connect(function()
         local mouse = Players.LocalPlayer:GetMouse()
@@ -4410,20 +4465,6 @@ do
     mkToggle(secSurvival, "Auto Evade", false, function(v) S.AutoEvade = v end, 4)
     mkSlider(secSurvival, "Auto Evade Range", 10, 60, 25, function(v) S.AutoEvadeRange = v end, 5)
     mkToggle(secSurvival, "Auto Dodge Knife", false, function(v) S.AutoDodgeKnife = v end, 6)
-    
-    local secAudio = mkSection(Pages.Visuals, "Custom Audio", 4)
-    mkCycle(secAudio, "Gunshot Sound", gunSoundNames, "Default", function(v)
-        S.CustomGunSound = v
-        if v ~= "Default" and gunSoundMap[v] then
-            task.spawn(function()
-                local soundPath = gunSoundMap[v].Path
-                S.CustomGunSoundId = fetchCustomAsset(soundPath, "gun_sounds")
-            end)
-        else
-            S.CustomGunSoundId = nil
-        end
-    end, 1)
-
 
     local secKnifeDodge = mkSection(Pages.Combat, "Knife Dodge", 6)
     mkToggle(secKnifeDodge, "Enable Dodge", false, function(v) S.KnifeDodge = v end, 1, "Knife Dodge")
@@ -15011,13 +15052,16 @@ do
 
     -- Gunshot: 
     local ws = workspace
-    local function playGunSound()
-        if S.CustomGunSoundId and S.CustomGunSoundId ~= "" then
-            playOnce(S.CustomGunSoundId, 1)
-        end
-    end
-    
     local oldPlay = Instance.new("Sound").Play
+    
+    -- We can hook into gun shooting by detecting sounds.
+    ws.ChildAdded:Connect(function(child)
+        if child:IsA("Sound") and child.SoundId:match("5387431201") then
+            if S.CustomGunSoundId and S.CustomGunSoundId ~= "" then
+                child.SoundId = S.CustomGunSoundId
+            end
+        end
+    end)
     -- Gun kill: GunFired fires client-side when a bullet connects
     task.spawn(function()
         local ok, ws = pcall(function()
