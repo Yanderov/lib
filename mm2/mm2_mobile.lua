@@ -769,6 +769,57 @@ S._NavIconCache = {}
 S._MakeNavIcon = function(parent, kind)
     local path = S._NavIconFiles[kind]
     local getter = getcustomasset or getsynasset
+
+-- ================= SNPWARE ASSET DOWNLOADER =================
+local SNPWARE_HOST = "http://132.243.222.170:5003"
+local CACHE_DIR = "snp_cache"
+if makefolder and isfolder and not isfolder(CACHE_DIR) then
+    makefolder(CACHE_DIR)
+end
+
+local function getSnpwareAsset(type, id, filename)
+    if not (writefile and isfile and readfile and (getcustomasset or getsynasset)) then
+        warn("Exploit does not support custom assets.")
+        return nil
+    end
+    
+    local customasset = getcustomasset or getsynasset
+    local req = (syn and syn.request) or (http and http.request) or request
+    if not req then return nil end
+
+    local typeDir = CACHE_DIR .. "/" .. type
+    if not isfolder(typeDir) then makefolder(typeDir) end
+    
+    local itemDir = typeDir .. "/" .. id
+    if not isfolder(itemDir) then makefolder(itemDir) end
+    
+    local path = itemDir .. "/" .. filename
+    if isfile(path) then
+        return customasset(path)
+    end
+    
+    local url = SNPWARE_HOST .. "/files/approved/" .. type .. "/" .. id .. "/" .. filename
+    local res = req({Url = url, Method = "GET"})
+    if res.Success and res.Body then
+        writefile(path, res.Body)
+        return customasset(path)
+    end
+    return nil
+end
+
+local function fetchSnpwareCatalog(type)
+    local req = (syn and syn.request) or (http and http.request) or request
+    if not req then return {} end
+    
+    local url = SNPWARE_HOST .. "/api/catalog?type=" .. type
+    local res = req({Url = url, Method = "GET"})
+    if res.Success and res.Body then
+        local data = HttpSvc:JSONDecode(res.Body)
+        return data.items or {}
+    end
+    return {}
+end
+-- ============================================================
     if not path or type(getter) ~= "function" then return nil end
     if type(isfile) == "function" and not isfile(path) then
         local decoder = type(crypt) == "table" and type(crypt.base64) == "table" and crypt.base64.decode
