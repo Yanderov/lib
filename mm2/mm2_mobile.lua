@@ -14032,7 +14032,16 @@ do
         { name = "Face Calisthenics", id = 9830731012 },
     }
     local function fetchOfficialEmotes(onDone)
-        if officialEmotes then onDone(officialEmotes); return end
+        -- The emote loader can be refreshed by UI teardown/rebuild paths where
+        -- there is no live render callback.  Never let that optional callback
+        -- crash the entire launcher.
+        local function finish(items)
+            if type(onDone) == "function" then
+                onDone(items)
+            end
+        end
+
+        if officialEmotes then finish(officialEmotes); return end
         local cached = loadEmotesCacheFromDisk()
         -- Use the disk cache as an instant first page, but always refresh it in the
         -- background. The old early return made a stale cache permanently hide new emotes.
@@ -14049,7 +14058,7 @@ do
         addSeed(cached)
         addSeed(BUILTIN_EMOTES)
         officialEmotes = seed
-        onDone(officialEmotes)
+        finish(officialEmotes)
         if fetchingEmotes then return end
         fetchingEmotes = true
         task.spawn(function()
@@ -14110,7 +14119,7 @@ do
                 for _, e in ipairs(officialEmotes) do table.insert(fresh, e) end
                 officialEmotes = fresh
                 saveEmotesCacheToDisk(fresh)
-                onDone(fresh)
+                finish(fresh)
             end
             fetchingEmotes = false
         end)
