@@ -1906,6 +1906,9 @@ local function watchPageChild(child)
     tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
 end
 for _, page in pairs(Pages) do
+    tc(page:GetPropertyChangedSignal("Visible"):Connect(function()
+        if page.Visible then queuePageLayout() end
+    end))
     for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
     tc(page.ChildAdded:Connect(function(child)
         watchPageChild(child)
