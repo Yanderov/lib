@@ -1487,7 +1487,7 @@ local UIRegistry = {}
 -- ===== Config system: each toggle/slider/cycle registers a get/set here =====
 local ConfigControls = {}
 local function _cfgId(parent, label)
-    local card = parent.Parent
+    local card = parent and parent.Parent or nil
     local page = card and card.Parent
     local sectionName = card and (card:GetAttribute("ConfigSection") or card.Name) or "?"
     return (page and page.Name or "?") .. "/" .. sectionName .. "/" .. label
@@ -2502,6 +2502,9 @@ local function watchPageChild(child)
     tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
 end
 for _, page in pairs(Pages) do
+    tc(page:GetPropertyChangedSignal("Visible"):Connect(function()
+        if page.Visible then queuePageLayout() end
+    end))
     for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
     tc(page.ChildAdded:Connect(function(child)
         watchPageChild(child)
@@ -3076,14 +3079,17 @@ do
                 task.wait(0.35)
             end
         end)
-        tc(workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-            local size = buttonSize()
-            for _, button in pairs(Buttons) do
-                button.frame.Size = UDim2.fromOffset(size, size)
-                -- Keep the caption in step with the glyph layout chosen in createButton.
-                button.label.TextSize = button.glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
-            end
-        end))
+        local floatCamera = workspace.CurrentCamera
+        if floatCamera then
+            tc(floatCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+                local size = buttonSize()
+                for _, button in pairs(Buttons) do
+                    button.frame.Size = UDim2.fromOffset(size, size)
+                    -- Keep the caption in step with the glyph layout chosen in createButton.
+                    button.label.TextSize = button.glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
+                end
+            end))
+        end
     end
 end
 
@@ -3135,6 +3141,7 @@ local function mkSection(parent, title, order)
     return inner
 end
 local function mkToggle(parent, label, default, callback, order, configLabel)
+    callback = type(callback) == "function" and callback or function() end
     local row = Instance.new("Frame")
     row.Name = label
     row.Parent = parent
@@ -3298,7 +3305,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     local function toggle()
         entry.state = not entry.state
         setVis(entry.state, true)
-        callback(entry.state)
+        pcall(callback, entry.state)
         pcall(function()
             if S._RequestAutoSave then S._RequestAutoSave() end
         end)
@@ -3338,7 +3345,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     S._ToggleVisualRefresh = S._ToggleVisualRefresh or {}
     table.insert(S._ToggleVisualRefresh, function() setVis(entry.state, false) end)
     table.insert(AllBinds, entry)
-    table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent.Parent })
+    table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
     table.insert(ConfigControls, {
         id = _cfgId(parent, type(configLabel) == "string" and configLabel or label),
         get = function() return entry.state end,
@@ -3347,6 +3354,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     return entry
 end
 local function mkAction(parent, label, callback, order)
+    callback = type(callback) == "function" and callback or function() end
     local btn = Instance.new("TextButton")
     btn.Name = label
     btn.Parent = parent
@@ -3382,14 +3390,14 @@ local function mkAction(parent, label, callback, order)
     function entry.trigger()
         entry.playBindEffect(true)
         SFX.Click()
-        callback()
+        pcall(callback)
     end
     entry.updateVisuals()
     btn.MouseButton1Click:Connect(function()
         if not PendingBind then
             entry.playBindEffect(true)
             SFX.Click()
-            callback()
+            pcall(callback)
         end
     end)
     if MOBILE then
@@ -3418,10 +3426,11 @@ local function mkAction(parent, label, callback, order)
         entry.updateVisuals()
     end)
     table.insert(AllBinds, entry)
-    table.insert(UIRegistry, { label = string.lower(label), row = btn, card = parent.Parent })
+    table.insert(UIRegistry, { label = string.lower(label), row = btn, card = parent and parent.Parent or nil })
     return entry
 end
 mkSlider = function(parent, label, min, max, def, callback, order, skipSearchRegistry)
+    callback = type(callback) == "function" and callback or function() end
     local frame = Instance.new("Frame")
     frame.Name = label
     frame.Parent = parent
@@ -3498,7 +3507,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         if nv ~= val then
             val = nv
             upd(val)
-            callback(val)
+            pcall(callback, val)
         end
     end
     -- Touch counts as a drag here. Matching only MouseButton1/MouseMovement (as
@@ -3539,7 +3548,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         end
     end))
     if not skipSearchRegistry then
-        table.insert(UIRegistry, { label = string.lower(label), row = frame, card = parent.Parent })
+        table.insert(UIRegistry, { label = string.lower(label), row = frame, card = parent and parent.Parent or nil })
     end
     table.insert(ConfigControls, {
         id = _cfgId(parent, label),
@@ -3611,6 +3620,7 @@ opList.SortOrder = Enum.SortOrder.LayoutOrder
 opList.Padding = UDim.new(0, 4)
 
 S._OpenOptionPicker = function(title, options, currentIndex, callback)
+    callback = type(callback) == "function" and callback or function() end
     opHdr.Text = "Select: " .. title
     for _, c in ipairs(opScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
     
@@ -3631,7 +3641,7 @@ S._OpenOptionPicker = function(title, options, currentIndex, callback)
         btn.MouseButton1Click:Connect(function()
             SFX.Click()
             OptionPickerModal.Visible = false
-            callback(i)
+            pcall(callback, i)
         end)
     end
     OptionPickerModal.Visible = true
@@ -3640,6 +3650,7 @@ end
 -- =========================================================
 
 local function mkCycle(parent, label, options, default, callback, order)
+    callback = type(callback) == "function" and callback or function() end
     local row = Instance.new("Frame")
     row.Name = label
     row.Parent = parent
@@ -3675,7 +3686,7 @@ local function mkCycle(parent, label, options, default, callback, order)
     for i, o in ipairs(options) do if o == default then idx = i break end end
     local function apply(fire)
         btn.Text = tostring(options[idx])
-        if fire then callback(options[idx]) end
+        if fire then pcall(callback, options[idx]) end
     end
     apply(false)
     btn.MouseButton1Click:Connect(function()
@@ -3701,7 +3712,7 @@ local function mkCycle(parent, label, options, default, callback, order)
     btn.MouseLeave:Connect(function()
         TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
     end)
-    table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent.Parent })
+    table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
     table.insert(ConfigControls, {
         id = _cfgId(parent, label),
         get = function() return options[idx] end,
@@ -7996,7 +8007,8 @@ local function mkWatermark()
             if scaler and f.Visible then scaler.Scale = fit end
         end
         fitIsland()
-        tc(workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitIsland))
+        local islandCamera = workspace.CurrentCamera
+        if islandCamera then tc(islandCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitIsland)) end
     end
 
     S._islandGulp = function(outward)
@@ -13680,19 +13692,19 @@ do
     plSubTabList.Padding = UDim.new(0, 8)
     plSubTabList.Parent = playerSubTabBar
 
-    local emotesBtn = Instance.new("TextButton")
-    local animsBtn = Instance.new("TextButton")
-    local emotesStroke = mkSubTabBtn(playerSubTabBar, emotesBtn, "Emotes", 1)
-    local animsStroke = mkSubTabBtn(playerSubTabBar, animsBtn, "Animations", 2)
-    bindLocalizedText(emotesBtn, "Emotes", "Emotes", false)
-    bindLocalizedText(animsBtn, "Animations", "Animations", false)
+    S._PlayerTabs = {}
+    S._PlayerTabs.emotesBtn = Instance.new("TextButton")
+    S._PlayerTabs.animsBtn = Instance.new("TextButton")
+    S._PlayerTabs.emotesStroke = mkSubTabBtn(playerSubTabBar, S._PlayerTabs.emotesBtn, "Emotes", 1)
+    S._PlayerTabs.animsStroke = mkSubTabBtn(playerSubTabBar, S._PlayerTabs.animsBtn, "Animations", 2)
+    bindLocalizedText(S._PlayerTabs.emotesBtn, "Emotes", "Emotes", false)
+    bindLocalizedText(S._PlayerTabs.animsBtn, "Animations", "Animations", false)
     -- Section references shared with the tab-switching closure below.
-    local _pl = {}
 
     -- ---- shared helpers ----
     -- One clickable row: thumbnail (rbxthumb, no HTTP needed) + title. Used by both Emotes and the
     -- Animations catalog browse results.
-    local function mkThumbRow(parent, order, imgId, titleText, onClick)
+    S._mkThumbRow = function(parent, order, imgId, titleText, onClick)
         local row = Instance.new("TextButton")
         row.Name = "Row"
         row.LayoutOrder = order
@@ -13739,7 +13751,7 @@ do
         row.MouseButton1Click:Connect(function() SFX.Click(); onClick() end)
         return row
     end
-    local function mkSearchBox(parent, order, placeholder)
+    S._mkSearchBox = function(parent, order, placeholder)
         local box = Instance.new("TextBox")
         box.Parent = parent
         box.LayoutOrder = order
@@ -13759,7 +13771,7 @@ do
         Pad(box, 0, 0, 8, 8)
         return box
     end
-    local function mkListScroll(parent, order, height)
+    S._mkListScroll = function(parent, order, height)
         local scroll = Instance.new("ScrollingFrame")
         scroll.Parent = parent
         scroll.LayoutOrder = order
@@ -13782,7 +13794,7 @@ do
 
     -- ================= EMOTES =================
     -- Wrapped in its own do-block so its locals don't count toward the outer scope's
-    -- 200-register budget. _pl.eCard is written before the block ends so the subtab
+    -- 200-register budget. S._PlayerTabs.eCard is written before the block ends so the subtab
     -- switcher can still reference the card.
     do
     -- Source of truth: Roblox's complete emote catalog (AvatarEditorService:SearchCatalogAsync,
@@ -13790,8 +13802,8 @@ do
     -- not just the handful you personally own.
     local secEmotes = mkSection(Pages.Player, "Emotes", 1)
 
-    local emSearch = mkSearchBox(secEmotes, 1, "Search emotes...")
-    local emScroll = mkListScroll(secEmotes, 2, 320)
+    local emSearch = S._mkSearchBox(secEmotes, 1, "Search emotes...")
+    local emScroll = S._mkListScroll(secEmotes, 2, 320)
 
     local emoteTracks = {}
     local playingEmoteId = nil
@@ -14332,7 +14344,7 @@ do
                 local item = filteredItems[i]
                 if item then
                     order = order + 1
-                    local row = mkThumbRow(emScroll, order, tostring(item.id), item.name, function()
+                    local row = S._mkThumbRow(emScroll, order, tostring(item.id), item.name, function()
                         playEmoteById(item.name, item.id)
                     end)
                     local title = row:FindFirstChild("Title")
@@ -14485,12 +14497,12 @@ do
     mkToggle(secEmotes, "Loop Animation", false, function(v) S.LoopEmote = v end, 3)
     mkToggle(secEmotes, "No Emote Stop", false, function(v) S.NoEmoteStop = v end, 4)
     mkAction(secEmotes, "Stop Emote", function() if type(stopEmote) == "function" then pcall(stopEmote) end end, 5)
-    _pl.eCard = secEmotes and secEmotes.Parent  -- expose card to outer scope
+    S._PlayerTabs.eCard = secEmotes and secEmotes.Parent  -- expose card to outer scope
     end -- end Emotes do-block
 
     -- ================= ANIMATIONS =================
     -- Wrapped in its own do-block (same reason: avoid hitting the 200-local limit).
-    -- _pl.pCard is written before this block ends.
+    -- S._PlayerTabs.pCard is written before this block ends.
     do
     -- Real Animate script structure (verified live on this game): each movement state is a
     -- StringValue holding one or more Animation children whose .AnimationId we overwrite directly.
@@ -14948,8 +14960,8 @@ do
     end
 
     local secPacks = mkSection(Pages.Player, "Animation Pack", 2)
-    local packSearch = mkSearchBox(secPacks, 1, "Search animation packs...")
-    local packScroll = mkListScroll(secPacks, 2, 320)
+    local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
+    local packScroll = S._mkListScroll(secPacks, 2, 320)
     local function refreshPacks()
         for _, ch in ipairs(packScroll:GetChildren()) do
             if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
@@ -14987,7 +14999,7 @@ do
                     order = order + 1
                     local thumb = e.bundle and ("bundle:" .. e.bundle) or ""
                     local nm, bid = e.name, e.bundle
-                    mkThumbRow(packScroll, order, thumb, nm, function() clickPack(nm, bid) end)
+                    S._mkThumbRow(packScroll, order, thumb, nm, function() clickPack(nm, bid) end)
                 end
             end
         end
@@ -15055,7 +15067,7 @@ do
             end)
         end,
     })
-    _pl.pCard = secPacks and secPacks.Parent  -- expose card to outer scope
+    S._PlayerTabs.pCard = secPacks and secPacks.Parent  -- expose card to outer scope
     end -- end Animations do-block
 
     do
@@ -15067,14 +15079,16 @@ do
     local function updatePlSubTabs()
         local isEmotes = (activePlSubTab == "Emotes")
         local isAnims = (activePlSubTab == "Animations")
-        styleSubTabActive(emotesBtn, emotesStroke, isEmotes)
-        styleSubTabActive(animsBtn, animsStroke, isAnims)
-        if _pl.eCard then pcall(function() _pl.eCard.Visible = isEmotes end) end
-        if _pl.pCard then pcall(function() _pl.pCard.Visible = isAnims end) end
+        local tabs = S._PlayerTabs
+        if not tabs then return end
+        if tabs.emotesBtn and tabs.emotesStroke then pcall(styleSubTabActive, tabs.emotesBtn, tabs.emotesStroke, isEmotes) end
+        if tabs.animsBtn and tabs.animsStroke then pcall(styleSubTabActive, tabs.animsBtn, tabs.animsStroke, isAnims) end
+        if tabs.eCard then pcall(function() tabs.eCard.Visible = isEmotes end) end
+        if tabs.pCard then pcall(function() tabs.pCard.Visible = isAnims end) end
     end
     S._UpdatePlayerSubtabs = updatePlSubTabs
-    emotesBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Emotes"; updatePlSubTabs() end)
-    animsBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Animations"; updatePlSubTabs() end)
+    if S._PlayerTabs.emotesBtn then S._PlayerTabs.emotesBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Emotes"; updatePlSubTabs() end) end
+    if S._PlayerTabs.animsBtn then S._PlayerTabs.animsBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Animations"; updatePlSubTabs() end) end
     updatePlSubTabs()
 end
 
