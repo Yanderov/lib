@@ -61,8 +61,7 @@ local S = {
     FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
-    LocalVisualAura = false, LocalAuraStyle = "Angel Wings Aura", LocalAuraColor = "Pink", LocalAuraIntensity = 70,
-    UnlockAllKnifeEffects = false, LocalKnifeEffect = false, LocalKnifeEffectStyle = "Magic Heart Aura",
+    UnlockAllKnifeEffects = false,
     FakeHeadless = false, FakeKorblox = false,
     DualWield = false,
     Crosshair = false,
@@ -4549,22 +4548,11 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secHandShaders, "Rainbow", false, function(v) S.HandRainbow = v end, 5)
     mkSlider(secHandShaders, "Fill Opacity", 0, 100, 60, function(v) S.HandFill = v end, 6)
 
-    local auraStyles = {"Angel Wings Aura", "Dracula Wings Aura", "Frozen Bloom Aura", "Magic Heart Aura", "Water Vortex (Feet)", "Pink Thunder Ring"}
-    local auraColors = {"Pink", "Cyan", "Red", "Purple", "White", "Blue", "Rainbow"}
-    local secAura = mkSection(Pages.Visuals, "Local Aura FX", 13)
-    mkToggle(secAura, "Unlock All Knife Effects (Visual)", false, function(v)
+    local secKnifeEffects = mkSection(Pages.Visuals, "Knife Effects", 13)
+    mkToggle(secKnifeEffects, "Unlock All Knife Effects (Visual)", false, function(v)
         S.UnlockAllKnifeEffects = v
-        S.LocalKnifeEffect = v
-        if v then S.LocalVisualAura = true end
+        if S._RefreshKnifeEffectCatalog then S._RefreshKnifeEffectCatalog() end
     end, 1)
-    mkToggle(secAura, "Enable Aura FX", false, function(v) S.LocalVisualAura = v end, 2)
-    mkCycle(secAura, "Aura Style", auraStyles, "Angel Wings Aura", function(v)
-        S.LocalAuraStyle = v
-        S.LocalKnifeEffectStyle = v
-    end, 3)
-    mkCycle(secAura, "Aura Color", auraColors, "Pink", function(v) S.LocalAuraColor = v end, 4)
-    mkSlider(secAura, "Aura Intensity", 25, 150, 70, function(v) S.LocalAuraIntensity = v end, 5)
-    mkToggle(secAura, "Knife Effect Preview", false, function(v) S.LocalKnifeEffect = v end, 6)
 
     -- Dual Wield: removed
 
@@ -4595,7 +4583,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         for _, section in ipairs({secShaders, secHandShaders}) do
             if section and section.Parent then section.Parent.Visible = isShaders end
         end
-        for _, section in ipairs({secCustoms, secAura}) do
+        for _, section in ipairs({secCustoms, secKnifeEffects}) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
         end
         -- (Overlay subtab removed together with Custom Crosshair / Dual Wield)
@@ -9109,286 +9097,146 @@ do
     end
     SG.Destroying:Connect(cleanupAll)
 end
--- ============ LOCAL AURA / KNIFE EFFECT PREVIEW (visual only) ============
+-- ============ LOCAL KNIFE EFFECT CATALOG (visual only) ============
 do
-    local fxFolder, lastChar, lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity
-    local hue = 0
+    local RS = game:GetService("ReplicatedStorage")
+    local catalogContainer, catalogCount = nil, 0
 
-    local function colorFor(name)
-        if name == "Rainbow" then return Color3.fromHSV(hue, 0.82, 1) end
-        if name == "Blue" then return Color3.fromRGB(110, 170, 255) end
-        return FOV_COLORS[name] or Color3.fromRGB(255, 120, 210)
-    end
-
-    local function clearFx()
-        if lastChar then
-            for _, obj in ipairs(lastChar:GetDescendants()) do
-                if typeof(obj.Name) == "string" and string.sub(obj.Name, 1, 7) == "MM2_FX_" then
-                    pcall(function() obj:Destroy() end)
-                end
+    local function clearLegacyAura(char)
+        if not char then return end
+        for _, obj in ipairs(char:GetDescendants()) do
+            if string.sub(obj.Name or "", 1, 7) == "MM2_FX_" then
+                pcall(function() obj:Destroy() end)
             end
         end
-        if fxFolder then pcall(function() fxFolder:Destroy() end) end
-        fxFolder = nil
     end
 
-    local function characterParts()
-        local char = LP.Character
-        if not char then return nil end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or hrp
-        return char, hrp, torso
+    local function getCatalogContainer()
+        local playerGui = LP:FindFirstChildOfClass("PlayerGui")
+        local mainGui = playerGui and playerGui:FindFirstChild("MainGUI")
+        local gameGui = mainGui and mainGui:FindFirstChild("Game")
+        local inventory = gameGui and gameGui:FindFirstChild("Inventory")
+        local main = inventory and inventory:FindFirstChild("Main")
+        local effects = main and main:FindFirstChild("Effects")
+        local items = effects and effects:FindFirstChild("Items")
+        local holder = items and items:FindFirstChild("Container")
+        local current = holder and holder:FindFirstChild("Current")
+        return current and current:FindFirstChild("Container")
     end
 
-    local function newFxFolder(char)
-        clearFx()
-        local folder = Instance.new("Folder")
-        folder.Name = "MM2_FX_LocalAura"
-        folder.Parent = char
-        fxFolder = folder
-        lastChar = char
-        return folder
+    local function clearCatalogIn(container)
+        if not container then return end
+        for _, card in ipairs(container:GetChildren()) do
+            if card:GetAttribute("MM2LocalVisualEffect") == true then
+                pcall(function() card:Destroy() end)
+            end
+        end
     end
 
-    local function addAttachment(parent, name, pos)
-        local att = Instance.new("Attachment")
-        att.Name = "MM2_FX_" .. name
-        att.Position = pos or Vector3.zero
-        att.Parent = parent
-        return att
+    local function clearCatalog(container)
+        clearCatalogIn(catalogContainer)
+        if container ~= catalogContainer then clearCatalogIn(container) end
+        catalogContainer, catalogCount = nil, 0
     end
 
-    local function addEmitter(parent, name, color, rate, lifetime, speed, size, texture)
-        local em = Instance.new("ParticleEmitter")
-        em.Name = "MM2_FX_" .. name
-        em.Texture = texture or "rbxasset://textures/particles/sparkles_main.dds"
-        em.Color = ColorSequence.new(color)
-        em.LightEmission = 0.85
-        em.LightInfluence = 0
-        em.Rate = rate
-        em.Lifetime = NumberRange.new(lifetime * 0.7, lifetime)
-        em.Speed = NumberRange.new(speed * 0.45, speed)
-        em.SpreadAngle = Vector2.new(360, 360)
-        em.Size = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, size * 0.3),
-            NumberSequenceKeypoint.new(0.2, size),
-            NumberSequenceKeypoint.new(1, 0),
-        })
-        em.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1),
-            NumberSequenceKeypoint.new(0.15, 0.1),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-        pcall(function()
-            em.Shape = Enum.ParticleEmitterShape.Disc
-            em.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+    local function getKnifeEffects()
+        local ok, sync = pcall(function()
+            return require(RS:WaitForChild("Database"):WaitForChild("Sync"))
         end)
-        em.Parent = parent
-        return em
-    end
+        local effects = ok and sync and sync.Effects
+        if type(effects) ~= "table" then return {} end
 
-    local function weldPart(folder, torso, name, cf, size, color, transparency)
-        local part = Instance.new("Part")
-        part.Name = "MM2_FX_" .. name
-        part.Anchored = false
-        part.CanCollide = false
-        part.CanTouch = false
-        part.CanQuery = false
-        part.Massless = true
-        part.Material = Enum.Material.Neon
-        part.Color = color
-        part.Transparency = transparency or 0.18
-        part.Size = size
-        part.CFrame = cf
-        part.Parent = folder
-        local weld = Instance.new("WeldConstraint")
-        weld.Name = "MM2_FX_Weld"
-        weld.Part0 = torso
-        weld.Part1 = part
-        weld.Parent = part
-        return part
-    end
-
-    local function addWing(folder, torso, color, dracula)
-        local tint = dracula and Color3.fromRGB(160, 0, 18) or color
-        local alpha = dracula and 0.1 or 0.2
-        for side = -1, 1, 2 do
-            for i = 1, 5 do
-                local length = (dracula and 1.65 or 1.35) - i * 0.08
-                local y = 0.72 - i * 0.17
-                local z = 0.42 + i * 0.03
-                local x = side * (0.78 + i * 0.22)
-                local angleZ = side * (dracula and (38 + i * 9) or (24 + i * 7))
-                local angleY = side * (dracula and 18 or 12)
-                weldPart(
-                    folder,
-                    torso,
-                    "Wing_" .. tostring(side) .. "_" .. tostring(i),
-                    torso.CFrame * CFrame.new(x, y, z) * CFrame.Angles(0, math.rad(angleY), math.rad(angleZ)),
-                    Vector3.new(0.11, length, 0.035),
-                    tint,
-                    alpha
-                )
+        local result = {}
+        for id, data in pairs(effects) do
+            if type(data) == "table" and data.KnifeModule ~= nil then
+                local item = {}
+                for key, value in pairs(data) do item[key] = value end
+                item.ItemName = item.ItemName or item.Name or tostring(id)
+                item.Name = item.Name or item.ItemName
+                item.Rarity = item.Rarity or "Common"
+                item.Image = item.Image or ""
+                table.insert(result, {Id = tostring(id), Data = item})
             end
         end
+        table.sort(result, function(a, b)
+            return string.lower(tostring(a.Data.ItemName)) < string.lower(tostring(b.Data.ItemName))
+        end)
+        return result
     end
 
-    local function addOrbs(folder, hrp, color, count, radius, y)
-        for i = 1, count do
-            local a = (i / count) * math.pi * 2
-            local part = weldPart(
-                folder,
-                hrp,
-                "Orb_" .. tostring(i),
-                hrp.CFrame * CFrame.new(math.cos(a) * radius, y + math.sin(a * 2) * 0.18, math.sin(a) * radius),
-                Vector3.new(0.18, 0.18, 0.18),
-                color,
-                0.08
-            )
-            part.Shape = Enum.PartType.Ball
+    local function visualCardCount(container)
+        local count = 0
+        if container then
+            for _, card in ipairs(container:GetChildren()) do
+                if card:GetAttribute("MM2LocalVisualEffect") == true then count += 1 end
+            end
         end
+        return count
     end
 
-    local function addRing(folder, hrp, color, radius, y, count)
-        for i = 1, count do
-            local a = (i / count) * math.pi * 2
-            local part = weldPart(
-                folder,
-                hrp,
-                "Ring_" .. tostring(i),
-                hrp.CFrame * CFrame.new(math.cos(a) * radius, y, math.sin(a) * radius),
-                Vector3.new(0.16, 0.035, 0.16),
-                color,
-                0.12
-            )
-            part.Shape = Enum.PartType.Ball
-        end
-    end
+    local function populateCatalog()
+        local container = getCatalogContainer()
+        if not container then return end
 
-    local function buildAura(style, folder, hrp, torso, color, intensity)
-        local rootAtt = addAttachment(hrp, "RootAura", Vector3.new(0, -2.35, 0))
-        local chestAtt = addAttachment(torso, "ChestAura", Vector3.new(0, 0.35, 0.55))
-        local shoulderAtt = addAttachment(torso, "ShoulderAura", Vector3.new(0, 0.9, 0.25))
-        local rate = math.floor(18 + 28 * intensity)
+        local effects = getKnifeEffects()
+        if #effects == 0 then return end
+        if container == catalogContainer and catalogCount == #effects and visualCardCount(container) == #effects then return end
 
-        if style == "Angel Wings Aura" then
-            addWing(folder, torso, color, false)
-            addRing(folder, hrp, color, 2.1, -2.45, 22)
-            addEmitter(shoulderAtt, "AngelGlow", Color3.fromRGB(255, 245, 255), rate, 1.2, 1.4, 0.38)
-            addEmitter(rootAtt, "AngelFeet", color, math.floor(rate * 0.65), 1.0, 1.0, 0.32)
-        elseif style == "Dracula Wings Aura" then
-            addWing(folder, torso, Color3.fromRGB(255, 30, 45), true)
-            addRing(folder, hrp, Color3.fromRGB(255, 35, 45), 2.0, -2.4, 18)
-            addEmitter(chestAtt, "BloodSpark", Color3.fromRGB(255, 45, 55), rate, 1.0, 2.1, 0.28)
-            addEmitter(rootAtt, "BloodFeet", Color3.fromRGB(255, 45, 55), math.floor(rate * 0.55), 0.9, 1.2, 0.24)
-        elseif style == "Frozen Bloom Aura" then
-            addRing(folder, hrp, Color3.fromRGB(170, 245, 255), 2.25, -2.45, 26)
-            addOrbs(folder, hrp, Color3.fromRGB(180, 245, 255), 8, 1.8, -0.35)
-            addEmitter(rootAtt, "FrostBloom", Color3.fromRGB(185, 245, 255), rate, 1.35, 1.4, 0.35)
-            addEmitter(shoulderAtt, "IcePetals", color, math.floor(rate * 0.7), 1.1, 1.8, 0.24)
-        elseif style == "Water Vortex (Feet)" then
-            addRing(folder, hrp, Color3.fromRGB(115, 220, 255), 2.35, -2.55, 30)
-            addRing(folder, hrp, Color3.fromRGB(210, 250, 255), 1.35, -2.25, 18)
-            addEmitter(rootAtt, "WaterVortex", Color3.fromRGB(120, 230, 255), math.floor(rate * 1.1), 1.15, 1.9, 0.3)
-        elseif style == "Pink Thunder Ring" then
-            addRing(folder, hrp, Color3.fromRGB(255, 135, 235), 2.65, -2.45, 34)
-            addEmitter(rootAtt, "ThunderFeet", Color3.fromRGB(255, 135, 235), math.floor(rate * 1.15), 0.75, 2.5, 0.22)
-            addEmitter(chestAtt, "ThunderBody", color, math.floor(rate * 0.65), 0.9, 1.7, 0.25)
-        else
-            addRing(folder, hrp, color, 2.0, -2.45, 22)
-            addOrbs(folder, hrp, color, 6, 1.6, 0.15)
-            addEmitter(chestAtt, "MagicHeart", Color3.fromRGB(255, 115, 210), rate, 1.1, 1.8, 0.34)
-            addEmitter(rootAtt, "MagicFeet", color, math.floor(rate * 0.75), 0.9, 1.2, 0.28)
-        end
+        clearCatalog(container)
+        local modules = RS:FindFirstChild("Modules")
+        local inventoryModule = modules and modules:FindFirstChild("InventoryModule")
+        local template = inventoryModule and inventoryModule:FindFirstChild("NewItem")
+        local ok, itemModule = pcall(function()
+            return require(modules:WaitForChild("ItemModule"))
+        end)
+        if not template or not ok or type(itemModule) ~= "table" then return end
 
-        local light = Instance.new("PointLight")
-        light.Name = "MM2_FX_AuraLight"
-        light.Color = color
-        light.Brightness = 1.4 * intensity
-        light.Range = 8 + 5 * intensity
-        light.Parent = hrp
-    end
+        for index, effect in ipairs(effects) do
+            pcall(function()
+                local card = template:Clone()
+                card.Name = "MM2_LocalKnifeEffect_" .. effect.Id
+                card.LayoutOrder = 5000 + index
+                card:SetAttribute("MM2LocalVisualEffect", true)
+                card:SetAttribute("MM2LocalEffectId", effect.Id)
+                itemModule.DisplayItem(card, effect.Data, 1, true)
 
-    local function buildKnifeEffect(char, color, intensity)
-        local tool = char:FindFirstChildOfClass("Tool")
-        local handle = tool and (tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart", true))
-        if not handle then return end
-
-        local a0 = addAttachment(handle, "KnifeTrailA", Vector3.new(0, 0.45, 0))
-        local a1 = addAttachment(handle, "KnifeTrailB", Vector3.new(0, -0.45, 0))
-        local trail = Instance.new("Trail")
-        trail.Name = "MM2_FX_KnifeTrail"
-        trail.Attachment0 = a0
-        trail.Attachment1 = a1
-        trail.Color = ColorSequence.new(color)
-        trail.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.1),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-        trail.Lifetime = 0.34
-        trail.LightEmission = 0.85
-        trail.MinLength = 0.08
-        trail.Parent = handle
-
-        addEmitter(a0, "KnifeSpark", color, math.floor(12 + 24 * intensity), 0.55, 1.4, 0.18)
-    end
-
-    local function recolorFx(color)
-        if not lastChar then return end
-        for _, obj in ipairs(lastChar:GetDescendants()) do
-            if typeof(obj.Name) == "string" and string.sub(obj.Name, 1, 7) == "MM2_FX_" then
-                if obj:IsA("BasePart") then
-                    obj.Color = color
-                elseif obj:IsA("ParticleEmitter") then
-                    obj.Color = ColorSequence.new(color)
-                elseif obj:IsA("Trail") or obj:IsA("Beam") then
-                    obj.Color = ColorSequence.new(color)
-                elseif obj:IsA("PointLight") then
-                    obj.Color = color
+                local actionButton = card:FindFirstChild("ActionButton", true)
+                if actionButton and actionButton:IsA("GuiButton") then
+                    actionButton.Active = false
+                    actionButton.Selectable = false
+                    actionButton.AutoButtonColor = false
                 end
-            end
+                local amount = card:FindFirstChild("Amount", true)
+                if amount and amount:IsA("TextLabel") then amount.Text = "" end
+                card.Parent = container
+            end)
+        end
+        catalogContainer, catalogCount = container, #effects
+    end
+
+    local function refreshCatalog()
+        if S.UnlockAllKnifeEffects then
+            populateCatalog()
+        else
+            clearCatalog(getCatalogContainer())
         end
     end
 
+    S._RefreshKnifeEffectCatalog = refreshCatalog
+    clearLegacyAura(LP.Character)
     task.spawn(function()
         while S.Gui and S.Gui.Parent do
-            pcall(function()
-                hue = (hue + 0.01) % 1
-                local char, hrp, torso = characterParts()
-                local auraOn = S.LocalVisualAura or S.UnlockAllKnifeEffects or S.LocalKnifeEffect
-                local knifeOn = S.LocalKnifeEffect or S.UnlockAllKnifeEffects
-                if not char or not hrp or not torso or not auraOn then
-                    clearFx()
-                    lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity = nil, nil, nil, nil, nil
-                    return
-                end
-
-                local style = S.LocalAuraStyle or S.LocalKnifeEffectStyle or "Angel Wings Aura"
-                local colorName = S.LocalAuraColor or "Pink"
-                local intensity = math.clamp((tonumber(S.LocalAuraIntensity) or 70) / 100, 0.25, 1.5)
-                local needsRebuild = char ~= lastChar or style ~= lastStyle or colorName ~= lastColorName
-                    or auraOn ~= lastAuraOn or knifeOn ~= lastKnifeOn or math.abs((lastIntensity or 0) - intensity) > 0.05
-                local color = colorFor(colorName)
-
-                if needsRebuild then
-                    local folder = newFxFolder(char)
-                    buildAura(style, folder, hrp, torso, color, intensity)
-                    if knifeOn then buildKnifeEffect(char, color, intensity) end
-                    lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity = style, colorName, auraOn, knifeOn, intensity
-                elseif colorName == "Rainbow" then
-                    recolorFx(color)
-                end
-            end)
-            task.wait(0.2)
+            pcall(refreshCatalog)
+            task.wait(0.75)
         end
-        clearFx()
+        clearCatalog(getCatalogContainer())
     end)
-
-    tc(LP.CharacterAdded:Connect(function()
-        clearFx()
-        lastChar, lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity = nil, nil, nil, nil, nil, nil
-    end))
-    SG.Destroying:Connect(clearFx)
+    tc(LP.CharacterAdded:Connect(clearLegacyAura))
+    SG.Destroying:Connect(function()
+        clearCatalog(getCatalogContainer())
+        clearLegacyAura(LP.Character)
+        if S._RefreshKnifeEffectCatalog == refreshCatalog then S._RefreshKnifeEffectCatalog = nil end
+    end)
 end
 -- ============ DUAL WIELD (visual only) ============
 -- Clones whatever weapon Tool is currently equipped and welds a cosmetic copy of its Handle into the
