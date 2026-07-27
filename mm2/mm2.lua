@@ -7844,6 +7844,11 @@ local function attachHUDDrag(frame, handle)
             if host and host.X > 0 and host.Y > 0 and startOrigin then
                 local size = frame.AbsoluteSize
                 local function fit(v, extent, span)
+                    -- Mobile: no clamp at all, by request — the watermark and every other HUD
+                    -- element can be dragged anywhere, including past the screen edge. The
+                    -- position still persists as Scale, and the load path keeps a small sliver
+                    -- reachable so an element parked off-screen can always be dragged back.
+                    if MOBILE then return v end
                     if span >= extent then return (extent - span) / 2 end
                     return math.clamp(v, 0, extent - span)
                 end
