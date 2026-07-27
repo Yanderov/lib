@@ -80,11 +80,8 @@ local S = {
     -- position that jumps further than a player could plausibly travel in a step
     -- ("invalid position" / snap-back), and that limit is per-step, not per-second:
     -- 120 studs/s in small steps is fine, one 40-stud jump is not.
-    AutofarmSafe = true, AutofarmAvoidRadius = 60,
-    -- Takeover: once the coin bag hits this many, fling the Sheriff for his gun
-    -- and finish the Murderer with it.
-    AutoTakeover = false, AutoTakeoverCoins = 50,
-    FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
+    AutofarmAvoidRadius = 60,
+        FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
     FakeLag = false, FakeLagLimit = 15,
     CrosshairShape = "Cross", CrosshairColor = "White", CrosshairSize = 12, CrosshairThickness = 2, CrosshairGap = 4, CrosshairRotation = 0,
@@ -8576,7 +8573,7 @@ do
             -- Safe Mode tightens that cap hard: what trips MM2's "invalid position" is the size of
             -- a SINGLE step, so a 40-stud jump on one long frame is exactly the thing to avoid.
             -- Small steps at the same studs/s look like ordinary fast movement.
-            local step = math.min(spd * dt, S.AutofarmSafe and 10 or 40)
+            local step = math.min(spd * dt, 10)
             if dist <= math.max(4.0, step) then
                 hrp.CFrame = CFrame.new(targetCF.Position)
                 arrived = true
@@ -8609,127 +8606,9 @@ do
     mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
     -- Studs/s (1-120). Speed up to 120 studs/s.
     mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
-    -- Safe Mode does three things: clamps the per-frame step (what actually trips
-    -- "invalid position"), refuses coins whose approach path crosses the murderer,
-    -- and waits instead of grabbing a coin when nothing is reachable safely.
-    mkToggle(secAuto, "Safe Mode", true, function(v) S.AutofarmSafe = v end, 3)
     mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
-    -- ===== TAKEOVER: at N coins, take the Sheriff's gun and finish the round =====
-    -- Chain: wait for the coin bag to reach the threshold -> fling the Sheriff so he
-    -- drops the gun -> grab the drop -> shoot the Murderer.  The shot reuses the same
-    -- point-blank origin the Piercing option uses, so a wall in between does not
-    -- matter: the server raycasts origin -> target and the origin already sits next to
-    -- him.  Every step retries, because each one can lose a race.
-    local function coinCount()
-        local pg = LP:FindFirstChildOfClass("PlayerGui")
-        local node = pg and pg:FindFirstChild("MainGUI")
-        node = node and node:FindFirstChild("Game")
-        node = node and node:FindFirstChild("CoinBags")
-        node = node and node:FindFirstChild("Container")
-        if not node then return 0 end
-        -- Seasonal events swap the bag (Coin / Egg / Candy / SnowToken / ...), so read
-        -- whichever one actually carries a count instead of hardcoding "Coin".
-        local best = 0
-        for _, bag in ipairs(node:GetChildren()) do
-            local lbl = bag:FindFirstChild("Coins", true)
-            if lbl and lbl:IsA("TextLabel") then
-                local n = tonumber((tostring(lbl.Text):gsub("%D", "")))
-                if n and n > best then best = n end
-            end
-        end
-        return best
-    end
-    S._CoinCount = coinCount
-
-    local function sheriffPlayer()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character and not isWhitelisted(p) then
-                local role = getRole(p)
-                if role == "Sheriff" or role == "Hero" then
-                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then return p end
-                end
-            end
-        end
-        return nil
-    end
-
-    local function gunOnGround()
-        return workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
-    end
-
-    local function heldGun()
-        local c = LP.Character
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        return (c and (c:FindFirstChild("Gun") or c:FindFirstChild("Revolver")))
-            or (bp and (bp:FindFirstChild("Gun") or bp:FindFirstChild("Revolver")))
-    end
-
-    local function shootMurderer()
-        local gun = heldGun()
-        local shoot = gun and gun:FindFirstChild("Shoot")
-        if not (shoot and shoot:IsA("RemoteEvent")) then return false end
-        local targetChar = S._GetMurdererChar and S._GetMurdererChar()
-        local hrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-        if not hrp then return false end
-        local hit = hrp.Position
-        local vel = hrp.AssemblyLinearVelocity
-        local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2) or Vector3.new(0, 1.25, 0)
-        pcall(function() shoot:FireServer(CFrame.lookAt(hit + back, hit), CFrame.new(hit)) end)
-        return true
-    end
-
-    local takeoverBusy = false
-    tc(RunService.Heartbeat:Connect(function()
-        if not S.AutoTakeover or takeoverBusy then return end
-        if not isRoundActive() then return end
-        local ch = LP.Character
-        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-        if not (hum and hum.Health > 0) then return end
-        if coinCount() < (tonumber(S.AutoTakeoverCoins) or 50) then return end
-
-        takeoverBusy = true
-        task.spawn(function()
-            pcall(function()
-                if heldGun() then
-                    -- Armed already: the only job left is finishing the Murderer.
-                    for _ = 1, 40 do
-                        if not S.AutoTakeover then break end
-                        if not (S._GetMurdererChar and S._GetMurdererChar()) then break end
-                        if not shootMurderer() then break end
-                        task.wait(0.12)
-                    end
-                elseif gunOnGround() then
-                    if S.GrabGunNow then pcall(S.GrabGunNow, true) end
-                    task.wait(0.35)
-                else
-                    local sheriff = sheriffPlayer()
-                    if sheriff and S._FlingPlayer then
-                        Notify("Takeover", "Flinging " .. sheriff.Name .. " for the gun", 2)
-                        -- Retry: a single fling attempt is flaky (the spin has to build up),
-                        -- and dropping the gun is the whole point of this step.
-                        for _ = 1, 3 do
-                            local ok, res = pcall(S._FlingPlayer, sheriff)
-                            if ok and res then break end
-                            if gunOnGround() then break end
-                            local sc = sheriff.Character
-                            local sh = sc and sc:FindFirstChildOfClass("Humanoid")
-                            if not (sh and sh.Health > 0) then break end
-                            task.wait(0.15)
-                        end
-                        task.wait(1.1)
-                        if gunOnGround() and S.GrabGunNow then pcall(S.GrabGunNow, true) end
-                    end
-                end
-            end)
-            task.wait(0.3)
-            takeoverBusy = false
-        end)
-    end))
-
-    mkToggle(secAuto, "Takeover at N coins", false, function(v) S.AutoTakeover = v end, 5)
-    mkSlider(secAuto, "Takeover Coins", 5, 200, 50, function(v) S.AutoTakeoverCoins = v end, 6)
+    
 
     -- Vote Farm: just teleport to the map-vote slot's coords, reset, repeat — no gating, per explicit
     -- user request. Coords are the slot's own live-measured standing position (user walked to each pad
@@ -9045,27 +8924,7 @@ do
                                 end
                             end
                         end)
-                        -- No coin is reachable without entering the murderer's bubble.  In Safe Mode
-                        -- that means WAIT (the loop below idles) rather than take the least-bad coin:
-                        -- grabbing one anyway is exactly how the farm used to walk into the knife.
-                        if #coins == 0 and not (S.AutofarmSafe and murderPos) then
-                            eachCoin(function(coin)
-                                if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
-                                    table.insert(coins, coin)
-                                end
-                            end)
-                            if #coins > 0 then
-                                if murderPos then
-                                    table.sort(coins, function(a, b)
-                                        return (a.Position - murderPos).Magnitude > (b.Position - murderPos).Magnitude
-                                    end)
-                                else
-                                    table.sort(coins, function(a, b)
-                                        return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
-                                    end)
-                                end
-                            end
-                        elseif #coins > 0 then
+                        if #coins > 0 then
                             table.sort(coins, function(a, b)
                                 return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
                             end)
