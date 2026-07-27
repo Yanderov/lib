@@ -3681,7 +3681,6 @@ do
     bindLocalizedText(shaderBtn, "Shaders", "Shaders", false)
 
     local sec1 = mkSection(Pages.Visuals, "Chams", 1)
-    mkToggle(sec1, "Held Item Chams", false, function(v) S.GunHeldChams = v end, 1)
     mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 2)
     mkSlider(sec1, "Chams Opacity", 0, 100, 50, function(v) S.ChamsOpacity = v end, 3)
 
@@ -3698,12 +3697,7 @@ do
     mkSlider(sec2, "ESP Max Dist", 100, 2000, 1000, function(v) S.ESPMaxDist = v end, 10)
 
     local sec3 = mkSection(Pages.Visuals, "Item ESP", 3)
-    mkToggle(sec3, "Gun Drop ESP", false, function(v) S.GunChams = v end, 1)
-    -- Item Chams styling: shared by the ground Gun Drop highlight above and the "Gun" held-highlight
     -- in the Chams section — both are the same gun item, so one Mode/Color/Rainbow set covers both.
-    mkCycle(sec3, "Item Chams Mode", {"Maze", "Fill", "Outline", "Mirror", "Both"}, "Outline", function(v) S.ItemChamsMode = v end, 2)
-    mkCycle(sec3, "Item Chams Color", {"White", "Black", "Pink", "Magenta", "Red", "Green", "Blue", "Yellow", "Cyan", "Purple", "Orange", "Gray"}, "White", function(v) S.ItemChamsColor = v end, 3)
-    mkToggle(sec3, "Item Chams Rainbow", false, function(v) S.ItemChamsRainbow = v end, 4)
 
     local sec5 = mkSection(Pages.Visuals, "Alerts", 4)
     mkToggle(sec5, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 1)
@@ -9998,7 +9992,6 @@ createHighlight = function(adornee, color, name, fillT, outlineT)
     hl.OutlineTransparency = outlineT or 0
     return hl
 end
--- Item Chams styling (held gun + gun drop share one look). Highlight modes use Fill/Outline;
 -- Maze and Mirror additionally apply a temporary material shader to every BasePart in the item.
 -- Wrapped in its own do-block and hung off S (not a new top-level local) for the same reason as
 -- S._resetMyCharacter above: the main chunk was already at Luau's 200-local ceiling.
