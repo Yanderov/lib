@@ -8524,6 +8524,9 @@ do
             local hrp = c and c:FindFirstChild("HumanoidRootPart")
             local hum = c and c:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum or hum.Health <= 0 then break end
+            for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                pcall(function() track:Stop() end)
+            end
             hrp.Anchored = true
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
@@ -8551,11 +8554,13 @@ do
             local flat = Vector3.new(dir.X, 0, dir.Z)
             hrp.CFrame = (flat.Magnitude > 0.05) and CFrame.new(newPos, newPos + flat) or CFrame.new(newPos)
         end
-        -- ALWAYS unanchor on exit (arrived, cancelled, or timed out).
+        -- Unanchor on exit unless Autofarm is active
         local c = LP.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
         if hrp then
-            hrp.Anchored = false
+            if not S.FastAutofarm then
+                hrp.Anchored = false
+            end
             hrp.AssemblyLinearVelocity = Vector3.zero
         end
         return arrived
@@ -9067,10 +9072,9 @@ do
                             end
                             task.wait(0.05)
                         else
-                            -- Nothing left to collect -> simply wait; never anchor the HRP
-                            -- because anchoring while bhop/speedglitch is active freezes the player
-                            -- in mid-air permanently (the levitation bug).
-                            if hrp.Anchored then hrp.Anchored = false end
+                            -- Nothing left to collect -> keep anchored so we don't fall through the floor
+                            hrp.Anchored = true
+                            hrp.AssemblyLinearVelocity = Vector3.zero
                             task.wait(0.3)
                         end
                     else
