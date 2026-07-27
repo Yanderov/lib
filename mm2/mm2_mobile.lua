@@ -61,6 +61,8 @@ local S = {
     FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
+    LocalVisualAura = false, LocalAuraStyle = "Angel Wings Aura", LocalAuraColor = "Pink", LocalAuraIntensity = 70,
+    UnlockAllKnifeEffects = false, LocalKnifeEffect = false, LocalKnifeEffectStyle = "Magic Heart Aura",
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -707,6 +709,8 @@ local ChamsRoleShade = {
 }
 local F  = Enum.Font.Gotham
 local FM = Enum.Font.GothamMedium
+-- Some headings use FH.  Keep it explicit instead of assigning nil to TextLabel.Font.
+local FH = Enum.Font.GothamBold
 local FB = Enum.Font.GothamBold
 local function Corner(i, r)
     local c = Instance.new("UICorner")
@@ -2180,24 +2184,43 @@ mScroll.Active = true
 
 -- Make settings modal draggable by header
 do
-    local dr, ds, sp
+    local dr, ds, sp, so, activeInput
     mHdr.Active = true
     mHdr.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            if activeInput then return end
+            activeInput = i
             dr = true
             ds = i.Position
             sp = SettingsModal.Position
+            so = SettingsModal.Parent and (SettingsModal.AbsolutePosition - SettingsModal.Parent.AbsolutePosition) or nil
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local mouseDrag = activeInput and activeInput.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
+        local touchDrag = activeInput and activeInput.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
+        if dr and (i == activeInput or mouseDrag or touchDrag) then
             local d = i.Position - ds
-            SettingsModal.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+            local host = so and SettingsModal.Parent and SettingsModal.Parent.AbsoluteSize
+            if host and host.X > 0 and host.Y > 0 then
+                local size = SettingsModal.AbsoluteSize
+                local function fit(v, extent, span)
+                    if span >= extent then return (extent - span) / 2 end
+                    return math.clamp(v, 0, extent - span)
+                end
+                local x = fit(so.X + d.X, host.X, size.X)
+                local y = fit(so.Y + d.Y, host.Y, size.Y)
+                local pivot = Vector2.new(x, y) + SettingsModal.AnchorPoint * size
+                SettingsModal.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
+            else
+                SettingsModal.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+            end
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i == activeInput or i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dr = false
+            activeInput = nil
         end
     end))
 end
@@ -3933,24 +3956,39 @@ do
 local BASE_URL = "https://raw.githubusercontent.com/Yanderov/snpware_assets/master/"
 local function fetchCustomAsset(assetPath, subfolder)
     if not assetPath or assetPath == "" then return "" end
-    local localFolder = "snpware_assets/" .. subfolder
+    local customasset = getcustomasset or getsynasset
+    if type(isfolder) ~= "function" or type(makefolder) ~= "function" or type(isfile) ~= "function" or type(writefile) ~= "function" or type(customasset) ~= "function" then
+        return ""
+    end
+
+    local localFolder = "snpware_assets/" .. tostring(subfolder or "misc")
     local localPath = localFolder .. "/" .. string.gsub(assetPath, "/", "_")
+
+    local folderOk = pcall(function()
+        if not isfolder("snpware_assets") then makefolder("snpware_assets") end
+        if not isfolder(localFolder) then makefolder(localFolder) end
+    end)
+    if not folderOk then return "" end
     
-    if not isfolder("snpware_assets") then makefolder("snpware_assets") end
-    if not isfolder(localFolder) then makefolder(localFolder) end
+    local fileOk, fileExists = pcall(isfile, localPath)
+    if not fileOk then return "" end
     
-    if not isfile(localPath) then
+    if not fileExists then
         local success, data = pcall(function()
-            return game:HttpGet(BASE_URL .. assetPath)
+            -- assetPath is intentionally stored relative to its asset category.
+            -- The previous URL omitted `cursors/`, `backgrounds/`, etc., so every
+            -- request returned a 404 even when the asset existed in the repository.
+            return game:HttpGet(BASE_URL .. tostring(subfolder or "misc") .. "/" .. assetPath)
         end)
-        if success and data and #data > 0 then
-            writefile(localPath, data)
+        if success and type(data) == "string" and #data > 0 then
+            local writeOk = pcall(writefile, localPath, data)
+            if not writeOk then return "" end
         else
             return ""
         end
     end
     
-    local success, assetId = pcall(function() return getcustomasset(localPath) end)
+    local success, assetId = pcall(function() return customasset(localPath) end)
     return success and assetId or ""
 end
 
@@ -4181,6 +4219,8 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     -- Slider for custom crosshairs
     mkSlider(secCustoms, "Crosshair ID", 1, #cursorPaths, 1, function(v)
         S.CrosshairStyle = "Custom"
+        S.CrosshairIndex = v
+        S.CrosshairAssetId = nil
         local path = cursorPaths[v]
         task.spawn(function()
             local fetchedId = fetchCustomAsset(path, "cursors")
@@ -4189,6 +4229,32 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             end
         end)
     end, 2)
+
+    mkSlider(secCustoms, "Client Wallpaper ID", 0, #bgPaths, 0, function(v)
+        if v <= 0 then
+            S.UIWallpaper = "None"
+            wallBtn.Text = "None"
+            applyWall()
+            return
+        end
+
+        local bg = bgPaths[v]
+        if not bg then return end
+        task.spawn(function()
+            local fetchedId = fetchCustomAsset(bg.Path, "backgrounds")
+            if fetchedId ~= "" then
+                urls["GitHub Custom"] = fetchedId
+                local hasCustomOption = false
+                for _, option in ipairs(wallOptions) do
+                    if option == "GitHub Custom" then hasCustomOption = true break end
+                end
+                if not hasCustomOption then table.insert(wallOptions, "GitHub Custom") end
+                S.UIWallpaper = "GitHub Custom"
+                wallBtn.Text = "GitHub Custom " .. tostring(v)
+                applyWall()
+            end
+        end)
+    end, 2.4)
     
     mkSlider(secCustoms, "Custom Skybox ID", 0, #skyPaths, 0, function(v)
         if v == 0 then
@@ -4222,14 +4288,55 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end
     end, 3)
     
-    mkCycle(secCustoms, "Gun Sound", {"Game Default", "Custom 1 (Loud)", "Custom 2 (Suppressed)"}, "Game Default", function(v)
+    local gunSoundOptions = {"Game Default", "Use Equipped Skin Sound"}
+    for i = 1, #gunPaths do
+        table.insert(gunSoundOptions, "Custom " .. i)
+    end
+
+    local function getEquippedSkinGunSound()
+        local character = LP.Character
+        if not character then return nil end
+
+        for _, descendant in ipairs(character:GetDescendants()) do
+            if descendant:IsA("Sound") and descendant.SoundId ~= "" then
+                local tool = descendant:FindFirstAncestorWhichIsA("Tool")
+                if tool and tool.Name:lower():find("gun", 1, true) then
+                    return descendant.SoundId
+                end
+            end
+        end
+        return nil
+    end
+
+    local gunSoundRequest = 0
+    mkCycle(secCustoms, "Gun Sound", gunSoundOptions, "Game Default", function(v)
+        gunSoundRequest = gunSoundRequest + 1
+        local requestId = gunSoundRequest
+
         if v == "Game Default" then
             S.CustomGunSoundId = nil
-        elseif v == "Custom 1 (Loud)" then
-            task.spawn(function() S.CustomGunSoundId = fetchCustomAsset(gunPaths[1] or "Loud.mp3", "gun_sounds") end)
-        elseif v == "Custom 2 (Suppressed)" then
-            task.spawn(function() S.CustomGunSoundId = fetchCustomAsset(gunPaths[2] or "Suppressed.mp3", "gun_sounds") end)
+            return
         end
+
+        if v == "Use Equipped Skin Sound" then
+            local soundId = getEquippedSkinGunSound()
+            if soundId then
+                S.CustomGunSoundId = soundId
+            else
+                Notify("Gun Sound", "Equip a gun skin first, then choose this option again.", 3)
+            end
+            return
+        end
+
+        local index = tonumber(v:match("^Custom (%d+)$"))
+        local path = index and gunPaths[index]
+        if not path then return end
+        task.spawn(function()
+            local fetchedId = fetchCustomAsset(path, "gun_sounds")
+            if requestId == gunSoundRequest and fetchedId ~= "" then
+                S.CustomGunSoundId = fetchedId
+            end
+        end)
     end, 4)
 
     mkAction(secCustoms, "Preview Gun Sound", function()
@@ -4255,6 +4362,9 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mobileCrosshairGui.Name = "MM2MobileCrosshair"
     mobileCrosshairGui.IgnoreGuiInset = true
     pcall(function() mobileCrosshairGui.Parent = game:GetService("CoreGui") end)
+    if not mobileCrosshairGui.Parent then
+        mobileCrosshairGui.Parent = LP:WaitForChild("PlayerGui")
+    end
     
     local mobileCrosshairImage = Instance.new("ImageLabel")
     mobileCrosshairImage.BackgroundTransparency = 1
@@ -4268,17 +4378,27 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         local mouse = Players.LocalPlayer:GetMouse()
         local isShiftlock = (UIS.MouseBehavior == Enum.MouseBehavior.LockCenter)
         
-        if S.CustomCrosshair and isShiftlock then
-            local currentCustom = CustomCrosshairs[S.CrosshairStyle or "Neon Cyan"]
-            mouse.Icon = currentCustom
-            mobileCrosshairImage.Image = currentCustom
-            mobileCrosshairImage.Visible = true
+        -- Touch devices do not use shift-lock, but they still need the centered
+        -- crosshair overlay when the custom crosshair setting is enabled.
+        if S.CustomCrosshair and (isShiftlock or UIS.TouchEnabled) then
+            local idx = ((tonumber(S.CrosshairIndex) or 1) - 1) % #CustomCrosshairs + 1
+            local currentCustom = S.CrosshairAssetId or CustomCrosshairs[idx] or CustomCrosshairs[1]
+            if currentCustom and currentCustom ~= "" then
+                mouse.Icon = currentCustom
+                mobileCrosshairImage.Image = currentCustom
+                mobileCrosshairImage.Visible = true
+            else
+                mobileCrosshairImage.Visible = false
+            end
         else
             mobileCrosshairImage.Visible = false
             for _, id in pairs(CustomCrosshairs) do
                 if mouse.Icon == id then
                     mouse.Icon = ""
                 end
+            end
+            if S.CrosshairAssetId and mouse.Icon == S.CrosshairAssetId then
+                mouse.Icon = ""
             end
         end
     end)
@@ -4402,6 +4522,23 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secHandShaders, "Rainbow", false, function(v) S.HandRainbow = v end, 5)
     mkSlider(secHandShaders, "Fill Opacity", 0, 100, 60, function(v) S.HandFill = v end, 6)
 
+    local auraStyles = {"Angel Wings Aura", "Dracula Wings Aura", "Frozen Bloom Aura", "Magic Heart Aura", "Water Vortex (Feet)", "Pink Thunder Ring"}
+    local auraColors = {"Pink", "Cyan", "Red", "Purple", "White", "Blue", "Rainbow"}
+    local secAura = mkSection(Pages.Visuals, "Local Aura FX", 13)
+    mkToggle(secAura, "Unlock All Knife Effects (Visual)", false, function(v)
+        S.UnlockAllKnifeEffects = v
+        S.LocalKnifeEffect = v
+        if v then S.LocalVisualAura = true end
+    end, 1)
+    mkToggle(secAura, "Enable Aura FX", false, function(v) S.LocalVisualAura = v end, 2)
+    mkCycle(secAura, "Aura Style", auraStyles, "Angel Wings Aura", function(v)
+        S.LocalAuraStyle = v
+        S.LocalKnifeEffectStyle = v
+    end, 3)
+    mkCycle(secAura, "Aura Color", auraColors, "Pink", function(v) S.LocalAuraColor = v end, 4)
+    mkSlider(secAura, "Aura Intensity", 25, 150, 70, function(v) S.LocalAuraIntensity = v end, 5)
+    mkToggle(secAura, "Knife Effect Preview", false, function(v) S.LocalKnifeEffect = v end, 6)
+
     -- Dual Wield: removed
 
     local activeVisualsSubTab = "ESP"
@@ -4416,11 +4553,13 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         local isESP = activeVisualsSubTab == "ESP"
         local isEnvironment = activeVisualsSubTab == "Environment"
         local isShaders = activeVisualsSubTab == "Shaders"
+        local isCustoms = activeVisualsSubTab == "Customs"
         styleSubTabActive(espBtn, espStroke, isESP)
         styleSubTabActive(envBtn, envStroke, isEnvironment)
         styleSubTabActive(shaderBtn, shaderStroke, isShaders)
+        styleSubTabActive(customBtn, customStroke, isCustoms)
 
-        for _, section in ipairs({sec1, sec2, sec3, sec5, secFov}) do
+        for _, section in ipairs({sec1, sec2, sec5, secFov}) do
             if section and section.Parent then section.Parent.Visible = isESP end
         end
         for _, section in ipairs({sec4, secFx, secSky, secFog}) do
@@ -4428,6 +4567,9 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end
         for _, section in ipairs({secShaders, secHandShaders}) do
             if section and section.Parent then section.Parent.Visible = isShaders end
+        end
+        for _, section in ipairs({secCustoms, secAura}) do
+            if section and section.Parent then section.Parent.Visible = isCustoms end
         end
         -- (Overlay subtab removed together with Custom Crosshair / Dual Wield)
         for _, section in ipairs(extraEnvSections) do
@@ -4450,6 +4592,11 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     shaderBtn.MouseButton1Click:Connect(function()
         SFX.Click()
         activeVisualsSubTab = "Shaders"
+        updateVisualsSubTabs()
+    end)
+    customBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        activeVisualsSubTab = "Customs"
         updateVisualsSubTabs()
     end)
     updateVisualsSubTabs()
@@ -8933,6 +9080,287 @@ do
         restoreHandMaterials()
     end
     SG.Destroying:Connect(cleanupAll)
+end
+-- ============ LOCAL AURA / KNIFE EFFECT PREVIEW (visual only) ============
+do
+    local fxFolder, lastChar, lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity
+    local hue = 0
+
+    local function colorFor(name)
+        if name == "Rainbow" then return Color3.fromHSV(hue, 0.82, 1) end
+        if name == "Blue" then return Color3.fromRGB(110, 170, 255) end
+        return FOV_COLORS[name] or Color3.fromRGB(255, 120, 210)
+    end
+
+    local function clearFx()
+        if lastChar then
+            for _, obj in ipairs(lastChar:GetDescendants()) do
+                if typeof(obj.Name) == "string" and string.sub(obj.Name, 1, 7) == "MM2_FX_" then
+                    pcall(function() obj:Destroy() end)
+                end
+            end
+        end
+        if fxFolder then pcall(function() fxFolder:Destroy() end) end
+        fxFolder = nil
+    end
+
+    local function characterParts()
+        local char = LP.Character
+        if not char then return nil end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or hrp
+        return char, hrp, torso
+    end
+
+    local function newFxFolder(char)
+        clearFx()
+        local folder = Instance.new("Folder")
+        folder.Name = "MM2_FX_LocalAura"
+        folder.Parent = char
+        fxFolder = folder
+        lastChar = char
+        return folder
+    end
+
+    local function addAttachment(parent, name, pos)
+        local att = Instance.new("Attachment")
+        att.Name = "MM2_FX_" .. name
+        att.Position = pos or Vector3.zero
+        att.Parent = parent
+        return att
+    end
+
+    local function addEmitter(parent, name, color, rate, lifetime, speed, size, texture)
+        local em = Instance.new("ParticleEmitter")
+        em.Name = "MM2_FX_" .. name
+        em.Texture = texture or "rbxasset://textures/particles/sparkles_main.dds"
+        em.Color = ColorSequence.new(color)
+        em.LightEmission = 0.85
+        em.LightInfluence = 0
+        em.Rate = rate
+        em.Lifetime = NumberRange.new(lifetime * 0.7, lifetime)
+        em.Speed = NumberRange.new(speed * 0.45, speed)
+        em.SpreadAngle = Vector2.new(360, 360)
+        em.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, size * 0.3),
+            NumberSequenceKeypoint.new(0.2, size),
+            NumberSequenceKeypoint.new(1, 0),
+        })
+        em.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.15, 0.1),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        pcall(function()
+            em.Shape = Enum.ParticleEmitterShape.Disc
+            em.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+        end)
+        em.Parent = parent
+        return em
+    end
+
+    local function weldPart(folder, torso, name, cf, size, color, transparency)
+        local part = Instance.new("Part")
+        part.Name = "MM2_FX_" .. name
+        part.Anchored = false
+        part.CanCollide = false
+        part.CanTouch = false
+        part.CanQuery = false
+        part.Massless = true
+        part.Material = Enum.Material.Neon
+        part.Color = color
+        part.Transparency = transparency or 0.18
+        part.Size = size
+        part.CFrame = cf
+        part.Parent = folder
+        local weld = Instance.new("WeldConstraint")
+        weld.Name = "MM2_FX_Weld"
+        weld.Part0 = torso
+        weld.Part1 = part
+        weld.Parent = part
+        return part
+    end
+
+    local function addWing(folder, torso, color, dracula)
+        local tint = dracula and Color3.fromRGB(160, 0, 18) or color
+        local alpha = dracula and 0.1 or 0.2
+        for side = -1, 1, 2 do
+            for i = 1, 5 do
+                local length = (dracula and 1.65 or 1.35) - i * 0.08
+                local y = 0.72 - i * 0.17
+                local z = 0.42 + i * 0.03
+                local x = side * (0.78 + i * 0.22)
+                local angleZ = side * (dracula and (38 + i * 9) or (24 + i * 7))
+                local angleY = side * (dracula and 18 or 12)
+                weldPart(
+                    folder,
+                    torso,
+                    "Wing_" .. tostring(side) .. "_" .. tostring(i),
+                    torso.CFrame * CFrame.new(x, y, z) * CFrame.Angles(0, math.rad(angleY), math.rad(angleZ)),
+                    Vector3.new(0.11, length, 0.035),
+                    tint,
+                    alpha
+                )
+            end
+        end
+    end
+
+    local function addOrbs(folder, hrp, color, count, radius, y)
+        for i = 1, count do
+            local a = (i / count) * math.pi * 2
+            local part = weldPart(
+                folder,
+                hrp,
+                "Orb_" .. tostring(i),
+                hrp.CFrame * CFrame.new(math.cos(a) * radius, y + math.sin(a * 2) * 0.18, math.sin(a) * radius),
+                Vector3.new(0.18, 0.18, 0.18),
+                color,
+                0.08
+            )
+            part.Shape = Enum.PartType.Ball
+        end
+    end
+
+    local function addRing(folder, hrp, color, radius, y, count)
+        for i = 1, count do
+            local a = (i / count) * math.pi * 2
+            local part = weldPart(
+                folder,
+                hrp,
+                "Ring_" .. tostring(i),
+                hrp.CFrame * CFrame.new(math.cos(a) * radius, y, math.sin(a) * radius),
+                Vector3.new(0.16, 0.035, 0.16),
+                color,
+                0.12
+            )
+            part.Shape = Enum.PartType.Ball
+        end
+    end
+
+    local function buildAura(style, folder, hrp, torso, color, intensity)
+        local rootAtt = addAttachment(hrp, "RootAura", Vector3.new(0, -2.35, 0))
+        local chestAtt = addAttachment(torso, "ChestAura", Vector3.new(0, 0.35, 0.55))
+        local shoulderAtt = addAttachment(torso, "ShoulderAura", Vector3.new(0, 0.9, 0.25))
+        local rate = math.floor(18 + 28 * intensity)
+
+        if style == "Angel Wings Aura" then
+            addWing(folder, torso, color, false)
+            addRing(folder, hrp, color, 2.1, -2.45, 22)
+            addEmitter(shoulderAtt, "AngelGlow", Color3.fromRGB(255, 245, 255), rate, 1.2, 1.4, 0.38)
+            addEmitter(rootAtt, "AngelFeet", color, math.floor(rate * 0.65), 1.0, 1.0, 0.32)
+        elseif style == "Dracula Wings Aura" then
+            addWing(folder, torso, Color3.fromRGB(255, 30, 45), true)
+            addRing(folder, hrp, Color3.fromRGB(255, 35, 45), 2.0, -2.4, 18)
+            addEmitter(chestAtt, "BloodSpark", Color3.fromRGB(255, 45, 55), rate, 1.0, 2.1, 0.28)
+            addEmitter(rootAtt, "BloodFeet", Color3.fromRGB(255, 45, 55), math.floor(rate * 0.55), 0.9, 1.2, 0.24)
+        elseif style == "Frozen Bloom Aura" then
+            addRing(folder, hrp, Color3.fromRGB(170, 245, 255), 2.25, -2.45, 26)
+            addOrbs(folder, hrp, Color3.fromRGB(180, 245, 255), 8, 1.8, -0.35)
+            addEmitter(rootAtt, "FrostBloom", Color3.fromRGB(185, 245, 255), rate, 1.35, 1.4, 0.35)
+            addEmitter(shoulderAtt, "IcePetals", color, math.floor(rate * 0.7), 1.1, 1.8, 0.24)
+        elseif style == "Water Vortex (Feet)" then
+            addRing(folder, hrp, Color3.fromRGB(115, 220, 255), 2.35, -2.55, 30)
+            addRing(folder, hrp, Color3.fromRGB(210, 250, 255), 1.35, -2.25, 18)
+            addEmitter(rootAtt, "WaterVortex", Color3.fromRGB(120, 230, 255), math.floor(rate * 1.1), 1.15, 1.9, 0.3)
+        elseif style == "Pink Thunder Ring" then
+            addRing(folder, hrp, Color3.fromRGB(255, 135, 235), 2.65, -2.45, 34)
+            addEmitter(rootAtt, "ThunderFeet", Color3.fromRGB(255, 135, 235), math.floor(rate * 1.15), 0.75, 2.5, 0.22)
+            addEmitter(chestAtt, "ThunderBody", color, math.floor(rate * 0.65), 0.9, 1.7, 0.25)
+        else
+            addRing(folder, hrp, color, 2.0, -2.45, 22)
+            addOrbs(folder, hrp, color, 6, 1.6, 0.15)
+            addEmitter(chestAtt, "MagicHeart", Color3.fromRGB(255, 115, 210), rate, 1.1, 1.8, 0.34)
+            addEmitter(rootAtt, "MagicFeet", color, math.floor(rate * 0.75), 0.9, 1.2, 0.28)
+        end
+
+        local light = Instance.new("PointLight")
+        light.Name = "MM2_FX_AuraLight"
+        light.Color = color
+        light.Brightness = 1.4 * intensity
+        light.Range = 8 + 5 * intensity
+        light.Parent = hrp
+    end
+
+    local function buildKnifeEffect(char, color, intensity)
+        local tool = char:FindFirstChildOfClass("Tool")
+        local handle = tool and (tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart", true))
+        if not handle then return end
+
+        local a0 = addAttachment(handle, "KnifeTrailA", Vector3.new(0, 0.45, 0))
+        local a1 = addAttachment(handle, "KnifeTrailB", Vector3.new(0, -0.45, 0))
+        local trail = Instance.new("Trail")
+        trail.Name = "MM2_FX_KnifeTrail"
+        trail.Attachment0 = a0
+        trail.Attachment1 = a1
+        trail.Color = ColorSequence.new(color)
+        trail.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.1),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        trail.Lifetime = 0.34
+        trail.LightEmission = 0.85
+        trail.MinLength = 0.08
+        trail.Parent = handle
+
+        addEmitter(a0, "KnifeSpark", color, math.floor(12 + 24 * intensity), 0.55, 1.4, 0.18)
+    end
+
+    local function recolorFx(color)
+        if not lastChar then return end
+        for _, obj in ipairs(lastChar:GetDescendants()) do
+            if typeof(obj.Name) == "string" and string.sub(obj.Name, 1, 7) == "MM2_FX_" then
+                if obj:IsA("BasePart") then
+                    obj.Color = color
+                elseif obj:IsA("ParticleEmitter") then
+                    obj.Color = ColorSequence.new(color)
+                elseif obj:IsA("Trail") or obj:IsA("Beam") then
+                    obj.Color = ColorSequence.new(color)
+                elseif obj:IsA("PointLight") then
+                    obj.Color = color
+                end
+            end
+        end
+    end
+
+    task.spawn(function()
+        while S.Gui and S.Gui.Parent do
+            pcall(function()
+                hue = (hue + 0.01) % 1
+                local char, hrp, torso = characterParts()
+                local auraOn = S.LocalVisualAura or S.UnlockAllKnifeEffects or S.LocalKnifeEffect
+                local knifeOn = S.LocalKnifeEffect or S.UnlockAllKnifeEffects
+                if not char or not hrp or not torso or not auraOn then
+                    clearFx()
+                    lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity = nil, nil, nil, nil, nil
+                    return
+                end
+
+                local style = S.LocalAuraStyle or S.LocalKnifeEffectStyle or "Angel Wings Aura"
+                local colorName = S.LocalAuraColor or "Pink"
+                local intensity = math.clamp((tonumber(S.LocalAuraIntensity) or 70) / 100, 0.25, 1.5)
+                local needsRebuild = char ~= lastChar or style ~= lastStyle or colorName ~= lastColorName
+                    or auraOn ~= lastAuraOn or knifeOn ~= lastKnifeOn or math.abs((lastIntensity or 0) - intensity) > 0.05
+                local color = colorFor(colorName)
+
+                if needsRebuild then
+                    local folder = newFxFolder(char)
+                    buildAura(style, folder, hrp, torso, color, intensity)
+                    if knifeOn then buildKnifeEffect(char, color, intensity) end
+                    lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity = style, colorName, auraOn, knifeOn, intensity
+                elseif colorName == "Rainbow" then
+                    recolorFx(color)
+                end
+            end)
+            task.wait(0.2)
+        end
+        clearFx()
+    end)
+
+    tc(LP.CharacterAdded:Connect(function()
+        clearFx()
+        lastChar, lastStyle, lastColorName, lastAuraOn, lastKnifeOn, lastIntensity = nil, nil, nil, nil, nil, nil
+    end))
+    SG.Destroying:Connect(clearFx)
 end
 -- ============ DUAL WIELD (visual only) ============
 -- Clones whatever weapon Tool is currently equipped and welds a cosmetic copy of its Handle into the
@@ -15032,18 +15460,60 @@ do
     -- fires later, the same forward-reference-via-S trick as S._MSP / S._GetMurdererChar.
     S._playOnce = playOnce
 
-    -- Gunshot: 
-    local ws = workspace
-    local oldPlay = Instance.new("Sound").Play
-    
-    -- We can hook into gun shooting by detecting sounds.
-    ws.ChildAdded:Connect(function(child)
-        if child:IsA("Sound") and child.SoundId:match("5387431201") then
-            if S.CustomGunSoundId and S.CustomGunSoundId ~= "" then
-                child.SoundId = S.CustomGunSoundId
-            end
+    -- Gunshot: remember the original IDs on the local player's gun skins and
+    -- replace both the default shot and those skin-specific shots.  MM2 creates
+    -- some of these sounds directly under Workspace and some inside the Tool,
+    -- so ChildAdded on Workspace alone missed most skin sounds.
+    local defaultGunSoundIds = { ["rbxassetid://5387431201"] = true }
+    local localGunSoundIds = {}
+    for soundId in pairs(defaultGunSoundIds) do
+        localGunSoundIds[soundId] = true
+    end
+
+    local function isLocalGunSound(sound)
+        local character = LP.Character
+        local backpack = LP:FindFirstChildOfClass("Backpack")
+        local inLocalInventory = (character and sound:IsDescendantOf(character))
+            or (backpack and sound:IsDescendantOf(backpack))
+        if not inLocalInventory then return false end
+
+        local tool = sound:FindFirstAncestorWhichIsA("Tool")
+        return tool and tool.Name:lower():find("gun", 1, true) ~= nil
+    end
+
+    local function trackAndReplaceGunSound(sound)
+        if not sound:IsA("Sound") then return end
+
+        local soundId = sound.SoundId
+        if soundId == "" then return end
+        if isLocalGunSound(sound) then
+            localGunSoundIds[soundId] = true
         end
-    end)
+
+        if S.CustomGunSoundId and S.CustomGunSoundId ~= "" and localGunSoundIds[soundId] then
+            sound.SoundId = S.CustomGunSoundId
+        end
+    end
+
+    local function watchGunSound(instance)
+        if not instance:IsA("Sound") then return end
+        trackAndReplaceGunSound(instance)
+        tc(instance:GetPropertyChangedSignal("SoundId"):Connect(function()
+            trackAndReplaceGunSound(instance)
+        end))
+    end
+
+    for _, instance in ipairs(workspace:GetDescendants()) do
+        watchGunSound(instance)
+    end
+    tc(workspace.DescendantAdded:Connect(watchGunSound))
+    tc(LP.CharacterAdded:Connect(function()
+        task.defer(function()
+            for _, instance in ipairs(LP.Character and LP.Character:GetDescendants() or {}) do
+                watchGunSound(instance)
+            end
+        end)
+    end))
     -- Gun kill: GunFired fires client-side when a bullet connects
     task.spawn(function()
         local ok, ws = pcall(function()
