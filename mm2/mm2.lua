@@ -1606,11 +1606,51 @@ do
                 Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
             end
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     tc(UIS.InputEnded:Connect(function(i)
         if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
             di = nil
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
         end
     end))
 end
@@ -2055,11 +2095,51 @@ do
             local d = i.Position - ds
             SettingsModal.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     tc(UIS.InputEnded:Connect(function(i)
         if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
             di = nil
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
         end
     end))
 end
@@ -3371,6 +3451,26 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseMovement) then
             fromMouse(i)
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     tc(UIS.InputEnded:Connect(function(i)
         if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -3379,6 +3479,26 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
                 if sf then sf.ScrollingEnabled = true end
             end
             active = false
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
         end
     end))
     if not skipSearchRegistry then
@@ -3984,6 +4104,8 @@ do
     mkToggle(secMurder, "Auto Kill Nearest", false, function(v) S.AutoKillNearest = v end, 2)
     mkToggle(secMurder, "Kill Aura", false, function(v) S.KillAura = v end, 3)
     mkSlider(secMurder, "Kill Aura Range", 5, 60, 18, function(v) S.KillAuraRange = v end, 4)
+    mkToggle(secMurder, "Throw Aura", false, function(v) S.ThrowAura = v end, 4.1)
+    mkSlider(secMurder, "Throw Aura Range", 20, 200, 80, function(v) S.ThrowAuraRange = v end, 4.2)
     mkToggle(secMurder, "Click to Kill", false, function(v) S.ClickKill = v end, 5)
     mkAction(secMurder, "Kill Nearest", function()
         local n = S._MurdererNearest and S._MurdererNearest()
@@ -6154,6 +6276,26 @@ local function startHeadSit()
         if tRoot and myRoot and myHum and myHum.Sit then
             myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 1.6, 0.4)
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
 end
 -- Orbit
@@ -6846,6 +6988,26 @@ local function attachHUDDrag(frame, handle)
                 frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
             end
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     tc(UIS.InputEnded:Connect(function(input)
         if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -6854,6 +7016,26 @@ local function attachHUDDrag(frame, handle)
             dragInput = nil
             dragVisual(false)
             pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
         end
     end))
     dragHandle.MouseEnter:Connect(function()
@@ -8783,6 +8965,26 @@ do
             autoVoteNextScan = now + 0.05
             tryAutoVote()
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     mkToggle(secVote, "Auto Vote", false, function(v)
         S.AutoVote = v
@@ -9886,10 +10088,50 @@ do
             expandedSize = UDim2.fromOffset(math.max(560, rz.X + d.X), math.max(430, rz.Y + d.Y))
             Main.Size = expandedSize
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     tc(UIS.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             rs = false
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
         end
     end))
 end
@@ -9934,6 +10176,26 @@ do
         if newCamera then
             relayout()
             tc(newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(relayout))
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
         end
     end))
 end
@@ -14138,6 +14400,26 @@ do
                 trackedProjectiles[obj] = nil
             end
         end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end))
     S._ReapplyKnifeFlightSpeed()
 end
@@ -14251,13 +14533,19 @@ do
         return knife
     end
 
-    local lastNear, lastSheriff, lastAura = 0, 0, 0
+    local lastNear, lastSheriff, lastAura, lastThrowAura = 0, 0, 0, 0
+    local function getKnifeThrowEvent()
+        local c = LP.Character
+        local knife = (c and c:FindFirstChild("Knife")) or (LP:FindFirstChildOfClass("Backpack") and LP.Backpack:FindFirstChild("Knife"))
+        if not knife then return nil end
+        return knife:FindFirstChild("KnifeThrown", true)
+    end
     tc(RunService.Heartbeat:Connect(function()
         -- Check the toggles BEFORE the lookup: all three are off by default, and
         -- getKnifeEvents() walks Character/Backpack with several FindFirstChild
         -- calls — that was running every single frame for every player, forever,
         -- just to discover there was nothing to do.
-        if not (S.AutoKillSheriff or S.AutoKillNearest or S.KillAura) then return end
+        if not (S.AutoKillSheriff or S.AutoKillNearest or S.KillAura or S.ThrowAura) then return end
         local stab = getKnifeEvents()
         if not stab then return end  -- not holding the Knife (not the Murderer): nothing to do
         local now = tick()
@@ -14286,6 +14574,26 @@ do
                     if p ~= LP and p.Character then
                         local r = p.Character:FindFirstChild("HumanoidRootPart")
                         if r and (r.Position - myRoot.Position).Magnitude <= range then pcall(killInstant, p) end
+                    end
+                end
+            end
+        end
+        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
+            lastThrowAura = now
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local range = S.ThrowAuraRange or 80
+            if myRoot then
+                local thrownEvent = getKnifeThrowEvent()
+                if thrownEvent then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
+                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
+                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
+                                break
+                            end
+                        end
                     end
                 end
             end
