@@ -75,7 +75,7 @@ local S = {
     Orbit = false, OrbitSpeed = 20, OrbitDist = 6, OrbitHeight = 0,
     Bang = false, BangSpeed = 3, Jerk = false,
     BlockJump = false,
-    InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false,
+    InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false, ClickMenu = false,
     Fling = false, WalkFling = false, FlyFling = false, InvisFling = false,
     CoinESP = false, FastAutofarm = false, FastAutofarmSpeed = 20,
     -- Safe Mode caps how far the root may be moved in ONE frame. MM2 rejects a
@@ -7634,6 +7634,7 @@ do
     mkSlider(secTr, "Spin Speed", 5, 1000, 20, function(v) S.SpinSpeed = v end, 2)
     mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then startJerk() else stopJerk() end end, 3)
     mkToggle(secTr, "Click Fling", false, function(v) S.ClickFling = v end, 4)
+    mkToggle(secTr, "Click Menu", false, function(v) S.ClickMenu = v end, 4.05)
     -- ALL fling mechanics below are ported AS LITERALLY AS POSSIBLE from the Infinite Yield reference
     -- file (New Text Document.txt) — two distinct commands, kept distinct here too:
     --   Touch Fling = IY 'fling'     (BodyAngularVelocity spin — launches anyone who touches you)
@@ -8069,7 +8070,11 @@ do
     -- 8-character role to "INNOCE...". NETWORK needs the full key gutter, so the panel itself
     -- has to grow. S._ResizeQuickStatus rewrites this size on every window resize, so the width
     -- lives in one constant instead of being repeated there and silently winning.
-    local QUICK_W = 162
+    -- 162 was wide enough for the text but overhung the sidebar column, so the panel stuck out
+    -- over the content. Back to the column width; the labels below shrink to fit instead, which
+    -- is what actually fixes the clipping — the real cause was the user's larger Text Size scaling
+    -- these labels to 12/13px, where even "NETWORK" no longer fit its 48px gutter.
+    local QUICK_W = 124
     HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, 150)
     HUD.quickFrame.BackgroundColor3 = T.Card; pcall(function() HUD.quickFrame:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
     HUD.quickFrame.BackgroundTransparency = 0.01
@@ -8149,6 +8154,13 @@ do
         key.TextXAlignment = Enum.TextXAlignment.Left
         key.Text = label
         key.ZIndex = 27
+        -- Shrink-to-fit rather than clip: at a larger Text Size setting these labels scale up and
+        -- "NETWORK" overflowed its gutter while roles rendered as "INNOCE...".
+        key.TextScaled = true
+        local keyFit = Instance.new("UITextSizeConstraint")
+        keyFit.MinTextSize = 7
+        keyFit.MaxTextSize = 10
+        keyFit.Parent = key
         local value = Instance.new("TextLabel")
         value.Parent = row
         value.Position = UDim2.new(0, 48, 0, 0)
@@ -8159,9 +8171,13 @@ do
         value:SetAttribute("MinReadableTextSize", 10)
         value.TextColor3 = T.Tx; pcall(function() value:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
         value.TextXAlignment = Enum.TextXAlignment.Right
-        value.TextTruncate = Enum.TextTruncate.AtEnd
         value.Text = "—"
         value.ZIndex = 27
+        value.TextScaled = true
+        local valFit = Instance.new("UITextSizeConstraint")
+        valFit.MinTextSize = 8
+        valFit.MaxTextSize = 11
+        valFit.Parent = value
         return value
     end
     HUD.quickRole = quickRow("ROLE", 1)
@@ -15968,3 +15984,218 @@ end
 -- Initial controls were sized by the final bulk pass; future descendants can now update individually.
 S._UIBuildReady = true
 
+
+-- ============ CLICK MENU ============
+-- A themed ring under every player carrying a pointer icon; clicking it opens a small animated
+-- menu with Fling and Teleport. Own do-block so none of this lands in the main chunk's register
+-- budget: this file sits on Luau's 200-register ceiling and silently fails to load if pushed over.
+do
+    local rings = {}          -- [player] = BillboardGui
+    local openFor = nil       -- player whose menu is currently up
+    local CULL = 220          -- studs; the BillboardGui hides itself past this
+
+    local function themeColor()
+        return T.Accent or Color3.fromRGB(216, 215, 211)
+    end
+
+    local function closeMenu()
+        if not openFor then return end
+        local bb = rings[openFor]
+        openFor = nil
+        local menu = bb and bb:FindFirstChild("Menu")
+        if not menu then return end
+        local scale = menu:FindFirstChildOfClass("UIScale")
+        if scale then
+            TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                { Scale = 0 }):Play()
+        end
+        task.delay(0.13, function() if menu.Parent then menu.Visible = false end end)
+    end
+
+    local function buildMenu(bb, player)
+        local menu = Instance.new("Frame")
+        menu.Name = "Menu"
+        menu.AnchorPoint = Vector2.new(0.5, 1)
+        menu.Position = UDim2.new(0.5, 0, 0, -4)
+        menu.Size = UDim2.fromOffset(104, 58)
+        menu.BackgroundColor3 = T.Card
+        pcall(function() menu:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+        menu.BorderSizePixel = 0
+        menu.Visible = false
+        menu.Parent = bb
+        Corner(menu, 8)
+        Stroke(menu, T.Bd2, 1, 0.35)
+        local scale = Instance.new("UIScale")
+        scale.Scale = 0
+        scale.Parent = menu
+        local list = Instance.new("UIListLayout")
+        list.Padding = UDim.new(0, 4)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        list.Parent = menu
+        Pad(menu, 5, 5, 5, 5)
+
+        local whitelisted = isWhitelisted(player)
+        local function row(text, order, enabled, fn)
+            local b = Instance.new("TextButton")
+            b.Parent = menu
+            b.LayoutOrder = order
+            b.Size = UDim2.new(1, 0, 0, 22)
+            b.BackgroundColor3 = T.Elev
+            pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+            b.BorderSizePixel = 0
+            b.AutoButtonColor = false
+            b.Font = FM
+            b.TextSize = 12
+            b.Text = text
+            b.TextColor3 = enabled and T.Tx or T.Tx4
+            pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", enabled and "Tx" or "Tx4") end)
+            Corner(b, 6)
+            b.MouseButton1Click:Connect(function()
+                if not enabled then
+                    Notify("Click Menu", player.Name .. " is whitelisted", 2)
+                    return
+                end
+                SFX.Click()
+                closeMenu()
+                task.spawn(function() pcall(fn) end)
+            end)
+            return b
+        end
+
+        -- Whitelisted players keep their ring and Teleport, but Fling greys out: the point of the
+        -- list is that offensive actions skip them, and a one-click fling is easy to misfire.
+        row("Fling", 1, not whitelisted, function()
+            if S._FlingPlayer then S._FlingPlayer(player) end
+        end)
+        row("Teleport", 2, true, function()
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then Notify("Click Menu", "No character", 2) return end
+            -- Teleport self to them. A client cannot move somebody else's character.
+            if S._SafeTeleportSelf then
+                S._SafeTeleportSelf(hrp.CFrame * CFrame.new(0, 0, 3))
+            end
+        end)
+        return menu
+    end
+
+    local function makeRing(player)
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "MM2_ClickRing"
+        -- Drawn on top: at the feet with occlusion on, the ring disappears behind the character
+        -- and the ground, and an invisible click target is a broken click target.
+        bb.AlwaysOnTop = true
+        bb.Size = UDim2.fromOffset(46, 46)
+        bb.StudsOffsetWorldSpace = Vector3.new(0, -2.6, 0)
+        bb.MaxDistance = CULL
+        bb.ResetOnSpawn = false
+        bb.Parent = SG
+
+        local ring = Instance.new("TextButton")
+        ring.Name = "Ring"
+        ring.Parent = bb
+        ring.Size = UDim2.fromScale(1, 1)
+        ring.BackgroundTransparency = 1
+        ring.Text = ""
+        ring.AutoButtonColor = false
+
+        -- The ring is a bordered circle, so it needs no image asset and picks up the selected
+        -- theme through the same ThemeColorRole attributes every other surface uses.
+        local disc = Instance.new("Frame")
+        disc.Name = "Disc"
+        disc.Parent = ring
+        disc.Size = UDim2.fromScale(1, 1)
+        disc.BackgroundTransparency = 0.72
+        disc.BackgroundColor3 = T.Card
+        pcall(function() disc:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+        disc.BorderSizePixel = 0
+        Corner(disc, 9999)
+        local ringStroke = Stroke(disc, themeColor(), 2, 0)
+        ringStroke.Name = "RingStroke"
+
+        local icon = Instance.new("TextLabel")
+        icon.Name = "Icon"
+        icon.Parent = ring
+        icon.Size = UDim2.fromScale(1, 1)
+        icon.BackgroundTransparency = 1
+        icon.Font = FB
+        icon.TextSize = 16
+        icon.Text = "\u{261D}"
+        icon.TextColor3 = themeColor()
+
+        buildMenu(bb, player)
+
+        ring.MouseButton1Click:Connect(function()
+            local menu = bb:FindFirstChild("Menu")
+            if not menu then return end
+            if openFor == player then closeMenu() return end
+            closeMenu()
+            openFor = player
+            menu.Visible = true
+            local scale = menu:FindFirstChildOfClass("UIScale")
+            if scale then
+                scale.Scale = 0.7
+                TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                    { Scale = 1 }):Play()
+            end
+            SFX.On()
+        end)
+        return bb
+    end
+
+    local function dropRing(player)
+        local bb = rings[player]
+        if bb then pcall(function() bb:Destroy() end) end
+        rings[player] = nil
+        if openFor == player then openFor = nil end
+    end
+
+    local function refresh()
+        if not S.ClickMenu then
+            for p in pairs(rings) do dropRing(p) end
+            return
+        end
+        local accent = themeColor()
+        for _, p in ipairs(Players:GetPlayers()) do
+            local char = p.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if p ~= LP and hrp and hum and hum.Health > 0 then
+                local bb = rings[p]
+                if not bb or not bb.Parent then
+                    bb = makeRing(p)
+                    rings[p] = bb
+                end
+                bb.Adornee = hrp
+                local disc = bb:FindFirstChild("Ring") and bb.Ring:FindFirstChild("Disc")
+                local stroke = disc and disc:FindFirstChild("RingStroke")
+                -- Whitelisted players read green so it is obvious before you click.
+                local col = isWhitelisted(p) and Color3.fromRGB(96, 220, 128) or accent
+                if stroke then stroke.Color = col end
+                local ico = bb:FindFirstChild("Ring") and bb.Ring:FindFirstChild("Icon")
+                if ico then ico.TextColor3 = col end
+            elseif rings[p] then
+                dropRing(p)
+            end
+        end
+        for p in pairs(rings) do
+            if p.Parent == nil then dropRing(p) end
+        end
+    end
+
+    -- 5Hz, not per-frame. BillboardGui already tracks its adornee on the engine side every frame,
+    -- so this loop only adds/removes rings and recolours them. Always-on per-frame work is exactly
+    -- what caused this hub's long-standing lag before.
+    task.spawn(function()
+        while SG and SG.Parent do
+            pcall(refresh)
+            task.wait(0.2)
+        end
+        for p in pairs(rings) do dropRing(p) end
+    end)
+
+    tc(Players.PlayerRemoving:Connect(dropRing))
+    SG.Destroying:Connect(function()
+        for p in pairs(rings) do dropRing(p) end
+    end)
+end
