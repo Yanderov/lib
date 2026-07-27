@@ -3704,6 +3704,46 @@ do
     bindLocalizedText(envBtn, "Environment", "Environment", false)
     bindLocalizedText(shaderBtn, "Shaders", "Shaders", false)
 
+
+    local secCrosshair = mkSection(Pages.Visuals, "Custom Crosshair", 0.5)
+    mkToggle(secCrosshair, "Enable Custom Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
+    
+    local CustomCrosshairs = {
+        ["Neon Cyan"] = "rbxassetid://358650771",
+        ["Electric Purple"] = "rbxassetid://10891594364",
+        ["Precision Dot"] = "rbxassetid://2130621557",
+        ["Aim Cross"] = "rbxassetid://311756276",
+        ["Blue Spec"] = "rbxassetid://11759193017",
+        ["Circle Dot"] = "rbxassetid://13763954073",
+        ["Green Hit"] = "rbxassetid://2827093428",
+        ["Simple Dot"] = "rbxassetid://2130621557"
+    }
+    
+    mkCycle(secCrosshair, "Crosshair Style", {"Neon Cyan", "Electric Purple", "Precision Dot", "Aim Cross", "Blue Spec", "Circle Dot", "Green Hit", "Simple Dot"}, "Neon Cyan", function(v) 
+        S.CrosshairStyle = v 
+    end, 2)
+    
+    RunService.RenderStepped:Connect(function()
+        local mouse = Players.LocalPlayer:GetMouse()
+        if S.CustomCrosshair then
+            local currentCustom = CustomCrosshairs[S.CrosshairStyle or "Neon Cyan"]
+            if mouse.Icon == "rbxasset://textures/MouseLockedCursor.png" then
+                mouse.Icon = currentCustom
+            end
+            for _, id in pairs(CustomCrosshairs) do
+                if mouse.Icon == id and id ~= currentCustom then
+                    mouse.Icon = currentCustom
+                end
+            end
+        else
+            for _, id in pairs(CustomCrosshairs) do
+                if mouse.Icon == id then
+                    mouse.Icon = "rbxasset://textures/MouseLockedCursor.png"
+                end
+            end
+        end
+    end)
+
     local sec1 = mkSection(Pages.Visuals, "Chams", 1)
     mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 2)
     mkSlider(sec1, "Chams Opacity", 0, 100, 50, function(v) S.ChamsOpacity = v end, 3)
