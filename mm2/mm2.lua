@@ -3707,6 +3707,10 @@ do
     local sec1 = mkSection(Pages.Visuals, "Chams", 1)
     mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 2)
     mkSlider(sec1, "Chams Opacity", 0, 100, 50, function(v) S.ChamsOpacity = v end, 3)
+    mkToggle(sec1, "Gun Chams", false, function(v) S.GunHeldChams = v; S.GunChams = v end, 4)
+    mkCycle(sec1, "Gun Chams Mode", {"Highlight", "Outline", "Solid", "ForceField", "Neon", "Glass", "Maze", "Mirror"}, "Highlight", function(v) S.ItemChamsMode = v end, 5)
+    mkCycle(sec1, "Gun Chams Color", {"White", "Red", "Green", "Blue", "Yellow", "Cyan", "Purple", "Orange", "Pink", "Black"}, "Cyan", function(v) S.ItemChamsColor = v end, 6)
+    mkToggle(sec1, "Gun Chams Rainbow", false, function(v) S.ItemChamsRainbow = v end, 7)
 
     local sec2 = mkSection(Pages.Visuals, "Player ESP", 2)
     mkToggle(sec2, "Name ESP", false, function(v) S.NameESP = v end, 1)
@@ -3719,9 +3723,6 @@ do
     mkToggle(sec2, "Head Dot", false, function(v) S.HeadDot = v end, 8)
     mkCycle(sec2, "Tracer Origin", {"Bottom", "Center", "Top", "Mouse"}, "Bottom", function(v) S.TracerOrigin = v end, 9)
     mkSlider(sec2, "ESP Max Dist", 100, 2000, 1000, function(v) S.ESPMaxDist = v end, 10)
-
-    local sec3 = mkSection(Pages.Visuals, "Item ESP", 3)
-    -- in the Chams section — both are the same gun item, so one Mode/Color/Rainbow set covers both.
 
     local sec5 = mkSection(Pages.Visuals, "Alerts", 4)
     mkToggle(sec5, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 1)
