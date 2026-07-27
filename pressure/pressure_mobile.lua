@@ -2824,25 +2824,25 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 	-- Touch counts as a drag here.  Matching only MouseButton1/MouseMovement (as
 	-- this did) makes every slider in the hub dead on a phone — you could see
 	-- the bar but never move it.
+	local activeInput = nil
 	tc(bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
+			if activeInput then return end
+			activeInput = input
 			dragging = true
-			-- A touch drag inside a ScrollingFrame scrolls the page as well as
-			-- moving the slider; freeze the scroll for the duration of the drag.
 			ContentArea.ScrollingEnabled = false
 			updateFromInput(input)
 		end
 	end))
 	tc(UIS.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch) then updateFromInput(input) end
+		if dragging and input == activeInput then updateFromInput(input) end
 	end))
 	tc(UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if input == activeInput then
 			if dragging then ContentArea.ScrollingEnabled = true end
 			dragging = false
+			activeInput = nil
 		end
 	end))
 

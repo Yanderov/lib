@@ -3333,8 +3333,11 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     -- this did) leaves every slider dead on a phone. Freezing the page scroll
     -- for the drag is the other half: a touch drag inside a ScrollingFrame
     -- scrolls the page as well as moving the slider.
+    local activeInput = nil
     frame.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            if activeInput then return end
+            activeInput = i
             active = true
             if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
@@ -3344,17 +3347,18 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if active and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if active and i == activeInput then
             fromMouse(i)
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i == activeInput then
             if active and MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if sf then sf.ScrollingEnabled = true end
             end
             active = false
+            activeInput = nil
         end
     end))
     if not skipSearchRegistry then
@@ -6700,8 +6704,11 @@ local function attachHUDDrag(frame, handle)
             }):Play()
         end
     end
+    local activeInput = nil
     dragHandle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if activeInput then return end
+            activeInput = input
             dragging = true
             moved = false
             dragStart = input.Position
@@ -6711,34 +6718,17 @@ local function attachHUDDrag(frame, handle)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
+        if dragging and input == activeInput and dragStart and startPos then
             local delta = input.Position - dragStart
-            -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
-            -- menu on a tap (under 10px of travel), so without this the finger wobble
-            -- of a normal tap would also shove the island across the screen.
             if not moved and math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then return end
             moved = true
-            -- Keep the whole element on screen and store the result as Scale, so a HUD
-            -- element cannot be flung somewhere unreachable and survives a rotation.
-            local host = frame.Parent and frame.Parent.AbsoluteSize
-            if host and host.X > 0 and host.Y > 0 and startOrigin then
-                local size = frame.AbsoluteSize
-                local function fit(v, extent, span)
-                    if span >= extent then return (extent - span) / 2 end
-                    return math.clamp(v, 0, extent - span)
-                end
-                local x = fit(startOrigin.X + delta.X, host.X, size.X)
-                local y = fit(startOrigin.Y + delta.Y, host.Y, size.Y)
-                local pivot = Vector2.new(x, y) + frame.AnchorPoint * size
-                frame.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
-            else
-                frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            end
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and input == activeInput then
             dragging = false
+            activeInput = nil
             dragVisual(false)
             pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         end

@@ -6722,8 +6722,11 @@ local function attachHUDDrag(frame, handle)
             }):Play()
         end
     end
+    local activeInput = nil
     dragHandle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if activeInput then return end
+            activeInput = input
             dragging = true
             dragInput = input
             moved = false
@@ -6734,7 +6737,7 @@ local function attachHUDDrag(frame, handle)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
-        if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
+        if dragging and input == activeInput and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
             local delta = input.Position - dragStart
             -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
             -- menu on a tap (under 10px of travel), so without this the finger wobble
@@ -6760,8 +6763,9 @@ local function attachHUDDrag(frame, handle)
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
-        if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and input == activeInput and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
+            activeInput = nil
             dragInput = nil
             dragVisual(false)
             pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
