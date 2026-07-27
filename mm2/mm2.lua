@@ -10539,7 +10539,7 @@ local function startIYFling()
 
     iyPulseToken = iyPulseToken + 1
     local myToken = iyPulseToken
-    task.spawn(function()
+        task.spawn(function()
         local movel = 0.1
         while iyFlinging and myToken == iyPulseToken do
             RunService.Heartbeat:Wait()
@@ -10553,16 +10553,26 @@ local function startIYFling()
             if not (iyFlinging and myToken == iyPulseToken) then break end
 
             local vel = r.Velocity
-            pcall(function() r.Velocity = vel * 10000 + Vector3.new(0, 10000, 0) end)
+            pcall(function() 
+                r.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+                r.AssemblyLinearVelocity = r.Velocity
+                r.AssemblyAngularVelocity = Vector3.new(0, 999999999, 0)
+            end)
 
             RunService.RenderStepped:Wait()
             if iyFlinging and myToken == iyPulseToken and character.Parent and r.Parent then
-                pcall(function() r.Velocity = vel end)
+                pcall(function() 
+                    r.Velocity = vel
+                    r.AssemblyLinearVelocity = vel 
+                end)
             end
 
             RunService.Stepped:Wait()
             if iyFlinging and myToken == iyPulseToken and character.Parent and r.Parent then
-                pcall(function() r.Velocity = vel + Vector3.new(0, movel, 0) end)
+                pcall(function() 
+                    r.Velocity = vel + Vector3.new(0, movel, 0)
+                    r.AssemblyLinearVelocity = r.Velocity 
+                end)
                 movel = movel * -1
             end
         end
