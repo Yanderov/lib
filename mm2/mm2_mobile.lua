@@ -3771,6 +3771,20 @@ do
     mkCycle(secFov, "FOV Color", {"White", "Red", "Green", "Blue", "Yellow", "Cyan", "Purple", "Orange", "Pink", "Black"}, "White", function(v) S.FOVColor = v end, 6)
 
     -- Environment components
+    local secCam = mkSection(Pages.Visuals, "Camera", 5.5)
+    mkToggle(secCam, "Stretch Resolution", false, function(v) S.StretchEnabled = v end, 1)
+    mkSlider(secCam, "Stretch Amount", 10, 100, 75, function(v) S.StretchAmount = v / 100 end, 2)
+
+    RunService.RenderStepped:Connect(function()
+        if S.StretchEnabled then
+            local cam = workspace.CurrentCamera
+            if cam then
+                local stretch = S.StretchAmount or 0.75
+                cam.CFrame = cam.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, stretch, 0, 0, 0, 1)
+            end
+        end
+    end)
+
     local sec4 = mkSection(Pages.Visuals, "World", 6)
     mkToggle(sec4, "Fullbright", false, function(v) S.FullBright = v end, 1)
     mkToggle(sec4, "No Fog", false, function(v) S.NoFog = v end, 2)
