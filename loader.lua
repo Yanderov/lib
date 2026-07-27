@@ -215,10 +215,16 @@ local function launch(entry)
 		-- The build flag is what the hub reads to decide which interface to
 		-- construct; set it BEFORE the chunk runs, never after.
 		_G.INERTIA_MOBILE = MOBILE
-		-- The time query defeats the raw.githubusercontent CDN cache (~5 min):
-		-- without it, a freshly pushed fix keeps serving the previous, possibly
-		-- broken file and "nothing injects" for no visible reason.
-		local url = REPO .. entry.file .. (MOBILE and "_mobile" or "") .. ".lua?t=" .. tostring(os.time())
+		-- Fetch the latest commit hash from the GitHub API. By using the exact SHA
+		-- instead of a branch name, we bypass the raw.githubusercontent.com cache entirely.
+		local sha = "main"
+		local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
+		if okApi and type(apiRes) == "string" then
+			local extracted = apiRes:match('"sha"%s*:%s*"([^"]+)"')
+			if extracted then sha = extracted end
+		end
+		
+		local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. entry.file .. (MOBILE and "_mobile" or "") .. ".lua"
 		local ok, source = pcall(function() return game:HttpGet(url) end)
 		if not ok or type(source) ~= "string" or #source == 0 then
 			busy = false
