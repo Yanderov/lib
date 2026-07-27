@@ -1319,7 +1319,7 @@ do
 		end
 	end))
 	tc(UIS.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local d = input.Position - dragStart
 			-- A compact floating panel dragged past the screen edge is unrecoverable
 			-- on touch (no window list to get it back), and the spot is remembered as
@@ -2636,7 +2636,7 @@ local function queuePageLayout()
     if pageLayoutQueued then return end
     pageLayoutQueued = true
     task.defer(function()
-        RunService.Heartbeat:Wait()
+        task.wait()
         refreshPageLayouts()
     end)
 end
@@ -2834,7 +2834,7 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 		end
 	end))
 	tc(UIS.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement
 			or input.UserInputType == Enum.UserInputType.Touch) then updateFromInput(input) end
 	end))
 	tc(UIS.InputEnded:Connect(function(input)

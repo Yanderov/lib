@@ -1578,6 +1578,7 @@ do
             end
             if over(SearchBox) or over(CloseBtn)  then return end
             dr = true
+            di = i
             ds = i.Position
             sp = Main.Position
             -- Top-left at drag start, in parent space: the clamp below offsets from
@@ -1587,7 +1588,7 @@ do
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if dr and i == di and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - ds
             -- A compact floating panel dragged past the screen edge is unrecoverable
             -- on touch (no window list to get it back) and the spot is remembered as
@@ -1610,8 +1611,9 @@ do
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
+            di = nil
         end
     end))
 end
@@ -2041,24 +2043,26 @@ mScroll.Active = true
 
 -- Make settings modal draggable by header
 do
-    local dr, ds, sp
+    local dr, di, ds, sp
     mHdr.Active = true
     mHdr.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dr = true
+            di = i
             ds = i.Position
             sp = SettingsModal.Position
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if dr and i == di and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - ds
             SettingsModal.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
+            di = nil
         end
     end))
 end
@@ -2323,7 +2327,7 @@ local function queuePageLayout()
     if pageLayoutQueued then return end
     pageLayoutQueued = true
     task.defer(function()
-        RunService.Heartbeat:Wait()
+        task.wait()
         refreshPageLayouts()
     end)
 end
@@ -2763,6 +2767,7 @@ do
             pressPos, dragging = input.Position, false
             local startCentre = frame.AbsolutePosition + frame.AbsoluteSize / 2
             moveConn = UIS.InputChanged:Connect(function(moved)
+                if moved ~= input then return end
                 if not pressPos then return end
                 if moved.UserInputType ~= Enum.UserInputType.Touch
                     and moved.UserInputType ~= Enum.UserInputType.MouseMovement then return end
@@ -3317,6 +3322,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     end
     upd(val)
     local active = false
+    local activeInput = nil
     local function fromMouse(input)
         local bp = bar.AbsolutePosition
         local bs = bar.AbsoluteSize
@@ -3335,6 +3341,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     frame.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             active = true
+            activeInput = i
             if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if sf then sf.ScrollingEnabled = false end
@@ -3343,13 +3350,13 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if active and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if active and i == activeInput and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             fromMouse(i)
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            if active and MOBILE then
+        if active and i == activeInput and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+            if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if sf then sf.ScrollingEnabled = true end
             end
@@ -6673,7 +6680,7 @@ local HUD = {}
 local HUDEls = {}
 local function attachHUDDrag(frame, handle)
     local dragHandle = handle or frame
-    local dragging, dragStart, startPos = false, nil, nil
+    local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
     local moved, startOrigin = false, nil
     -- Every HUD readout is laid out in desktop pixels; on a phone those plates eat a
     -- huge share of a much smaller screen. Scale the whole family from one constant
@@ -6708,6 +6715,7 @@ local function attachHUDDrag(frame, handle)
     dragHandle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
+            dragInput = input
             moved = false
             dragStart = input.Position
             startPos = frame.Position
@@ -6716,7 +6724,7 @@ local function attachHUDDrag(frame, handle)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
+        if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
             local delta = input.Position - dragStart
             -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
             -- menu on a tap (under 10px of travel), so without this the finger wobble
@@ -6742,8 +6750,9 @@ local function attachHUDDrag(frame, handle)
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
+            dragInput = nil
             dragVisual(false)
             pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         end
