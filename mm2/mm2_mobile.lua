@@ -4126,7 +4126,7 @@ local function setGlobalOpacity(v)
 end
 -- ==========================================================
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
-    mkToggle(secCustoms, "Enable Custom Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
+    mkToggle(secCustoms, "Enable Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
     -- Slider for custom crosshairs
     mkSlider(secCustoms, "Crosshair ID", 1, #cursorPaths, 1, function(v)
