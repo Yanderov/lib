@@ -10575,26 +10575,16 @@ local function startIYFling()
             if not (iyFlinging and myToken == iyPulseToken) then break end
 
             local vel = r.Velocity
-            pcall(function() 
-                r.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
-                r.AssemblyLinearVelocity = r.Velocity
-                r.AssemblyAngularVelocity = Vector3.new(0, 999999999, 0)
-            end)
+            pcall(function() r.Velocity = vel * 10000 + Vector3.new(0, 10000, 0) end)
 
             RunService.RenderStepped:Wait()
             if iyFlinging and myToken == iyPulseToken and character.Parent and r.Parent then
-                pcall(function() 
-                    r.Velocity = vel
-                    r.AssemblyLinearVelocity = vel 
-                end)
+                pcall(function() r.Velocity = vel end)
             end
 
             RunService.Stepped:Wait()
             if iyFlinging and myToken == iyPulseToken and character.Parent and r.Parent then
-                pcall(function() 
-                    r.Velocity = vel + Vector3.new(0, movel, 0)
-                    r.AssemblyLinearVelocity = r.Velocity 
-                end)
+                pcall(function() r.Velocity = vel + Vector3.new(0, movel, 0) end)
                 movel = movel * -1
             end
         end
@@ -10633,36 +10623,19 @@ local function flingPlayer(target)
         workspace.FallenPartsDestroyHeight = 0 / 0
         if ownSpin and not startIYFling() then return end
 
-        local bav = Instance.new("BodyAngularVelocity")
-        bav.Name = "FlingVelocityImpulse"
-        bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bav.AngularVelocity = Vector3.new(0, 999999, 0)
-        bav.Parent = root
-        
-        local bp = Instance.new("BodyPosition")
-        bp.Name = "FlingPositionImpulse"
-        bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bp.P = 10000
-        bp.Parent = root
-
         local deadline = tick() + math.clamp(tonumber(S.FlingDuration) or 6, 1, 15)
         repeat
             tchar = target.Character
             troot = tchar and tchar:FindFirstChild("HumanoidRootPart")
             thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
             if not (troot and thum and thum.Health > 0) then break end
-
-            local lead = troot.AssemblyLinearVelocity * 0.1
-            bp.Position = troot.Position + lead
             
-            root.AssemblyLinearVelocity = Vector3.new(99999, 99999, 99999)
-            root.AssemblyAngularVelocity = Vector3.new(0, 999999, 0)
+            -- Teleport inside target, the startIYFling thread will apply massive velocity spikes
+            root.CFrame = troot.CFrame * CFrame.new(0, 0, 0)
+            
             task.wait()
             flung = troot and troot.Parent and (troot.AssemblyLinearVelocity.Magnitude > 300 or troot.Velocity.Magnitude > 300)
         until flung or tick() > deadline or hum.Health <= 0
-
-        if bav and bav.Parent then bav:Destroy() end
-        if bp and bp.Parent then bp:Destroy() end
     end)
     if ownSpin and not S.TouchFling then stopIYFling() end
     pcall(function()
