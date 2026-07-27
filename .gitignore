@@ -1,0 +1,9 @@
+# Scratch files from patching/verification sessions — not part of the hub sources.
+mm2/temp*.lua
+mm2/*.bak-*
+mm2/luac.exe
+mm2/patcher*.py
+mm2/patch_*.py
+mm2/check_syntax*.py
+mm2/fix_double_end.py
+patch_loader.py

@@ -1910,6 +1910,9 @@ local function watchPageChild(child)
     tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
 end
 for _, page in pairs(Pages) do
+    tc(page:GetPropertyChangedSignal("Visible"):Connect(function()
+        if page.Visible then queuePageLayout() end
+    end))
     for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
     tc(page.ChildAdded:Connect(function(child)
         watchPageChild(child)
@@ -2319,7 +2322,7 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 	lbl.TextColor3 = T.Tx2
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.Text = label
-	local vlbl = Instance.new("TextLabel")
+	local vlbl = Instance.new("TextBox")
 	vlbl.Parent = frame
 	vlbl.BackgroundTransparency = 1
 	vlbl.AnchorPoint = Vector2.new(1, 0)
@@ -2329,6 +2332,7 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 	vlbl.TextSize = MOBILE and 13 or 14
 	vlbl.TextColor3 = T.White
 	vlbl.TextXAlignment = Enum.TextXAlignment.Right
+	vlbl.ClearTextOnFocus = false
 	local bar = Instance.new("Frame")
 	bar.Parent = frame
 	bar.AnchorPoint = Vector2.new(0.5, 0)
@@ -2361,6 +2365,21 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 		vlbl.Text = tostring(v)
 	end
 	upd(val)
+	vlbl.FocusLost:Connect(function()
+		local num = tonumber(vlbl.Text)
+		if num then
+			num = math.clamp(math.floor(num + 0.5), min, max)
+			if num ~= val then
+				val = num
+				upd(val)
+				callback(val)
+			else
+				vlbl.Text = tostring(val)
+			end
+		else
+			vlbl.Text = tostring(val)
+		end
+	end)
 	local active = false
 	local function fromMouse(input)
 		local bp = bar.AbsolutePosition

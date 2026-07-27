@@ -1323,7 +1323,7 @@ do
 		end
 	end))
 	tc(UIS.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local d = input.Position - dragStart
 			-- A compact floating panel dragged past the screen edge is unrecoverable
 			-- on touch (no window list to get it back), and the spot is remembered as
@@ -2640,7 +2640,7 @@ local function queuePageLayout()
     if pageLayoutQueued then return end
     pageLayoutQueued = true
     task.defer(function()
-        RunService.Heartbeat:Wait()
+        task.wait()
         refreshPageLayouts()
     end)
 end
@@ -2650,6 +2650,9 @@ local function watchPageChild(child)
     tc(child:GetPropertyChangedSignal("AbsoluteSize"):Connect(queuePageLayout))
 end
 for _, page in pairs(Pages) do
+    tc(page:GetPropertyChangedSignal("Visible"):Connect(function()
+        if page.Visible then queuePageLayout() end
+    end))
     for _, child in ipairs(page:GetChildren()) do watchPageChild(child) end
     tc(page.ChildAdded:Connect(function(child)
         watchPageChild(child)
@@ -2785,7 +2788,8 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 	pill.Position = UDim2.new(1, -4, 0, 0); pill.Size = UDim2.new(0, MOBILE and 54 or 50, 0, MOBILE and 22 or 20)
 	pill.BackgroundColor3 = T.Elev
 	Corner(pill, 7); Stroke(pill, T.Bd, 1, 0.5)
-	local valLbl = Instance.new("TextLabel")
+	local valLbl = Instance.new("TextBox")
+	valLbl.ClearTextOnFocus = false
 	valLbl.Parent = pill; valLbl.BackgroundTransparency = 1; valLbl.Size = UDim2.new(1, 0, 1, 0)
 	valLbl.Font = FM; valLbl.TextSize = MOBILE and 12 or 13; valLbl.TextColor3 = T.White; valLbl.Text = tostring(S[key] or minVal)
 
@@ -2814,6 +2818,14 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 		valLbl.Text = tostring(val)
 		if callback then pcall(callback, val) end
 	end
+	valLbl.FocusLost:Connect(function()
+		local num = tonumber(valLbl.Text)
+		if num then
+			setVal(num)
+		else
+			valLbl.Text = tostring(S[key] or minVal)
+		end
+	end)
 
 	local dragging = false
 	local function updateFromInput(input)
@@ -2824,25 +2836,25 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 	-- Touch counts as a drag here.  Matching only MouseButton1/MouseMovement (as
 	-- this did) makes every slider in the hub dead on a phone — you could see
 	-- the bar but never move it.
-	local activeInput = nil
 	tc(bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
-			if activeInput then return end
-			activeInput = input
 			dragging = true
+			-- A touch drag inside a ScrollingFrame scrolls the page as well as
+			-- moving the slider; freeze the scroll for the duration of the drag.
 			ContentArea.ScrollingEnabled = false
 			updateFromInput(input)
 		end
 	end))
 	tc(UIS.InputChanged:Connect(function(input)
-		if dragging and input == activeInput then updateFromInput(input) end
+		if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then updateFromInput(input) end
 	end))
 	tc(UIS.InputEnded:Connect(function(input)
-		if input == activeInput then
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
 			if dragging then ContentArea.ScrollingEnabled = true end
 			dragging = false
-			activeInput = nil
 		end
 	end))
 
