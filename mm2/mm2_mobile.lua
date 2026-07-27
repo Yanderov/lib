@@ -2754,9 +2754,12 @@ do
             pressPos, dragging = nil, false
         end
 
+        local activeInput = nil
         tc(frame.InputBegan:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.Touch
                 and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+            if activeInput then return end
+            activeInput = input
             -- A second finger landing on the same button would otherwise orphan
             -- the first press's connections, leaking one per multi-touch.
             if moveConn then moveConn:Disconnect(); moveConn = nil end
@@ -2764,6 +2767,7 @@ do
             pressPos, dragging = input.Position, false
             local startCentre = frame.AbsolutePosition + frame.AbsoluteSize / 2
             moveConn = UIS.InputChanged:Connect(function(moved)
+                if moved ~= activeInput then return end
                 if not pressPos then return end
                 if moved.UserInputType ~= Enum.UserInputType.Touch
                     and moved.UserInputType ~= Enum.UserInputType.MouseMovement then return end
@@ -2780,7 +2784,10 @@ do
                 end
             end)
             endConn = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then finish() end
+                if input.UserInputState == Enum.UserInputState.End and input == activeInput then 
+                    activeInput = nil
+                    finish() 
+                end
             end)
         end))
 
