@@ -13516,6 +13516,7 @@ do
         ["NFL"] = { Animation1 = 92080889861410, Animation2 = 74451233229259, WalkAnim = 110358958299415, RunAnim = 117333533048078, JumpAnim = 119846112151352, FallAnim = 129773241321032, ClimbAnim = 134630013742019, Swim = 132697394189921, SwimIdle = 79090109939093 },
         ["Ninja"] = { bundle = 75, Animation1 = 656117400, Animation2 = 656118341, WalkAnim = 656121766, RunAnim = 656118852, JumpAnim = 656117878, FallAnim = 656115606, ClimbAnim = 656114359, Swim = 656119721, SwimIdle = 656121397 },
         ["R6 (Classic)"] = { bundle = 0, Animation1 = 180435571, WalkAnim = 180426354, RunAnim = 180426354, JumpAnim = 125750702, FallAnim = 180436148, ClimbAnim = 180436334, Swim = 180426354, SwimIdle = 180435571 },
+                ["Pirate"] = { bundle = 66, Animation1 = 837024662, WalkAnim = 837023892, RunAnim = 837023444, JumpAnim = 837024350, FallAnim = 837024147, ClimbAnim = 837025325, Swim = 837025054, SwimIdle = 837025054 },
         ["No Boundaries"] = { Animation1 = 18747067405, Animation2 = 18747063918, WalkAnim = 18747074203, RunAnim = 18747070484, JumpAnim = 18747069148, FallAnim = 18747062535, ClimbAnim = 18747060903, Swim = 18747073181, SwimIdle = 18747071682 },
         ["Robot"] = { bundle = 82, Animation1 = 616088211, Animation2 = 616089559, WalkAnim = 616095330, RunAnim = 616091570, JumpAnim = 616090535, FallAnim = 616087089, ClimbAnim = 616086039, Swim = 616092998, SwimIdle = 616094091 },
         ["Stylish"] = { bundle = 83, Animation1 = 616136790, Animation2 = 616138447, WalkAnim = 616146177, RunAnim = 616140816, JumpAnim = 616139451, FallAnim = 616134815, ClimbAnim = 616133594, Swim = 616143378, SwimIdle = 616144772 },
@@ -13532,8 +13533,10 @@ do
     -- The full Roblox bundle catalog contains many new UGC packs that are visible in the
     -- catalog but are not consistently loadable by every experience.
     local POPULAR_PACK_ORDER = {
-        "Adidas Sports", "Astronaut", "Bubbly", "Cartoon", "Elder", "Levitation",
-        "Mage", "Ninja", "R6 (Classic)", "Robot", "Stylish", "Superhero", "Toy", "Vampire", "Zombie",
+        "Adidas Aura", "Adidas Community", "Adidas Sports", "Amazon Unboxed", "Astronaut",
+        "Bubbly", "Cartoon", "Catwalk Glam", "Elder", "Levitation", "Mage", "NFL", "Ninja", "Pirate",
+        "No Boundaries", "R6 (Classic)", "Robot", "Stylish", "Superhero", "Toy", "Vampire",
+        "Werewolf", "Wicked \"Dancing Through Life\"", "Wicked Popular", "Zombie"
     }
     local MAX_ANIMATION_BUNDLES = 100
     local function hasWorkingAnimationSlots(pack)
