@@ -1593,7 +1593,7 @@ do
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and i == activeInput and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if dr and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseMovement) then
             local d = i.Position - ds
             -- A compact floating panel dragged past the screen edge is unrecoverable
             -- on touch (no window list to get it back) and the spot is remembered as
@@ -6733,7 +6733,7 @@ local function attachHUDDrag(frame, handle)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
-        if dragging and input == activeInput and dragStart and startPos then
+        if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseMovement) and dragStart and startPos then
             local delta = input.Position - dragStart
             if not moved and math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then return end
             moved = true
@@ -6741,7 +6741,7 @@ local function attachHUDDrag(frame, handle)
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
-        if dragging and input == activeInput then
+        if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseButton1) then
             dragging = false
             activeInput = nil
             dragVisual(false)

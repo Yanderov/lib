@@ -3371,12 +3371,12 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if active and i == activeInput and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseMovement) then
             fromMouse(i)
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if active and i == activeInput and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+        if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseButton1) then
             if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
                 if sf then sf.ScrollingEnabled = true end
@@ -6742,7 +6742,7 @@ local function attachHUDDrag(frame, handle)
         end
     end)
     tc(UIS.InputChanged:Connect(function(input)
-        if dragging and input == activeInput and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragStart and startPos then
+        if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseMovement) and dragStart and startPos then
             local delta = input.Position - dragStart
             -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
             -- menu on a tap (under 10px of travel), so without this the finger wobble
@@ -6768,7 +6768,7 @@ local function attachHUDDrag(frame, handle)
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
-        if dragging and input == activeInput and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseButton1) then
             dragging = false
             activeInput = nil
             dragInput = nil
