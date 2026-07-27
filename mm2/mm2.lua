@@ -1566,7 +1566,7 @@ end)
 do
     -- Touch counts as a drag: matching only MouseButton1/MouseMovement (as this
     -- did) makes the window impossible to move on a phone.
-    local dr, ds, sp, so
+    local dr, ds, sp, so, di
     TBar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             -- The search box and the header buttons bubble input through TBar;
