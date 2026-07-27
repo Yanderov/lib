@@ -10574,9 +10574,6 @@ end
 -- FallenPartsDestroyHeight is NaN'd for the duration so nobody void-dies mid-throw.
 local flingBusy = false
 local function flingPlayer(target)
-    -- Wait briefly instead of failing outright: a click that lands while the previous
-    -- fling (or the touch-fling loop) is still unwinding used to return false at once,
-    -- which is a large part of "sometimes it just doesn't fling".
     if flingBusy then
         local waitUntil = tick() + 2
         repeat task.wait(0.05) until not flingBusy or tick() > waitUntil
@@ -10596,6 +10593,10 @@ local function flingPlayer(target)
     local origFPDH = workspace.FallenPartsDestroyHeight
     local ownSpin = not iyFlinging
     local flung = false
+    
+    local anims = hum:GetPlayingAnimationTracks()
+    for _, track in ipairs(anims) do track:Stop() end
+    
     pcall(function()
         workspace.FallenPartsDestroyHeight = 0 / 0
         if ownSpin and not startIYFling() then return end
@@ -10605,6 +10606,12 @@ local function flingPlayer(target)
         bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         bav.AngularVelocity = Vector3.new(0, 999999, 0)
         bav.Parent = root
+        
+        local bp = Instance.new("BodyPosition")
+        bp.Name = "FlingPositionImpulse"
+        bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bp.P = 10000
+        bp.Parent = root
 
         local deadline = tick() + math.clamp(tonumber(S.FlingDuration) or 6, 1, 15)
         repeat
@@ -10613,15 +10620,17 @@ local function flingPlayer(target)
             thum = tchar and tchar:FindFirstChildOfClass("Humanoid")
             if not (troot and thum and thum.Health > 0) then break end
 
-            local lead = troot.AssemblyLinearVelocity * 0.05
-            root.CFrame = troot.CFrame * CFrame.new(0, 0, 0) + lead
-            root.AssemblyLinearVelocity = Vector3.new(9999, 99999, 9999)
+            local lead = troot.AssemblyLinearVelocity * 0.1
+            bp.Position = troot.Position + lead
+            
+            root.AssemblyLinearVelocity = Vector3.new(99999, 99999, 99999)
             root.AssemblyAngularVelocity = Vector3.new(0, 999999, 0)
             task.wait()
             flung = troot and troot.Parent and (troot.AssemblyLinearVelocity.Magnitude > 300 or troot.Velocity.Magnitude > 300)
         until flung or tick() > deadline or hum.Health <= 0
 
         if bav and bav.Parent then bav:Destroy() end
+        if bp and bp.Parent then bp:Destroy() end
     end)
     if ownSpin and not S.TouchFling then stopIYFling() end
     pcall(function()
