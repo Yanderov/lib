@@ -2784,7 +2784,8 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 	pill.Position = UDim2.new(1, -4, 0, 0); pill.Size = UDim2.new(0, MOBILE and 54 or 50, 0, MOBILE and 22 or 20)
 	pill.BackgroundColor3 = T.Elev
 	Corner(pill, 7); Stroke(pill, T.Bd, 1, 0.5)
-	local valLbl = Instance.new("TextLabel")
+	local valLbl = Instance.new("TextBox")
+	valLbl.ClearTextOnFocus = false
 	valLbl.Parent = pill; valLbl.BackgroundTransparency = 1; valLbl.Size = UDim2.new(1, 0, 1, 0)
 	valLbl.Font = FM; valLbl.TextSize = MOBILE and 12 or 13; valLbl.TextColor3 = T.White; valLbl.Text = tostring(S[key] or minVal)
 
@@ -2813,6 +2814,14 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 		valLbl.Text = tostring(val)
 		if callback then pcall(callback, val) end
 	end
+	valLbl.FocusLost:Connect(function()
+		local num = tonumber(valLbl.Text)
+		if num then
+			setVal(num)
+		else
+			valLbl.Text = tostring(S[key] or minVal)
+		end
+	end)
 
 	local dragging = false
 	local function updateFromInput(input)

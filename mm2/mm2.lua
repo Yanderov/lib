@@ -3272,7 +3272,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(lbl, label, label, false)
-    local vlbl = Instance.new("TextLabel")
+    local vlbl = Instance.new("TextBox")
     vlbl.Parent = frame
     vlbl.BackgroundTransparency = 1
     vlbl.AnchorPoint = Vector2.new(1, 0)
@@ -3282,6 +3282,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     vlbl.TextSize = 13
     vlbl.TextColor3 = T.White; pcall(function() vlbl:SetAttribute("ThemeColorRole_TextColor3", "White") end)
     vlbl.TextXAlignment = Enum.TextXAlignment.Right
+    vlbl.ClearTextOnFocus = false
     local bar = Instance.new("Frame")
     bar.Parent = frame
     bar.AnchorPoint = Vector2.new(0.5, 0)
@@ -3321,6 +3322,21 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         vlbl.Text = tostring(v)
     end
     upd(val)
+    vlbl.FocusLost:Connect(function()
+        local num = tonumber(vlbl.Text)
+        if num then
+            num = math.clamp(math.floor(num + 0.5), min, max)
+            if num ~= val then
+                val = num
+                upd(val)
+                callback(val)
+            else
+                vlbl.Text = tostring(val)
+            end
+        else
+            vlbl.Text = tostring(val)
+        end
+    end)
     local active = false
     local activeInput = nil
     local function fromMouse(input)
