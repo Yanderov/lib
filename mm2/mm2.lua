@@ -14391,11 +14391,15 @@ do
             fetchOfficialEmotes(render)
         end
     end
-    emSearch:GetPropertyChangedSignal("Text"):Connect(function()
-        emSearchQ = emSearch.Text:lower()
-        emoteCurrentPage = 1
-        refreshEmotes() -- also retries the fetch if the previous attempt failed (rate limit etc.)
-    end)
+    -- The emote page remains usable even when an executor fails to create the
+    -- optional search TextBox; do not abort the whole launcher in that case.
+    if emSearch then
+        emSearch:GetPropertyChangedSignal("Text"):Connect(function()
+            emSearchQ = emSearch.Text:lower()
+            emoteCurrentPage = 1
+            refreshEmotes() -- also retries the fetch if the previous attempt failed (rate limit etc.)
+        end)
+    end
     tc(LP.CharacterAdded:Connect(function()
         stopEmote()
         -- Safety unanchor: if the character spawns while autofarm had anchored HRP,
