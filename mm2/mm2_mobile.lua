@@ -1570,7 +1570,7 @@ end)
 do
     -- Touch counts as a drag: matching only MouseButton1/MouseMovement (as this
     -- did) makes the window impossible to move on a phone.
-    local dr, ds, sp, so
+    local dr, ds, sp, so, activeInput
     TBar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             -- The search box and the header buttons bubble input through TBar;
@@ -1581,6 +1581,8 @@ do
                 return p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y
             end
             if over(SearchBox) or over(CloseBtn)  then return end
+            if activeInput then return end
+            activeInput = i
             dr = true
             ds = i.Position
             sp = Main.Position
@@ -1591,7 +1593,7 @@ do
         end
     end)
     tc(UIS.InputChanged:Connect(function(i)
-        if dr and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        if dr and i == activeInput and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - ds
             -- A compact floating panel dragged past the screen edge is unrecoverable
             -- on touch (no window list to get it back) and the spot is remembered as
@@ -1614,8 +1616,9 @@ do
         end
     end))
     tc(UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i == activeInput and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
+            activeInput = nil
         end
     end))
 end
