@@ -13723,17 +13723,6 @@ do
 
     local emoteTracks = {}
     local playingEmoteId = nil
-    local function callEmoteSafely(label, callback)
-        if type(callback) ~= "function" then
-            warn("INERTIA emotes: " .. tostring(label) .. " is unavailable")
-            return false
-        end
-        local ok, err = pcall(callback)
-        if not ok then
-            warn("INERTIA emotes: " .. tostring(label) .. " failed: " .. tostring(err))
-        end
-        return ok
-    end
     local function stopEmote()
         for _, tr in ipairs(emoteTracks) do pcall(function() tr:Stop(); tr:Destroy() end) end
         emoteTracks = {}
@@ -13761,10 +13750,10 @@ do
     -- exactly what made emotes "stop working" when Loop / No-Emote-Stop were on).
     local function playEmoteById(name, id)
         if playingEmoteId == id then
-            callEmoteSafely("stop", stopEmote)
+            if type(stopEmote) == "function" then pcall(stopEmote) end
             return
         end
-        callEmoteSafely("stop", stopEmote)
+        if type(stopEmote) == "function" then pcall(stopEmote) end
         playingEmoteId = id
         local c = LP.Character
         local hum = c and c:FindFirstChildOfClass("Humanoid")
@@ -14357,7 +14346,7 @@ do
                 Corner(prevBtn, 6)
                 local btnStroke = Stroke(prevBtn, T.Bd2, 1, 0.48); pcall(function() btnStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
                 if emoteCurrentPage > 1 then
-                    prevBtn.MouseButton1Click:Connect(function() SFX.Click(); emoteCurrentPage = emoteCurrentPage - 1; callEmoteSafely("previous page refresh", refreshEmotes) end)
+                    prevBtn.MouseButton1Click:Connect(function() SFX.Click(); emoteCurrentPage = emoteCurrentPage - 1; if type(refreshEmotes) == "function" then pcall(refreshEmotes) end end)
                 end
                 
                 local nextBtn = Instance.new("TextButton")
@@ -14372,7 +14361,7 @@ do
                 Corner(nextBtn, 6)
                 local btnStroke2 = Stroke(nextBtn, T.Bd2, 1, 0.48); pcall(function() btnStroke2:SetAttribute("ThemeColorRole_Color", "Bd2") end)
                 if emoteCurrentPage < totalPages then
-                    nextBtn.MouseButton1Click:Connect(function() SFX.Click(); emoteCurrentPage = emoteCurrentPage + 1; callEmoteSafely("next page refresh", refreshEmotes) end)
+                    nextBtn.MouseButton1Click:Connect(function() SFX.Click(); emoteCurrentPage = emoteCurrentPage + 1; if type(refreshEmotes) == "function" then pcall(refreshEmotes) end end)
                 end
                 
                 local lbl = Instance.new("TextLabel")
@@ -14407,11 +14396,11 @@ do
         emSearch:GetPropertyChangedSignal("Text"):Connect(function()
             emSearchQ = emSearch.Text:lower()
             emoteCurrentPage = 1
-            callEmoteSafely("refresh", refreshEmotes) -- also retries the fetch if the previous attempt failed (rate limit etc.)
+            if type(refreshEmotes) == "function" then pcall(refreshEmotes) end -- also retries the fetch if the previous attempt failed (rate limit etc.)
         end)
     end
     tc(LP.CharacterAdded:Connect(function()
-        callEmoteSafely("stop after respawn", stopEmote)
+        if type(stopEmote) == "function" then pcall(stopEmote) end
         -- Safety unanchor: if the character spawns while autofarm had anchored HRP,
         -- make absolutely sure physics are re-enabled on the new body.
         task.delay(0.1, function()
@@ -14420,10 +14409,10 @@ do
             if nh and nh.Anchored then nh.Anchored = false end
         end)
     end))
-    callEmoteSafely("initial refresh", refreshEmotes)
+    if type(refreshEmotes) == "function" then pcall(refreshEmotes) end
     mkToggle(secEmotes, "Loop Animation", false, function(v) S.LoopEmote = v end, 3)
     mkToggle(secEmotes, "No Emote Stop", false, function(v) S.NoEmoteStop = v end, 4)
-    mkAction(secEmotes, "Stop Emote", function() callEmoteSafely("stop", stopEmote) end, 5)
+    mkAction(secEmotes, "Stop Emote", function() if type(stopEmote) == "function" then pcall(stopEmote) end end, 5)
     _pl.eCard = secEmotes and secEmotes.Parent  -- expose card to outer scope
     end -- end Emotes do-block
 
