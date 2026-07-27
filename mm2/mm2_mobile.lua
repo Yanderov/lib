@@ -13328,8 +13328,8 @@ do
         local thumbUrl = ""
         if imgId and imgId ~= "" then
             local bId = tostring(imgId):match("^bundle:(%d+)$")
-            thumbUrl = bId and ("rbxthumb://type=BundleThumbnail&id=" .. bId .. "&w=150&h=150")
-                or ("rbxthumb://type=Asset&id=" .. imgId .. "&w=150&h=150")
+            thumbUrl = bId and ("rbxthumb://type=BundleThumbnail&id=" .. bId .. "&w=420&h=420")
+                or ("rbxthumb://type=Asset&id=" .. imgId .. "&w=420&h=420")
         end
         img.Image = thumbUrl
         Corner(img, 6)
@@ -13810,7 +13810,7 @@ do
         preview.BackgroundColor3 = T.Card; pcall(function() preview:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
         preview.BackgroundTransparency = 0.12
         preview.BorderSizePixel = 0
-        preview.Image = "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=150&h=150"
+        preview.Image = "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
         preview.ImageColor3 = T.White; pcall(function() preview:SetAttribute("ThemeColorRole_ImageColor3", "White") end)
         preview.ScaleType = Enum.ScaleType.Crop
         Corner(preview, 7)
@@ -13906,20 +13906,32 @@ do
     end)
 
     local emSearchQ = ""
+    local emoteCurrentPage = 1
+    local EMOTE_RENDER_CAP = 120
+    
     local function refreshEmotes()
-        for _, ch in ipairs(emScroll:GetChildren()) do if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end end
-        -- Rendering the WHOLE catalog built ~2500 rows at roughly four instances each,
-        -- which alone was ~10000 of the GUI's ~11700 GuiObjects. Every time the menu was
-        -- shown the engine had to walk that tree, which is the hitch on opening the GUI.
-        -- Cap it like the animation-pack list already does and let search reach the rest.
-        local EMOTE_RENDER_CAP = 120
+        for _, ch in ipairs(emScroll:GetChildren()) do if ch.Name == "Row" or ch.Name == "Status" or ch.Name == "PageControls" then ch:Destroy() end end
+        
         local function render(items)
-            for _, ch in ipairs(emScroll:GetChildren()) do if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end end
-            local order, matches = 0, 0
+            for _, ch in ipairs(emScroll:GetChildren()) do if ch.Name == "Row" or ch.Name == "Status" or ch.Name == "PageControls" then ch:Destroy() end end
+            local filteredItems = {}
             for _, item in ipairs(items) do
                 if emSearchQ == "" or tostring(item.name):lower():find(emSearchQ, 1, true) then
-                    matches = matches + 1
-                    if order < EMOTE_RENDER_CAP then
+                    table.insert(filteredItems, item)
+                end
+            end
+            
+            local totalMatches = #filteredItems
+            local totalPages = math.max(1, math.ceil(totalMatches / EMOTE_RENDER_CAP))
+            if emoteCurrentPage > totalPages then emoteCurrentPage = totalPages end
+            
+            local startIndex = (emoteCurrentPage - 1) * EMOTE_RENDER_CAP + 1
+            local endIndex = math.min(totalMatches, emoteCurrentPage * EMOTE_RENDER_CAP)
+            
+            local order = 0
+            for i = startIndex, endIndex do
+                local item = filteredItems[i]
+                if item then
                     order = order + 1
                     local row = mkThumbRow(emScroll, order, tostring(item.id), item.name, function()
                         playEmoteById(item.name, item.id)
@@ -13976,21 +13988,64 @@ do
                     end
                 end
             end
-            if order == 0 or matches > order then
+            if order == 0 then
                 local lbl = Instance.new("TextLabel")
                 lbl.Name = "Status"
                 lbl.Parent = emScroll
-                lbl.LayoutOrder = (order == 0) and 0 or 99999
+                lbl.LayoutOrder = 0
                 lbl.BackgroundTransparency = 1
                 lbl.Size = UDim2.new(1, 0, 0, 30)
                 lbl.Font = F
                 lbl.TextSize = 12
                 lbl.TextColor3 = T.Tx4; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
-                if order == 0 then
-                    lbl.Text = (#items == 0) and "No official emotes found (Roblox catalog unavailable right now)." or "No matches."
-                else
-                    lbl.Text = string.format("Showing %d of %d — type to find the rest.", order, matches)
+                lbl.Text = (#items == 0) and "No official emotes found." or "No matches."
+            elseif totalPages > 1 then
+                local controls = Instance.new("Frame")
+                controls.Name = "PageControls"
+                controls.Parent = emScroll
+                controls.LayoutOrder = 99999
+                controls.BackgroundTransparency = 1
+                controls.Size = UDim2.new(1, 0, 0, 40)
+                
+                local prevBtn = Instance.new("TextButton")
+                prevBtn.Parent = controls
+                prevBtn.Size = UDim2.new(0, 30, 0, 30)
+                prevBtn.Position = UDim2.new(0.5, -90, 0.5, -15)
+                prevBtn.Text = "<"
+                prevBtn.Font = FM
+                prevBtn.TextSize = 16
+                prevBtn.BackgroundColor3 = T.Card; pcall(function() prevBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+                prevBtn.TextColor3 = (emoteCurrentPage > 1) and T.Tx or T.Tx4
+                Corner(prevBtn, 6)
+                local btnStroke = Stroke(prevBtn, T.Bd2, 1, 0.48); pcall(function() btnStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+                if emoteCurrentPage > 1 then
+                    prevBtn.MouseButton1Click:Connect(function() SFX.Click(); emoteCurrentPage = emoteCurrentPage - 1; refreshEmotes() end)
                 end
+                
+                local nextBtn = Instance.new("TextButton")
+                nextBtn.Parent = controls
+                nextBtn.Size = UDim2.new(0, 30, 0, 30)
+                nextBtn.Position = UDim2.new(0.5, 60, 0.5, -15)
+                nextBtn.Text = ">"
+                nextBtn.Font = FM
+                nextBtn.TextSize = 16
+                nextBtn.BackgroundColor3 = T.Card; pcall(function() nextBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+                nextBtn.TextColor3 = (emoteCurrentPage < totalPages) and T.Tx or T.Tx4
+                Corner(nextBtn, 6)
+                local btnStroke2 = Stroke(nextBtn, T.Bd2, 1, 0.48); pcall(function() btnStroke2:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+                if emoteCurrentPage < totalPages then
+                    nextBtn.MouseButton1Click:Connect(function() SFX.Click(); emoteCurrentPage = emoteCurrentPage + 1; refreshEmotes() end)
+                end
+                
+                local lbl = Instance.new("TextLabel")
+                lbl.Parent = controls
+                lbl.Size = UDim2.new(0, 100, 1, 0)
+                lbl.Position = UDim2.new(0.5, -50, 0, 0)
+                lbl.BackgroundTransparency = 1
+                lbl.Font = F
+                lbl.TextSize = 14
+                lbl.TextColor3 = T.Tx3; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+                lbl.Text = string.format("Page %d of %d", emoteCurrentPage, totalPages)
             end
         end
         if officialEmotes then
@@ -14010,6 +14065,7 @@ do
     end
     emSearch:GetPropertyChangedSignal("Text"):Connect(function()
         emSearchQ = emSearch.Text:lower()
+        emoteCurrentPage = 1
         refreshEmotes() -- also retries the fetch if the previous attempt failed (rate limit etc.)
     end)
     tc(LP.CharacterAdded:Connect(function()
