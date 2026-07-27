@@ -8882,7 +8882,7 @@ do
             -- Safe Mode tightens that cap hard: what trips MM2's "invalid position" is the size of
             -- a SINGLE step, so a 40-stud jump on one long frame is exactly the thing to avoid.
             -- Small steps at the same studs/s look like ordinary fast movement.
-            local step = math.min(spd * dt, 10)
+            local step = math.min(spd * dt, S.AutofarmSafe and 10 or 40)
             if dist <= math.max(4.0, step) then
                 hrp.CFrame = CFrame.new(targetCF.Position)
                 arrived = true

@@ -13,6 +13,9 @@
             local hrp = c and c:FindFirstChild("HumanoidRootPart")
             local hum = c and c:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum or hum.Health <= 0 then break end
+            for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                pcall(function() track:Stop() end)
+            end
             hrp.Anchored = true
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
@@ -38,3 +41,16 @@
             local dir = delta / dist
             local newPos = hrp.Position + dir * step
             local flat = Vector3.new(dir.X, 0, dir.Z)
+            hrp.CFrame = (flat.Magnitude > 0.05) and CFrame.new(newPos, newPos + flat) or CFrame.new(newPos)
+        end
+        -- Unanchor on exit unless Autofarm is active
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            if not S.FastAutofarm then
+                hrp.Anchored = false
+            end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+        return arrived
+    end
