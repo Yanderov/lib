@@ -3356,6 +3356,11 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     -- scrolls the page as well as moving the slider.
     frame.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            local p = i.Position
+            local vp, vs = vlbl.AbsolutePosition, vlbl.AbsoluteSize
+            if p.X >= vp.X and p.X <= vp.X + vs.X and p.Y >= vp.Y and p.Y <= vp.Y + vs.Y then
+                return -- Let the user click the textbox to type
+            end
             active = true
             activeInput = i
             if MOBILE then

@@ -3347,6 +3347,11 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     frame.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             if activeInput then return end
+            local p = i.Position
+            local vp, vs = vlbl.AbsolutePosition, vlbl.AbsoluteSize
+            if p.X >= vp.X and p.X <= vp.X + vs.X and p.Y >= vp.Y and p.Y <= vp.Y + vs.Y then
+                return -- Let the user click the textbox to type
+            end
             activeInput = i
             active = true
             if MOBILE then
