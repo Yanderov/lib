@@ -13515,7 +13515,7 @@ do
         ["Mage"] = { bundle = 63, Animation1 = 10921144709, Animation2 = 10921145797, WalkAnim = 10921152678, RunAnim = 10921148209, JumpAnim = 10921149743, FallAnim = 10921148939, ClimbAnim = 10921143404, Swim = 10921150788, SwimIdle = 10921151661 },
         ["NFL"] = { Animation1 = 92080889861410, Animation2 = 74451233229259, WalkAnim = 110358958299415, RunAnim = 117333533048078, JumpAnim = 119846112151352, FallAnim = 129773241321032, ClimbAnim = 134630013742019, Swim = 132697394189921, SwimIdle = 79090109939093 },
         ["Ninja"] = { bundle = 75, Animation1 = 656117400, Animation2 = 656118341, WalkAnim = 656121766, RunAnim = 656118852, JumpAnim = 656117878, FallAnim = 656115606, ClimbAnim = 656114359, Swim = 656119721, SwimIdle = 656121397 },
-        ["Oldschool"] = { bundle = 667, Animation1 = 5319922112, WalkAnim = 5319909330, RunAnim = 5319900634, JumpAnim = 5319917561, FallAnim = 5319914476, ClimbAnim = 5319931619, Swim = 5319927054, SwimIdle = 5319927054 },
+        ["R6 (Classic)"] = { bundle = 0, Animation1 = 180435571, WalkAnim = 180426354, RunAnim = 180426354, JumpAnim = 125750702, FallAnim = 180436148, ClimbAnim = 180436334, Swim = 180426354, SwimIdle = 180435571 },
         ["No Boundaries"] = { Animation1 = 18747067405, Animation2 = 18747063918, WalkAnim = 18747074203, RunAnim = 18747070484, JumpAnim = 18747069148, FallAnim = 18747062535, ClimbAnim = 18747060903, Swim = 18747073181, SwimIdle = 18747071682 },
         ["Robot"] = { bundle = 82, Animation1 = 616088211, Animation2 = 616089559, WalkAnim = 616095330, RunAnim = 616091570, JumpAnim = 616090535, FallAnim = 616087089, ClimbAnim = 616086039, Swim = 616092998, SwimIdle = 616094091 },
         ["Stylish"] = { bundle = 83, Animation1 = 616136790, Animation2 = 616138447, WalkAnim = 616146177, RunAnim = 616140816, JumpAnim = 616139451, FallAnim = 616134815, ClimbAnim = 616133594, Swim = 616143378, SwimIdle = 616144772 },
@@ -13533,7 +13533,7 @@ do
     -- catalog but are not consistently loadable by every experience.
     local POPULAR_PACK_ORDER = {
         "Adidas Sports", "Astronaut", "Bubbly", "Cartoon", "Elder", "Levitation",
-        "Mage", "Ninja", "Oldschool", "Robot", "Stylish", "Superhero", "Toy", "Vampire", "Zombie",
+        "Mage", "Ninja", "R6 (Classic)", "Robot", "Stylish", "Superhero", "Toy", "Vampire", "Zombie",
     }
     local MAX_ANIMATION_BUNDLES = 100
     local function hasWorkingAnimationSlots(pack)
