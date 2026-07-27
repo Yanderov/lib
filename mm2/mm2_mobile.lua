@@ -3871,22 +3871,262 @@ do
     bindLocalizedText(shaderBtn, "Shaders", "Shaders", false)
 
 
-    local secCrosshair = mkSection(Pages.Visuals, "Custom Crosshair", 0.5)
+    
+-- ==========================================================
+-- CUSTOM ASSET FETCHER (GitHub Integration)
+-- ==========================================================
+local BASE_URL = "https://raw.githubusercontent.com/Yanderov/snpware_assets/master/"
+local function fetchCustomAsset(assetPath, subfolder)
+    if not assetPath or assetPath == "" then return "" end
+    local localFolder = "snpware_assets/" .. subfolder
+    local localPath = localFolder .. "/" .. string.gsub(assetPath, "/", "_")
+    
+    if not isfolder("snpware_assets") then makefolder("snpware_assets") end
+    if not isfolder(localFolder) then makefolder(localFolder) end
+    
+    if not isfile(localPath) then
+        local success, data = pcall(function()
+            return game:HttpGet(BASE_URL .. assetPath)
+        end)
+        if success and data and #data > 0 then
+            writefile(localPath, data)
+        else
+            return ""
+        end
+    end
+    
+    local success, assetId = pcall(function() return getcustomasset(localPath) end)
+    return success and assetId or ""
+end
+
+local CustomAssets = {
+    Cursors = {
+        { Name = "Custom 1", Path = "1028d1c250054253/main.png" },
+        { Name = "Custom 4", Path = "32cbd02f14954ef4/main.png" },
+        { Name = "Custom 7", Path = "4f4c9a87c01e490f/roblox.png" },
+        { Name = "Custom 9", Path = "6a87bfc524424853/main.png" },
+        { Name = "Custom 10", Path = "6b7e55af48664167/main.png" },
+        { Name = "Custom 13", Path = "85f59b6a10814324/main.png" },
+        { Name = "Custom 16", Path = "97a65223a9314414/main.png" },
+        { Name = "Custom 18", Path = "9ff8471710a94f43/main.png" },
+        { Name = "Custom 19", Path = "a0b0c3bdbdd14544/main.png" },
+        { Name = "Custom 20", Path = "a72e9f78c84b4f0c/roblox.png" },
+        { Name = "Custom 21", Path = "aeff2bbd3f074fa2/main.png" },
+        { Name = "Custom 22", Path = "c2146c1049964208/main.png" },
+        { Name = "Custom 24", Path = "e0f853686555455a/main.png" },
+    },
+    Backgrounds = {
+        { Name = "Custom 1", Path = "036a6ebbf0134bb8/main.jpg" },
+        { Name = "Custom 2", Path = "0430bc42c1e84854/main.jpg" },
+        { Name = "Custom 3", Path = "0a494facc0b0473c/main.jpg" },
+        { Name = "Custom 4", Path = "109861c68b3b4b60/main.jpg" },
+        { Name = "Custom 5", Path = "11430ae3c33d45a8/main.jpg" },
+        { Name = "Custom 6", Path = "125492efa56f478a/main.jpg" },
+        { Name = "Custom 7", Path = "1ad01966fa394d32/main.jpg" },
+        { Name = "Custom 8", Path = "1b1ceb413323486b/main.png" },
+        { Name = "Custom 9", Path = "211b907558584d82/main.jpg" },
+        { Name = "Custom 10", Path = "265bfae499c54ed2/main.jpg" },
+        { Name = "Custom 11", Path = "2911e41820024380/main.jpg" },
+        { Name = "Custom 12", Path = "2aadaecf64c6428c/main.jpg" },
+        { Name = "Custom 13", Path = "2d859228c0244ddb/main.jpg" },
+        { Name = "Custom 14", Path = "2ec6857c265b4b26/main.jpg" },
+        { Name = "Custom 15", Path = "31c2b6deb4e64693/frame0.png" },
+        { Name = "Custom 16", Path = "31ec1d8655b94d3d/main.jpg" },
+        { Name = "Custom 17", Path = "382c7a9dbbf24402/main.jpg" },
+        { Name = "Custom 18", Path = "3da893e204d249bf/main.jpg" },
+        { Name = "Custom 19", Path = "3ea03c3306154ec9/main.jpg" },
+        { Name = "Custom 20", Path = "3f35ba28a2e34470/main.jpg" },
+        { Name = "Custom 21", Path = "4466ee9528974dac/main.jpg" },
+        { Name = "Custom 22", Path = "45aefe3d14a042b3/main.png" },
+        { Name = "Custom 23", Path = "4626758a277f4e68/main.jpg" },
+        { Name = "Custom 24", Path = "476bbbf3ac94470e/main.jpg" },
+        { Name = "Custom 25", Path = "49f0147d27234fad/main.jpg" },
+        { Name = "Custom 26", Path = "4a1d97540d5a4c27/frame0.png" },
+        { Name = "Custom 27", Path = "53c299e7bb5d44c4/main.png" },
+        { Name = "Custom 28", Path = "54ea0309da674018/main.jpg" },
+        { Name = "Custom 29", Path = "555dd8dfc7234657/main.png" },
+        { Name = "Custom 30", Path = "59dfaaa93afc4ce9/main.jpg" },
+        { Name = "Custom 31", Path = "5b50b18d8ef54ed5/main.jpg" },
+        { Name = "Custom 32", Path = "5ddc1d6d6ce24f2d/main.jpg" },
+        { Name = "Custom 33", Path = "5e005068d065482f/frame0.png" },
+        { Name = "Custom 34", Path = "627057fac7ee4ceb/main.jpg" },
+        { Name = "Custom 35", Path = "641b48428a3b4b55/frame0.png" },
+        { Name = "Custom 36", Path = "670c0e5b43a54acf/main.jpg" },
+        { Name = "Custom 37", Path = "6a039ee4176f41ce/main.jpg" },
+        { Name = "Custom 38", Path = "6f90043495a64bc9/main.jpg" },
+        { Name = "Custom 39", Path = "766ff813284d4334/frame0.png" },
+        { Name = "Custom 40", Path = "79720cfcf663420f/main.jpg" },
+        { Name = "Custom 41", Path = "7ae6e2c206e94f76/main.jpg" },
+        { Name = "Custom 42", Path = "816b7eb784564a63/main.png" },
+        { Name = "Custom 43", Path = "85a6535e86ba4ae9/main.png" },
+        { Name = "Custom 44", Path = "8808b916cf5944dc/main.jpg" },
+        { Name = "Custom 45", Path = "8ae39a3855b14d6e/main.jpg" },
+        { Name = "Custom 46", Path = "8b1b61e58e014195/main.jpg" },
+        { Name = "Custom 47", Path = "8e56c34a02c747c4/main.jpg" },
+        { Name = "Custom 48", Path = "8f622404e8be413b/main.jpg" },
+        { Name = "Custom 49", Path = "8f830f3929f74482/main.png" },
+        { Name = "Custom 50", Path = "8fa9df42183a4fd8/main.png" },
+        { Name = "Custom 51", Path = "901875fdaa55426a/main.jpg" },
+        { Name = "Custom 52", Path = "91560fac95d64458/frame0.png" },
+        { Name = "Custom 53", Path = "96d91eb8dacb40d3/frame0.png" },
+        { Name = "Custom 54", Path = "9ae1bb42adf04778/main.png" },
+        { Name = "Custom 55", Path = "9ea23a9677254d55/frame0.png" },
+        { Name = "Custom 56", Path = "a5fc360334804355/main.jpg" },
+        { Name = "Custom 57", Path = "a794b35bdf7e4abe/main.png" },
+        { Name = "Custom 58", Path = "a7d1619308804b44/frame0.png" },
+        { Name = "Custom 59", Path = "b28fd7bfd8a94088/main.png" },
+        { Name = "Custom 60", Path = "b69c18a42b9d4ee2/main.jpg" },
+        { Name = "Custom 61", Path = "bbe054e9bce84f80/frame0.png" },
+        { Name = "Custom 62", Path = "bf3b1b07f36a40ef/main.jpg" },
+        { Name = "Custom 63", Path = "c550f4240da240a7/frame0.png" },
+        { Name = "Custom 64", Path = "c74d477fca59448e/frame0.png" },
+        { Name = "Custom 65", Path = "c8e9d96d9321453b/main.jpg" },
+        { Name = "Custom 66", Path = "ce24f659181041b0/main.jpg" },
+        { Name = "Custom 67", Path = "cee0b8acb5b54681/main.jpg" },
+        { Name = "Custom 68", Path = "cfeb2f1365c54bf8/main.jpg" },
+        { Name = "Custom 69", Path = "d2925ac2d76d4676/main.jpg" },
+        { Name = "Custom 70", Path = "d5706e75e51c4ab0/main.jpg" },
+        { Name = "Custom 71", Path = "d731039e3e2f41fd/main.jpg" },
+        { Name = "Custom 72", Path = "da9a6846fe304eb7/frame0.png" },
+        { Name = "Custom 73", Path = "e3328d68234b4c18/main.jpg" },
+        { Name = "Custom 74", Path = "e6e9a127b0344a67/main.jpg" },
+        { Name = "Custom 75", Path = "e6eda2460f6f4c44/main.jpg" },
+        { Name = "Custom 76", Path = "e7b9e192a81d48d0/main.jpg" },
+        { Name = "Custom 77", Path = "f2083194618b4e90/frame0.png" },
+        { Name = "Custom 78", Path = "f50dab9bdb6044a7/main.jpg" },
+        { Name = "Custom 79", Path = "f8087f04912c472f/main.jpg" },
+        { Name = "Custom 80", Path = "f8828b9e96774479/main.jpg" },
+        { Name = "Custom 81", Path = "fb13d21beada4df9/main.jpg" },
+        { Name = "Custom 82", Path = "fc22006599e44644/frame0.png" },
+        { Name = "Custom 83", Path = "ff093ec6e1bb44a2/main.jpg" },
+    },
+    Skyboxes = {
+        { Name = "Custom 1", Folder = "01627f72ead34704", Files = { Bk = "01627f72ead34704/Bk.jpg", Dn = "01627f72ead34704/Dn.jpg", Ft = "01627f72ead34704/Ft.jpg", Lf = "01627f72ead34704/Lf.jpg", ro = "01627f72ead34704/roblox.jpg", Rt = "01627f72ead34704/Rt.jpg", Up = "01627f72ead34704/Up.jpg",  } },
+        { Name = "Custom 2", Folder = "0dd9020ea5ce41eb", Files = { Bk = "0dd9020ea5ce41eb/Bk.jpg", Dn = "0dd9020ea5ce41eb/Dn.jpg", Ft = "0dd9020ea5ce41eb/Ft.jpg", Lf = "0dd9020ea5ce41eb/Lf.jpg", ro = "0dd9020ea5ce41eb/roblox.jpg", Rt = "0dd9020ea5ce41eb/Rt.jpg", Up = "0dd9020ea5ce41eb/Up.jpg",  } },
+        { Name = "Custom 3", Folder = "16bf7e929b1f479f", Files = { Bk = "16bf7e929b1f479f/Bk.jpg", Dn = "16bf7e929b1f479f/Dn.jpg", Ft = "16bf7e929b1f479f/Ft.jpg", Lf = "16bf7e929b1f479f/Lf.jpg", ro = "16bf7e929b1f479f/roblox.jpg", Rt = "16bf7e929b1f479f/Rt.jpg", Up = "16bf7e929b1f479f/Up.jpg",  } },
+        { Name = "Custom 4", Folder = "275daccaae614e4b", Files = { Bk = "275daccaae614e4b/Bk.jpg", Dn = "275daccaae614e4b/Dn.jpg", Ft = "275daccaae614e4b/Ft.jpg", Lf = "275daccaae614e4b/Lf.jpg", ro = "275daccaae614e4b/roblox.jpg", Rt = "275daccaae614e4b/Rt.jpg", Up = "275daccaae614e4b/Up.jpg",  } },
+        { Name = "Custom 5", Folder = "3da92d7147144854", Files = { Bk = "3da92d7147144854/Bk.jpg", Dn = "3da92d7147144854/Dn.jpg", Ft = "3da92d7147144854/Ft.jpg", Lf = "3da92d7147144854/Lf.jpg", ro = "3da92d7147144854/roblox.jpg", Rt = "3da92d7147144854/Rt.jpg", Up = "3da92d7147144854/Up.jpg",  } },
+        { Name = "Custom 6", Folder = "54e348381c924e57", Files = { Bk = "54e348381c924e57/Bk.jpeg", Dn = "54e348381c924e57/Dn.jpeg", Ft = "54e348381c924e57/Ft.jpeg", Lf = "54e348381c924e57/Lf.jpeg", ro = "54e348381c924e57/roblox.jpeg", Rt = "54e348381c924e57/Rt.jpeg", Up = "54e348381c924e57/Up.jpg",  } },
+        { Name = "Custom 7", Folder = "6a84a73fb02a423b", Files = { Bk = "6a84a73fb02a423b/Bk.jpg", Dn = "6a84a73fb02a423b/Dn.jpg", Ft = "6a84a73fb02a423b/Ft.jpg", Lf = "6a84a73fb02a423b/Lf.jpg", ro = "6a84a73fb02a423b/roblox.jpg", Rt = "6a84a73fb02a423b/Rt.jpg", Up = "6a84a73fb02a423b/Up.jpg",  } },
+        { Name = "Custom 8", Folder = "7260ed3f3ca34c49", Files = { Bk = "7260ed3f3ca34c49/Bk.jpg", Dn = "7260ed3f3ca34c49/Dn.jpg", Ft = "7260ed3f3ca34c49/Ft.jpg", Lf = "7260ed3f3ca34c49/Lf.jpg", ro = "7260ed3f3ca34c49/roblox.jpg", Rt = "7260ed3f3ca34c49/Rt.jpg", Up = "7260ed3f3ca34c49/Up.jpg",  } },
+        { Name = "Custom 9", Folder = "7d52f7e2f8c046ba", Files = { Bk = "7d52f7e2f8c046ba/Bk.jpg", Dn = "7d52f7e2f8c046ba/Dn.jpg", Ft = "7d52f7e2f8c046ba/Ft.jpg", Lf = "7d52f7e2f8c046ba/Lf.jpg", ro = "7d52f7e2f8c046ba/roblox.jpg", Rt = "7d52f7e2f8c046ba/Rt.jpg", Up = "7d52f7e2f8c046ba/Up.jpg",  } },
+        { Name = "Custom 10", Folder = "83ed7fb412654941", Files = { Bk = "83ed7fb412654941/Bk.jpg", Dn = "83ed7fb412654941/Dn.jpg", Ft = "83ed7fb412654941/Ft.jpg", Lf = "83ed7fb412654941/Lf.jpg", ro = "83ed7fb412654941/roblox.jpg", Rt = "83ed7fb412654941/Rt.jpg", Up = "83ed7fb412654941/Up.jpg",  } },
+        { Name = "Custom 11", Folder = "88cfa99e41f446b2", Files = { Bk = "88cfa99e41f446b2/Bk.jpg", Dn = "88cfa99e41f446b2/Dn.jpg", Ft = "88cfa99e41f446b2/Ft.jpg", Lf = "88cfa99e41f446b2/Lf.jpg", ro = "88cfa99e41f446b2/roblox.jpg", Rt = "88cfa99e41f446b2/Rt.jpg", Up = "88cfa99e41f446b2/Up.jpg",  } },
+        { Name = "Custom 12", Folder = "9b272574df8543bb", Files = { Bk = "9b272574df8543bb/Bk.jpg", Dn = "9b272574df8543bb/Dn.jpg", Ft = "9b272574df8543bb/Ft.jpg", Lf = "9b272574df8543bb/Lf.jpg", ro = "9b272574df8543bb/roblox.jpg", Rt = "9b272574df8543bb/Rt.jpg", Up = "9b272574df8543bb/Up.jpg",  } },
+        { Name = "Custom 13", Folder = "a3e0f34d4f22491c", Files = { Bk = "a3e0f34d4f22491c/Bk.jpg", Dn = "a3e0f34d4f22491c/Dn.jpg", Ft = "a3e0f34d4f22491c/Ft.jpg", Lf = "a3e0f34d4f22491c/Lf.jpg", ro = "a3e0f34d4f22491c/roblox.jpg", Rt = "a3e0f34d4f22491c/Rt.jpg", Up = "a3e0f34d4f22491c/Up.jpg",  } },
+        { Name = "Custom 14", Folder = "a97b4e259a3d4e90", Files = { Bk = "a97b4e259a3d4e90/Bk.jpg", Dn = "a97b4e259a3d4e90/Dn.jpg", Ft = "a97b4e259a3d4e90/Ft.jpg", Lf = "a97b4e259a3d4e90/Lf.jpg", ro = "a97b4e259a3d4e90/roblox.jpg", Rt = "a97b4e259a3d4e90/Rt.jpg", Up = "a97b4e259a3d4e90/Up.jpg",  } },
+        { Name = "Custom 15", Folder = "ae15d36345fa4653", Files = { Bk = "ae15d36345fa4653/Bk.jpg", Dn = "ae15d36345fa4653/Dn.jpg", Ft = "ae15d36345fa4653/Ft.jpg", Lf = "ae15d36345fa4653/Lf.jpg", ro = "ae15d36345fa4653/roblox.jpg", Rt = "ae15d36345fa4653/Rt.jpg", Up = "ae15d36345fa4653/Up.jpg",  } },
+        { Name = "Custom 16", Folder = "ca140ecfdbe04510", Files = { Bk = "ca140ecfdbe04510/Bk.jpg", Dn = "ca140ecfdbe04510/Dn.jpg", Ft = "ca140ecfdbe04510/Ft.jpg", Lf = "ca140ecfdbe04510/Lf.jpg", ro = "ca140ecfdbe04510/roblox.jpg", Rt = "ca140ecfdbe04510/Rt.jpg", Up = "ca140ecfdbe04510/Up.jpg",  } },
+        { Name = "Custom 17", Folder = "cdb3f60ebe33479f", Files = { Bk = "cdb3f60ebe33479f/Bk.jpg", Dn = "cdb3f60ebe33479f/Dn.jpg", Ft = "cdb3f60ebe33479f/Ft.jpg", Lf = "cdb3f60ebe33479f/Lf.jpg", ro = "cdb3f60ebe33479f/roblox.jpg", Rt = "cdb3f60ebe33479f/Rt.jpg", Up = "cdb3f60ebe33479f/Up.jpg",  } },
+        { Name = "Custom 18", Folder = "e7b7faca84a04910", Files = { Bk = "e7b7faca84a04910/Bk.jpg", Dn = "e7b7faca84a04910/Dn.jpg", Ft = "e7b7faca84a04910/Ft.jpg", Lf = "e7b7faca84a04910/Lf.jpg", ro = "e7b7faca84a04910/roblox.jpg", Rt = "e7b7faca84a04910/Rt.jpg", Up = "e7b7faca84a04910/Up.jpg",  } },
+        { Name = "Custom 19", Folder = "eaf09eca595f486e", Files = { Bk = "eaf09eca595f486e/Bk.png", Dn = "eaf09eca595f486e/Dn.png", Ft = "eaf09eca595f486e/Ft.png", Lf = "eaf09eca595f486e/Lf.png", ro = "eaf09eca595f486e/roblox.png", Rt = "eaf09eca595f486e/Rt.png", Up = "eaf09eca595f486e/Up.png",  } },
+        { Name = "Custom 20", Folder = "f116b511f2044d7d", Files = { Bk = "f116b511f2044d7d/Bk.jpg", Dn = "f116b511f2044d7d/Dn.jpeg", Ft = "f116b511f2044d7d/Ft.jpeg", Lf = "f116b511f2044d7d/Lf.jpg", Rt = "f116b511f2044d7d/Rt.jpg", Up = "f116b511f2044d7d/Up.jpg",  } },
+    },
+    GunSounds = {
+        { Name = "Custom 1", Path = "010d17ed0def4542/main.mp3" },
+        { Name = "Custom 2", Path = "01f27125aeea4c53/main.mp3" },
+        { Name = "Custom 3", Path = "09d8aa3dae104578/main.mp3" },
+        { Name = "Custom 4", Path = "0d0c961cdb364cc4/main.mp3" },
+        { Name = "Custom 5", Path = "0e1cadb9dce84aa5/main.mp3" },
+        { Name = "Custom 6", Path = "0edb68595b9a4e49/main.mp3" },
+        { Name = "Custom 7", Path = "11e1a55b1be24134/main.mp3" },
+        { Name = "Custom 8", Path = "2e39faa5d9124506/main.mp3" },
+        { Name = "Custom 9", Path = "32fd8bb2964145f2/main.mp3" },
+        { Name = "Custom 10", Path = "3ce22205afa14bd4/main.mp3" },
+        { Name = "Custom 11", Path = "4792489b131e46f1/main.mp3" },
+        { Name = "Custom 12", Path = "4c35d916ef1f4dff/main.mp3" },
+        { Name = "Custom 13", Path = "51297ca1756a4804/main.mp3" },
+        { Name = "Custom 14", Path = "52e9940ea9614e75/main.mp3" },
+        { Name = "Custom 15", Path = "65c6cf384fda4cf1/main.mp3" },
+        { Name = "Custom 16", Path = "6b8d0472892b4c9a/main.mp3" },
+        { Name = "Custom 17", Path = "71ba4528ca6245fd/main.mp3" },
+        { Name = "Custom 18", Path = "731c3c2ec5134d51/main.mp3" },
+        { Name = "Custom 19", Path = "7454f72908e2488a/main.mp3" },
+        { Name = "Custom 20", Path = "74c081368cf1400f/main.mp3" },
+        { Name = "Custom 21", Path = "7542cf69d18c4ddc/main.mp3" },
+        { Name = "Custom 22", Path = "764b11e985994fdc/main.mp3" },
+        { Name = "Custom 23", Path = "77b64b51a8fe412a/main.mp3" },
+        { Name = "Custom 24", Path = "7a3d8c1139f541a7/main.ogg" },
+        { Name = "Custom 25", Path = "7c49e1cdb26f4d91/main.ogg" },
+        { Name = "Custom 26", Path = "9139f35d9b244118/main.mp3" },
+        { Name = "Custom 27", Path = "9a8fecf9b57b4ae5/main.mp3" },
+        { Name = "Custom 28", Path = "a1f3083fb19b41cc/main.mp3" },
+        { Name = "Custom 29", Path = "ad52ab815a634e66/main.mp3" },
+        { Name = "Custom 30", Path = "b20893fe5cd44c15/main.mp3" },
+        { Name = "Custom 31", Path = "b75c27e08ad14eaf/main.mp3" },
+        { Name = "Custom 32", Path = "b9ad6b00f9d847b6/main.mp3" },
+        { Name = "Custom 33", Path = "c4f591cb7ee748be/main.mp3" },
+        { Name = "Custom 34", Path = "cfa2dccf35684f61/main.mp3" },
+        { Name = "Custom 35", Path = "d15867c002e34a52/main.mp3" },
+        { Name = "Custom 36", Path = "d452edb5f5fb4632/main.mp3" },
+        { Name = "Custom 37", Path = "d5279c4b176147d5/main.mp3" },
+        { Name = "Custom 38", Path = "de800a32d53846b9/main.mp3" },
+        { Name = "Custom 39", Path = "dfb14af96d9c494f/main.mp3" },
+        { Name = "Custom 40", Path = "e8a36b6620e3499b/main.mp3" },
+        { Name = "Custom 41", Path = "ed21c978f24c42a5/main.mp3" },
+        { Name = "Custom 42", Path = "f2fdc645d2934a75/main.mp3" },
+        { Name = "Custom 43", Path = "f35b60bf64574353/main.mp3" },
+        { Name = "Custom 44", Path = "f3cf5bed4c5f4d4b/main.mp3" },
+    },
+}
+
+
+
+-- Pre-fill CustomCrosshairs table with Roblox IDs + Custom GitHub assets
+local CustomCrosshairs = {
+    ["Neon Cyan"] = "rbxassetid://358650771",
+    ["Electric Purple"] = "rbxassetid://10891594364",
+    ["Precision Dot"] = "rbxassetid://2130621557",
+    ["Aim Cross"] = "rbxassetid://311756276",
+    ["Blue Spec"] = "rbxassetid://11759193017",
+    ["Circle Dot"] = "rbxassetid://13763954073",
+    ["Green Hit"] = "rbxassetid://2827093428",
+    ["Simple Dot"] = "rbxassetid://2130621557"
+}
+
+local crosshairNames = {"Neon Cyan", "Electric Purple", "Precision Dot", "Aim Cross", "Blue Spec", "Circle Dot", "Green Hit", "Simple Dot"}
+
+for _, cursor in ipairs(CustomAssets.Cursors) do
+    CustomCrosshairs[cursor.Name] = cursor.Path -- temporarily store path
+    table.insert(crosshairNames, cursor.Name)
+end
+
+local skyboxNames = {"Default"}
+local skyboxMap = {}
+for _, sky in ipairs(CustomAssets.Skyboxes) do
+    table.insert(skyboxNames, sky.Name)
+    skyboxMap[sky.Name] = sky
+end
+
+local backgroundNames = {"Default"}
+local backgroundMap = {}
+for _, bg in ipairs(CustomAssets.Backgrounds) do
+    table.insert(backgroundNames, bg.Name)
+    backgroundMap[bg.Name] = bg
+end
+
+local gunSoundNames = {"Default"}
+local gunSoundMap = {}
+for _, gs in ipairs(CustomAssets.GunSounds) do
+    table.insert(gunSoundNames, gs.Name)
+    gunSoundMap[gs.Name] = gs
+end
+-- ==========================================================
+local secCrosshair = mkSection(Pages.Visuals, "Custom Crosshair", 0.5)
     mkToggle(secCrosshair, "Enable Custom Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
-    local CustomCrosshairs = {
-        ["Neon Cyan"] = "rbxassetid://358650771",
-        ["Electric Purple"] = "rbxassetid://10891594364",
-        ["Precision Dot"] = "rbxassetid://2130621557",
-        ["Aim Cross"] = "rbxassetid://311756276",
-        ["Blue Spec"] = "rbxassetid://11759193017",
-        ["Circle Dot"] = "rbxassetid://13763954073",
-        ["Green Hit"] = "rbxassetid://2827093428",
-        ["Simple Dot"] = "rbxassetid://2130621557"
-    }
-    
-    mkCycle(secCrosshair, "Crosshair Style", {"Neon Cyan", "Electric Purple", "Precision Dot", "Aim Cross", "Blue Spec", "Circle Dot", "Green Hit", "Simple Dot"}, "Neon Cyan", function(v) 
+    mkCycle(secCrosshair, "Crosshair Style", crosshairNames, "Neon Cyan", function(v) 
         S.CrosshairStyle = v 
+        -- If it's a custom asset path, fetch it now
+        if CustomCrosshairs[v] and not string.match(CustomCrosshairs[v], "rbxassetid") and not string.match(CustomCrosshairs[v], "rbxasset://") then
+            local path = CustomCrosshairs[v]
+            task.spawn(function()
+                local fetchedId = fetchCustomAsset(path, "cursors")
+                if fetchedId ~= "" then
+                    CustomCrosshairs[v] = fetchedId
+                end
+            end)
+        end
     end, 2)
     
     RunService.RenderStepped:Connect(function()
@@ -4170,6 +4410,20 @@ do
     mkToggle(secSurvival, "Auto Evade", false, function(v) S.AutoEvade = v end, 4)
     mkSlider(secSurvival, "Auto Evade Range", 10, 60, 25, function(v) S.AutoEvadeRange = v end, 5)
     mkToggle(secSurvival, "Auto Dodge Knife", false, function(v) S.AutoDodgeKnife = v end, 6)
+    
+    local secAudio = mkSection(Pages.Visuals, "Custom Audio", 4)
+    mkCycle(secAudio, "Gunshot Sound", gunSoundNames, "Default", function(v)
+        S.CustomGunSound = v
+        if v ~= "Default" and gunSoundMap[v] then
+            task.spawn(function()
+                local soundPath = gunSoundMap[v].Path
+                S.CustomGunSoundId = fetchCustomAsset(soundPath, "gun_sounds")
+            end)
+        else
+            S.CustomGunSoundId = nil
+        end
+    end, 1)
+
 
     local secKnifeDodge = mkSection(Pages.Combat, "Knife Dodge", 6)
     mkToggle(secKnifeDodge, "Enable Dodge", false, function(v) S.KnifeDodge = v end, 1, "Knife Dodge")
@@ -14755,6 +15009,15 @@ do
     -- fires later, the same forward-reference-via-S trick as S._MSP / S._GetMurdererChar.
     S._playOnce = playOnce
 
+    -- Gunshot: 
+    local ws = workspace
+    local function playGunSound()
+        if S.CustomGunSoundId and S.CustomGunSoundId ~= "" then
+            playOnce(S.CustomGunSoundId, 1)
+        end
+    end
+    
+    local oldPlay = Instance.new("Sound").Play
     -- Gun kill: GunFired fires client-side when a bullet connects
     task.spawn(function()
         local ok, ws = pcall(function()
