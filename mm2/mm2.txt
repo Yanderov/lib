@@ -1644,14 +1644,13 @@ local function _toggleStateFromS(controlId)
     for k, v in pairs(S) do
         if type(v) == "boolean" and _toggleNorm(k) == labelKey then return v end
     end
-    for k, v in pairs(S) do
-        if type(v) == "boolean" then
-            local key = _toggleNorm(k)
-            if #key >= 5 and (string.find(fullKey, key, 1, true) or string.find(labelKey, key, 1, true)) then
-                return v
-            end
-        end
-    end
+    -- A substring fallback used to live here, scanning every boolean in S and returning the first
+    -- whose key merely appeared inside the toggle's id. That is why toggles needed two or three
+    -- clicks to switch on: toggle() re-runs this right AFTER the callback, so "Gun Chams Rainbow"
+    -- set S.ItemChamsRainbow and then had its state overwritten by whatever S.GunChams happened to
+    -- be. pairs() order is not stable either, so the number of clicks varied between sessions.
+    -- Un-aliased toggles now return nil, which leaves entry.state authoritative — add an entry to
+    -- TOGGLE_STATE_ALIASES / FULL_TOGGLE_STATE_ALIASES if a toggle really must mirror an S flag.
     return nil
 end
 local function _cfgId(parent, label)
@@ -5562,6 +5561,18 @@ end, 6)
 
         mkSlider(secCustoms, "Crosshair Size", 8, 128, 32, function(v) S.CrosshairSize = v end, 2.5)
 
+        -- The crosshair used to be placed at mouse.Y + 36, a guess at the topbar height. The real
+        -- inset is not always 36 — it differs by platform and Roblox has changed it — so the
+        -- crosshair sat slightly off the true cursor. Ask the engine for the actual inset instead,
+        -- and take the mouse position from UserInputService, which is measured from the very top of
+        -- the screen and so lines up once the inset is subtracted.
+        local GuiSvc = game:GetService("GuiService")
+        local function cursorSpot()
+            local loc = UIS:GetMouseLocation()
+            local inset = GuiSvc:GetGuiInset()
+            return loc.X - inset.X, loc.Y - inset.Y
+        end
+
         RunService.RenderStepped:Connect(function()
             local mouse = Players.LocalPlayer:GetMouse()
             if not S.CustomCrosshair then
@@ -5594,7 +5605,8 @@ end, 6)
                     buildVectorCursor(entry.Style, size)
                     lastVectorKey = key
                 end
-                vectorCursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                local cx, cy = cursorSpot()
+                vectorCursorGui.Position = UDim2.fromOffset(cx, cy)
                 vectorCursorGui.Visible = not menuOpen
             else
                 vectorCursorGui.Visible = false
@@ -5603,7 +5615,8 @@ end, 6)
                 if not img or img == "" then return end
                 cursorGui.Image = img
                 cursorGui.Size = UDim2.fromOffset(size, size)
-                cursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                local cx, cy = cursorSpot()
+                cursorGui.Position = UDim2.fromOffset(cx, cy)
                 cursorGui.Visible = not menuOpen
             end
             UIS.MouseIconEnabled = menuOpen
@@ -11484,12 +11497,10 @@ local function _cfgValueFromState(controlId)
             if _cfgNorm(k) == labelKey then return v end
         end
     end
-    for k, v in pairs(S) do
-        if type(v) ~= "function" and type(v) ~= "table" and not tostring(k):find("^_") then
-            local key = _cfgNorm(k)
-            if #key >= 5 and string.find(labelKey, key, 1, true) then return v end
-        end
-    end
+    -- Same substring fallback as the toggle resolver had, and the same bug: a control called
+    -- "Gun Chams Rainbow" would match S.GunChams and get somebody else's value written into the
+    -- config, so a saved layout came back wrong and auto-save kept persisting the mismatch.
+    -- Only exact matches and explicit aliases count now; nil leaves the control's own value alone.
     return nil
 end
 

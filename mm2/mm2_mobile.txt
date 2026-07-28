@@ -924,22 +924,22 @@ local function getSnpwareAsset(type, id, filename)
         warn("Exploit does not support custom assets.")
         return nil
     end
-
+    
     local customasset = getcustomasset or getsynasset
     local req = (syn and syn.request) or (http and http.request) or request
     if not req then return nil end
 
     local typeDir = CACHE_DIR .. "/" .. type
     if not isfolder(typeDir) then makefolder(typeDir) end
-
+    
     local itemDir = typeDir .. "/" .. id
     if not isfolder(itemDir) then makefolder(itemDir) end
-
+    
     local path = itemDir .. "/" .. filename
     if isfile(path) then
         return customasset(path)
     end
-
+    
     local url = SNPWARE_HOST .. "/files/approved/" .. type .. "/" .. id .. "/" .. filename
     local res = req({Url = url, Method = "GET"})
     if res.Success and res.Body then
@@ -952,7 +952,7 @@ end
 local function fetchSnpwareCatalog(type)
     local req = (syn and syn.request) or (http and http.request) or request
     if not req then return {} end
-
+    
     local url = SNPWARE_HOST .. "/api/catalog?type=" .. type
     local res = req({Url = url, Method = "GET"})
     if res.Success and res.Body then
@@ -1648,14 +1648,13 @@ local function _toggleStateFromS(controlId)
     for k, v in pairs(S) do
         if type(v) == "boolean" and _toggleNorm(k) == labelKey then return v end
     end
-    for k, v in pairs(S) do
-        if type(v) == "boolean" then
-            local key = _toggleNorm(k)
-            if #key >= 5 and (string.find(fullKey, key, 1, true) or string.find(labelKey, key, 1, true)) then
-                return v
-            end
-        end
-    end
+    -- A substring fallback used to live here, scanning every boolean in S and returning the first
+    -- whose key merely appeared inside the toggle's id. That is why toggles needed two or three
+    -- clicks to switch on: toggle() re-runs this right AFTER the callback, so "Gun Chams Rainbow"
+    -- set S.ItemChamsRainbow and then had its state overwritten by whatever S.GunChams happened to
+    -- be. pairs() order is not stable either, so the number of clicks varied between sessions.
+    -- Un-aliased toggles now return nil, which leaves entry.state authoritative — add an entry to
+    -- TOGGLE_STATE_ALIASES / FULL_TOGGLE_STATE_ALIASES if a toggle really must mirror an S flag.
     return nil
 end
 local function _cfgId(parent, label)
@@ -4332,19 +4331,19 @@ moveTo = function(targetCF, speed, checkFn, ignoreAutofarmCheck)
     local c = LP.Character; local hrp = c and c:FindFirstChild("HumanoidRootPart")
     local hum = c and c:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum or hum.Health <= 0 then return end
-
+    
     local startCF = hrp.CFrame
     local distance = (targetCF.Position - startCF.Position).Magnitude
-
+    
     local segmentDistance = 30
     local segments = math.ceil(distance / segmentDistance)
     local spd = math.max(speed or S.FastAutofarmSpeed or 60, 1)
     local waitTime = segmentDistance / spd
-
+    
     for i = 1, segments do
         if not ignoreAutofarmCheck and not S.FastAutofarm then break end
         if checkFn and not checkFn() then break end
-
+        
         local targetSegmentPos = startCF.Position:Lerp(targetCF.Position, i / segments)
         local dir = targetCF.Position - targetSegmentPos
         local targetSegmentCF
@@ -4353,18 +4352,18 @@ moveTo = function(targetCF, speed, checkFn, ignoreAutofarmCheck)
         else
             targetSegmentCF = targetCF
         end
-
+        
         -- Noclip character
         for _, pt in pairs(c:GetDescendants()) do
             if pt:IsA("BasePart") then pt.CanCollide = false end
         end
-
+        
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
         hrp.CFrame = targetSegmentCF
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-
+        
         task.wait(waitTime)
     end
 end
@@ -4439,7 +4438,7 @@ do
     local shaderBtn = Instance.new("TextButton")
 
     local customBtn = Instance.new("TextButton")
-
+    
     local espStroke = mkSubTabBtn(visualsSubTabBar, espBtn, "ESP", 1, 1/4, -6)
     local envStroke = mkSubTabBtn(visualsSubTabBar, envBtn, "Environment", 2, 1/4, -6)
     local shaderStroke = mkSubTabBtn(visualsSubTabBar, shaderBtn, "Shaders", 3, 1/4, -6)
@@ -4451,7 +4450,7 @@ do
 
 
 
-
+    
 -- ==========================================================
 -- CUSTOM ASSET FETCHER (GitHub Integration)
 -- ==========================================================
@@ -4471,10 +4470,10 @@ local function fetchCustomAsset(assetPath, subfolder)
         if not isfolder(localFolder) then makefolder(localFolder) end
     end)
     if not folderOk then return "" end
-
+    
     local fileOk, fileExists = pcall(isfile, localPath)
     if not fileOk then return "" end
-
+    
     if not fileExists then
         local success, data = pcall(function()
             -- assetPath is intentionally stored relative to its asset category.
@@ -4489,7 +4488,7 @@ local function fetchCustomAsset(assetPath, subfolder)
             return ""
         end
     end
-
+    
     local success, assetId = pcall(function() return customasset(localPath) end)
     return success and assetId or ""
 end
@@ -4727,7 +4726,7 @@ end
 -- ==========================================================
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
-
+    
     -- Picking one of the downloaded cursors / 19 skyboxes / 44 sounds by dragging a numeric slider gave no
     -- idea what you were selecting. All three now open the searchable picker with thumbnails.
     -- Wrapped in its own block: these lists would otherwise sit in the main chunk's register
@@ -4842,7 +4841,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 local lf = fetchCustomAsset(sky.Files.Lf, "skyboxes")
                 local rt = fetchCustomAsset(sky.Files.Rt, "skyboxes")
                 local up = fetchCustomAsset(sky.Files.Up, "skyboxes")
-
+                
                 local lighting = game:GetService("Lighting")
                 local skyboxObj = lighting:FindFirstChild("CustomSkyboxUI")
                 if not skyboxObj then
@@ -5420,7 +5419,7 @@ end, 6)
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
 
 
-
+    
     -- Mouse.Icon draws the image at its native resolution and offers no way to scale it, so the
     -- full-size photos in the cursor library covered half the screen. Images and vector presets
     -- are drawn in our own GUI so the size and mobile/desktop behaviour stay predictable.
@@ -5566,6 +5565,18 @@ end, 6)
 
         mkSlider(secCustoms, "Crosshair Size", 8, 128, 32, function(v) S.CrosshairSize = v end, 2.5)
 
+        -- The crosshair used to be placed at mouse.Y + 36, a guess at the topbar height. The real
+        -- inset is not always 36 — it differs by platform and Roblox has changed it — so the
+        -- crosshair sat slightly off the true cursor. Ask the engine for the actual inset instead,
+        -- and take the mouse position from UserInputService, which is measured from the very top of
+        -- the screen and so lines up once the inset is subtracted.
+        local GuiSvc = game:GetService("GuiService")
+        local function cursorSpot()
+            local loc = UIS:GetMouseLocation()
+            local inset = GuiSvc:GetGuiInset()
+            return loc.X - inset.X, loc.Y - inset.Y
+        end
+
         RunService.RenderStepped:Connect(function()
             local mouse = Players.LocalPlayer:GetMouse()
             if not S.CustomCrosshair then
@@ -5598,7 +5609,8 @@ end, 6)
                     buildVectorCursor(entry.Style, size)
                     lastVectorKey = key
                 end
-                vectorCursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                local cx, cy = cursorSpot()
+                vectorCursorGui.Position = UDim2.fromOffset(cx, cy)
                 vectorCursorGui.Visible = not menuOpen
             else
                 vectorCursorGui.Visible = false
@@ -5607,7 +5619,8 @@ end, 6)
                 if not img or img == "" then return end
                 cursorGui.Image = img
                 cursorGui.Size = UDim2.fromOffset(size, size)
-                cursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                local cx, cy = cursorSpot()
+                cursorGui.Position = UDim2.fromOffset(cx, cy)
                 cursorGui.Visible = not menuOpen
             end
             UIS.MouseIconEnabled = menuOpen
@@ -6224,7 +6237,7 @@ do
         local vel = hist and hist.Vel or hrp.AssemblyLinearVelocity
         local ping = MSP.Latency + (customPingOffset or 0)
         local pos = part.Position
-
+        
         if mode == "Standard" then
             return pos + vel * (predAmount / 100)
         elseif mode == "Lag Comp" then
@@ -6233,7 +6246,7 @@ do
             local acc = hist and hist.Acc or Vector3.new()
             local accMag = acc.Magnitude
             if accMag > 400 then acc = acc * (400 / accMag) end
-
+            
             local t = (ping + (1 / 60)) * (predAmount / 100)
             if customBulletSpeed and customBulletSpeed > 0 then
                 local shooterHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
@@ -6243,7 +6256,7 @@ do
                 end
             end
             local predictedPos = pos + vel * t + 0.5 * acc * t * t
-
+            
             -- Apply gravity compensation if target is in the air
             local hum = targetChar:FindFirstChildOfClass("Humanoid")
             if hum and hum.FloorMaterial == Enum.Material.Air then
@@ -6279,7 +6292,7 @@ do
     local activeMotionSubTab = "Movement"
 
     local sec1 = mkSection(Pages.Motion, "Speed & Jump", 1)
-
+    
     mkSlider(sec1, "WalkSpeed", 16, 100, 16, function(v) S.CustomWalkSpeed = v end, 1)
     mkSlider(sec1, "JumpPower", 50, 150, 50, function(v) S.CustomJumpPower = v end, 2)
     local sec2 = mkSection(Pages.Motion, "Movement", 2)
@@ -6561,7 +6574,7 @@ do
     row.Size = UDim2.new(1, 0, 0, 30)
     row.BackgroundTransparency = 1
     Corner(row, 6)
-
+    
     local lbl = Instance.new("TextLabel")
     lbl.Parent = row
     lbl.BackgroundTransparency = 1
@@ -6572,7 +6585,7 @@ do
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Text = "Goto Player:"
-
+    
     local box = Instance.new("TextBox")
     box.Parent = row
     box.Position = UDim2.new(0, 90, 0.5, -10)
@@ -6590,7 +6603,7 @@ do
     Corner(box, 4)
     Stroke(box, T.Bd2, 1, 0.5)
     Pad(box, 0, 0, 6, 6)
-
+    
     local btn = Instance.new("TextButton")
     btn.Parent = row
     btn.AnchorPoint = Vector2.new(1, 0.5)
@@ -6605,14 +6618,14 @@ do
     btn.AutoButtonColor = false
     Corner(btn, 4)
     Stroke(btn, T.Bd2, 1, 0.5)
-
+    
     btn.MouseEnter:Connect(function()
         TweenService.Create(TweenService, btn, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play()
     end)
     btn.MouseLeave:Connect(function()
         TweenService.Create(TweenService, btn, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play()
     end)
-
+    
     btn.MouseButton1Click:Connect(function()
         local text = box.Text:lower()
         if text == "" then return end
@@ -6645,7 +6658,7 @@ do
     S._RegisterMiscSection(secSocial, "Utility")
     mkToggle(secSocial, "Auto Say GG", false, function(v) S.AutoGG = v end, 2)
     mkToggle(secSocial, "Use Custom Phrase", false, function(v) S.UseCustomGG = v end, 3)
-
+    
     local rowGG = Instance.new("Frame")
     rowGG.Parent = secSocial
     rowGG.LayoutOrder = 4
@@ -6653,7 +6666,7 @@ do
     rowGG.BackgroundTransparency = 1
     rowGG.ClipsDescendants = true
     Corner(rowGG, 6)
-
+    
     local lblGG = Instance.new("TextLabel")
     lblGG.Parent = rowGG
     lblGG.BackgroundTransparency = 1
@@ -6665,7 +6678,7 @@ do
     lblGG.TextColor3 = T.Tx2; pcall(function() lblGG:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lblGG.TextXAlignment = Enum.TextXAlignment.Left
     lblGG.Text = "Custom GG Phrase:"
-
+    
     local boxGG = Instance.new("TextBox")
     boxGG.Parent = rowGG
     boxGG.Position = UDim2.new(0, 6, 0, 22)
@@ -6695,7 +6708,7 @@ do
     -- toggle for Auto Say GG persisted fine, but the phrase itself reset to "GG!" every launch.
     local secAIChat = mkSection(Pages.Misc, "AI Chat", 8.5)
     S._RegisterMiscSection(secAIChat, "Utility")
-
+    
     mkToggle(secAIChat, "AI Chat Enabled", false, function(v)
         S.AIChatEnabled = v
         pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
@@ -6711,7 +6724,7 @@ do
     rowAPI.BackgroundTransparency = 1
     rowAPI.ClipsDescendants = true
     Corner(rowAPI, 6)
-
+    
     local lblAPI = Instance.new("TextLabel")
     lblAPI.Parent = rowAPI
     lblAPI.BackgroundTransparency = 1
@@ -6723,7 +6736,7 @@ do
     lblAPI.TextColor3 = T.Tx2; pcall(function() lblAPI:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lblAPI.TextXAlignment = Enum.TextXAlignment.Left
     lblAPI.Text = "API Key:"
-
+    
     local boxAPI = Instance.new("TextBox")
     boxAPI.Parent = rowAPI
     boxAPI.Position = UDim2.new(0, 6, 0, 22)
@@ -6983,7 +6996,7 @@ do
             if not req then return nil, "No HTTP request function found in executor" end
             styleState = styleState or {}
             local activeHumanizer = styleState.humanizer == nil and S.AIChatMaxHumanizer == true or styleState.humanizer == true
-
+            
             local messages = {}
             local systemPrompt = "You are '" .. LP.Name .. "', a player chatting in a live Murder Mystery 2 server. You are not a help desk, narrator, or assistant; you are a casual participant in the conversation.\n"
             systemPrompt = systemPrompt .. "CORE CHAT RULES:\n"
@@ -7420,7 +7433,7 @@ do
             row.BackgroundTransparency = 1
             row.ClipsDescendants = true
             Corner(row, 6)
-
+            
             local lbl = Instance.new("TextLabel")
             lbl.Parent = row
             lbl.BackgroundTransparency = 1
@@ -7432,7 +7445,7 @@ do
             lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
             lbl.TextXAlignment = Enum.TextXAlignment.Left
             lbl.Text = label
-
+            
             local box = Instance.new("TextBox")
             box.Parent = row
             box.Position = UDim2.new(0, 6, 0, 22)
@@ -7453,26 +7466,26 @@ do
             Corner(box, 4)
             Stroke(box, T.Bd2, 1, 0.4)
             Pad(box, 0, 0, 7, 7)
-
+            
             box.FocusLost:Connect(function()
                 local t = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
                 setId(t)
                 pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
             end)
-
+            
             table.insert(ConfigControls, {
                 id = _cfgId(parent, label),
                 get = function() return getId() end,
                 set = function(v) setId(tostring(v)); box.Text = tostring(v) end,
             })
-
+            
             row.MouseEnter:Connect(function()
                 TweenService.Create(TweenService, row, TweenInfo.new(0.12), { BackgroundTransparency = 0.8 }):Play()
             end)
             row.MouseLeave:Connect(function()
                 TweenService.Create(TweenService, row, TweenInfo.new(0.12), { BackgroundTransparency = 1 }):Play()
             end)
-
+            
             return box
         end
         S._mkIdBox = mkIdBox
@@ -8601,7 +8614,7 @@ do
             local mr = c and c:FindFirstChild("HumanoidRootPart")
             local hum = c and c:FindFirstChildOfClass("Humanoid")
             if not (tr and th and mr and hum and hum.Health > 0) then return end
-
+            
             local dist = (tr.Position - mr.Position).Magnitude
             if dist > 3 then
                 hum.WalkSpeed = S.FollowSpeed or 24
@@ -8609,7 +8622,7 @@ do
             else
                 hum:MoveTo(mr.Position)
             end
-
+            
             if S.FollowMirrorActions then
                 if th.Jump or th:GetState() == Enum.HumanoidStateType.Jumping then
                     hum.Jump = true
@@ -9172,7 +9185,7 @@ local function mkWatermark()
     -- 8px threshold; it used to be pinned, so a badly placed island stayed there.
     attachHUDDrag(f)
     HUDEls["Watermark"] = { frame = f, content = f }
-
+    
     local startPos, startTick
     f.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -9601,7 +9614,7 @@ end
 applyShader = function(name)
     saveLighting()
     clearShaderEffects()
-
+    
     if name == "None" then
         S.ActiveShader = "None"
         pcall(function() Lighting.ExposureCompensation = 0 end)
@@ -9618,7 +9631,7 @@ applyShader = function(name)
         if applyAtmo then pcall(applyAtmo) end
         return
     end
-
+    
     S.ActiveShader = name
     pcall(function() Lighting.ExposureCompensation = 0 end)
     if S._ApplySimpleShader and S._ApplySimpleShader(name) then
@@ -10879,7 +10892,7 @@ do
         if handle ~= trackedHandle or not dualModel or not dualModel.Parent then
             pcall(buildDual, handle, rightHand, leftHand)
         end
-
+        
         -- Вытягивание левой руки: копируем и зеркалим трансформ правого плеча в левое плечо!
         pcall(function()
             local rShoulder, lShoulder
@@ -11064,7 +11077,7 @@ do
     mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
     mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
-
+    
 
     -- Vote Farm: just teleport to the map-vote slot's coords, reset, repeat — no gating, per explicit
     -- user request. Coords are the slot's own live-measured standing position (user walked to each pad
@@ -11488,12 +11501,10 @@ local function _cfgValueFromState(controlId)
             if _cfgNorm(k) == labelKey then return v end
         end
     end
-    for k, v in pairs(S) do
-        if type(v) ~= "function" and type(v) ~= "table" and not tostring(k):find("^_") then
-            local key = _cfgNorm(k)
-            if #key >= 5 and string.find(labelKey, key, 1, true) then return v end
-        end
-    end
+    -- Same substring fallback as the toggle resolver had, and the same bug: a control called
+    -- "Gun Chams Rainbow" would match S.GunChams and get somebody else's value written into the
+    -- config, so a saved layout came back wrong and auto-save kept persisting the mismatch.
+    -- Only exact matches and explicit aliases count now; nil leaves the control's own value alone.
     return nil
 end
 
@@ -11661,7 +11672,7 @@ local function loadConfig(name)
             end
         end
     end
-
+    
     -- Sync UI controls (sliders, toggles). New configs use data.controls; older autoload
     -- files only had data.S, so fall back to matching the control label against S. Without
     -- this, the feature state restored but the visible toggle stayed on its default state.
@@ -11680,7 +11691,7 @@ local function loadConfig(name)
             pcall(c.set, value)
         end
     end
-
+    
     if dat.hud then
         for name, el in pairs(HUDEls) do
             if dat.hud[name] then
@@ -11693,7 +11704,7 @@ local function loadConfig(name)
             end
         end
     end
-
+    
     if dat.binds then
         for _, b in ipairs(AllBinds) do
             if dat.binds[b.id] then
@@ -11714,7 +11725,7 @@ local function loadConfig(name)
             end
         end
     end
-
+    
     if type(S._UpdateAvatarMods) == "function" then pcall(S._UpdateAvatarMods) end
     if type(updateFullBright) == "function" then pcall(updateFullBright) end
     if type(applyTheme) == "function" then pcall(applyTheme) end
@@ -12577,7 +12588,7 @@ end
 -- ===== ROLE TRACKING (event-driven — NO per-frame / repeated blocking InvokeServer) =====
 do
     local notified = false
-
+    
     local function processData(data)
             if type(data) ~= "table" then return end
             local fm, fs, hasRole = nil, nil, false
@@ -13059,29 +13070,29 @@ local function flingPlayer(TargetPlayer)
     local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
     local RootPart = Humanoid and Humanoid.RootPart
     if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then return false end
-
+    
     local TCharacter = TargetPlayer and TargetPlayer.Character
     if not TCharacter then return false end
-
+    
     local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
     local TRootPart = THumanoid and THumanoid.RootPart
     local THead = TCharacter:FindFirstChild("Head")
     local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
     local Handle = Accessory and Accessory:FindFirstChild("Handle")
-
+    
     if not (TRootPart or THead or Handle) then return false end
-
+    
     flingBusy = true
     local OldPos = RootPart.CFrame
     local origFPDH = workspace.FallenPartsDestroyHeight
     local flung = false
-
+    
     local anims = Humanoid:GetPlayingAnimationTracks()
     for _, track in ipairs(anims) do track:Stop() end
-
+    
     pcall(function()
         if THumanoid and THumanoid.Sit then return end
-
+        
         if THead then
             workspace.CurrentCamera.CameraSubject = THead
         elseif Handle then
@@ -13089,14 +13100,14 @@ local function flingPlayer(TargetPlayer)
         elseif THumanoid and TRootPart then
             workspace.CurrentCamera.CameraSubject = THumanoid
         end
-
+        
         local FPos = function(BasePart, Pos, Ang)
             RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
             Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
             RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
             RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
         end
-
+        
         local SFBasePart = function(BasePart)
             local TimeToWait = tonumber(S.FlingDuration) or 6
             local Time = tick()
@@ -13124,7 +13135,7 @@ local function flingPlayer(TargetPlayer)
                         task.wait()
                         FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
                         task.wait()
-
+                        
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
                         task.wait()
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
@@ -13138,16 +13149,16 @@ local function flingPlayer(TargetPlayer)
                 flung = BasePart.Velocity.Magnitude > 300
             until tick() > Time + TimeToWait or flung or Humanoid.Health <= 0
         end
-
+        
         workspace.FallenPartsDestroyHeight = 0/0
-
+        
         local BV = Instance.new("BodyVelocity")
         BV.Parent = RootPart
         BV.Velocity = Vector3.new(0, 0, 0)
         BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-
+        
         Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-
+        
         if TRootPart then
             SFBasePart(TRootPart)
         elseif THead then
@@ -13155,13 +13166,13 @@ local function flingPlayer(TargetPlayer)
         elseif Handle then
             SFBasePart(Handle)
         end
-
+        
         if BV and BV.Parent then BV:Destroy() end
         Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     end)
-
+    
     pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
-
+    
     pcall(function()
         local returnT = tick()
         repeat
@@ -13177,7 +13188,7 @@ local function flingPlayer(TargetPlayer)
             task.wait()
         until (RootPart.Position - OldPos.Position).Magnitude < 15 or tick() > returnT + 1.5
     end)
-
+    
     pcall(function() workspace.FallenPartsDestroyHeight = origFPDH end)
     flingBusy = false
     return flung
@@ -13910,10 +13921,10 @@ rebuildCrosshair = function()
         UIS.MouseIconEnabled = true
         return
     end
-
+    
     Crosshair.Visible = true
     UIS.MouseIconEnabled = true
-
+    
     local shape = S.CrosshairShape or "Cross"
     local color = T.White
     if S.CrosshairColor == "Red" then color = Color3.fromRGB(255, 50, 50)
@@ -13925,15 +13936,15 @@ rebuildCrosshair = function()
     elseif S.CrosshairColor == "Purple" then color = Color3.fromRGB(170, 80, 255)
     elseif S.CrosshairColor == "Orange" then color = Color3.fromRGB(255, 150, 40)
     end
-
+    
     local size = S.CrosshairSize or 12
     local thick = S.CrosshairThickness or 2
     local gap = S.CrosshairGap or 4
-
+    
     if shape == "Cross" or shape == "X" then
         local rotationOffset = (shape == "X") and 45 or 0
         Crosshair.Rotation = (S.CrosshairRotation or 0) + rotationOffset
-
+        
         local function mkLine(w, h, x, y)
             local ln = Instance.new("Frame")
             ln.Parent = Crosshair
@@ -13973,7 +13984,7 @@ rebuildCrosshair = function()
         center.ZIndex = 800
         Corner(center, 999)
         Stroke(center, Color3.fromRGB(0, 0, 0), 1, 0.35)
-
+        
     elseif shape == "Dot" then
         Crosshair.Rotation = S.CrosshairRotation or 0
         local dot = Instance.new("Frame")
@@ -13987,7 +13998,7 @@ rebuildCrosshair = function()
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(1, 0)
         corner.Parent = dot
-
+        
         if S.CrosshairColor == "Rainbow" then
             task.spawn(function()
                 while dot and dot.Parent do
@@ -13996,7 +14007,7 @@ rebuildCrosshair = function()
                 end
             end)
         end
-
+        
     elseif shape == "Circle" then
         Crosshair.Rotation = S.CrosshairRotation or 0
         local circ = Instance.new("Frame")
@@ -14006,16 +14017,16 @@ rebuildCrosshair = function()
         circ.Size = UDim2.fromOffset(size, size)
         circ.BackgroundTransparency = 1
         circ.ZIndex = 799
-
+        
         local stroke = Instance.new("UIStroke")
         stroke.Thickness = thick
         stroke.Color = color
         stroke.Parent = circ
-
+        
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(1, 0)
         corner.Parent = circ
-
+        
         if S.CrosshairColor == "Rainbow" then
             task.spawn(function()
                 while stroke and stroke.Parent do
@@ -14024,7 +14035,7 @@ rebuildCrosshair = function()
                 end
             end)
         end
-
+        
     elseif shape == "Heart" then
         Crosshair.Rotation = S.CrosshairRotation or 0
         local container = Instance.new("Frame")
@@ -14034,7 +14045,7 @@ rebuildCrosshair = function()
         container.AnchorPoint = Vector2.new(0.5, 0.5)
         container.Position = UDim2.new(0.5, 0, 0.5, 0)
         container.ZIndex = 799
-
+        
         -- Left lobe
         local left = Instance.new("Frame")
         left.Parent = container
@@ -14045,7 +14056,7 @@ rebuildCrosshair = function()
         local cornerL = Instance.new("UICorner")
         cornerL.CornerRadius = UDim.new(1, 0)
         cornerL.Parent = left
-
+        
         -- Right lobe
         local right = Instance.new("Frame")
         right.Parent = container
@@ -14056,7 +14067,7 @@ rebuildCrosshair = function()
         local cornerR = Instance.new("UICorner")
         cornerR.CornerRadius = UDim.new(1, 0)
         cornerR.Parent = right
-
+        
         -- Base
         local base = Instance.new("Frame")
         base.Parent = container
@@ -14065,7 +14076,7 @@ rebuildCrosshair = function()
         base.Rotation = 45
         base.BackgroundColor3 = color
         base.BorderSizePixel = 0
-
+        
         if S.CrosshairColor == "Rainbow" then
             task.spawn(function()
                 while container and container.Parent do
@@ -14616,13 +14627,13 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
             local gunHolderName = nil
             local innocentsAlive = 0
             local innocentsTotal = 0
-
+            
             for _, pl in ipairs(Players:GetPlayers()) do
                 local ch = pl.Character
                 local hum = ch and ch:FindFirstChildOfClass("Humanoid")
                 local alive = hum and hum.Health > 0
                 local role = alive and (pl == LP and S._GetHUDRole(pl) or getRole(pl)) or "Dead"
-
+                
                 if role == "Murderer" then
                     murdererName = pl.Name
                 elseif role == "Sheriff" then
@@ -14644,7 +14655,7 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
                     innocentsTotal = innocentsTotal + 1
                 end
             end
-
+            
             local gd = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
             local gunStatusText = "None"
             if gd and gd.Parent then
@@ -14658,7 +14669,7 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
             elseif gunHolderName then
                 gunStatusText = "Held by " .. gunHolderName
             end
-
+            
             local lines = {
                 "Murderer: " .. murdererName,
                 "Sheriff: " .. sheriffName,
@@ -14885,12 +14896,12 @@ do
         if p.Character then connectChar(p.Character) end
         p.CharacterAdded:Connect(connectChar)
     end
-
+    
     for _, p in ipairs(Players:GetPlayers()) do
         setupPlayerDeathTrack(p)
     end
     tc(Players.PlayerAdded:Connect(setupPlayerDeathTrack))
-
+    
     local function sendChat(text)
         pcall(function()
             local textChatService = game:GetService("TextChatService")
@@ -14903,7 +14914,7 @@ do
             end
         end)
     end
-
+    
     local lastRoundState = false
     task.spawn(function()
         while S.Gui and S.Gui.Parent do
@@ -14925,7 +14936,7 @@ do
             task.wait(1)
         end
     end)
-
+    
     -- ============ AUTO DODGE KNIFE LOOP ============
     -- The old version only reacted to thrown-knife OBJECTS in the workspace, so a murderer simply
     -- walking up and stabbing (their knife stays a Tool INSIDE their character, never in workspace)
@@ -15571,13 +15582,13 @@ do
         currentPackName = packName
         pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         pcall(function() for _, t in ipairs(hum:GetPlayingAnimationTracks()) do t:Stop(0) end end)
-
+        
         local applied = 0
         local descApplied = false
         if pack and pack.catalog then
             descApplied = applyCatalogPackDescription(hum, pack)
         end
-
+        
         if not descApplied then
             for _, slot in ipairs(slots) do
                 if slot.name == "Idle" then
