@@ -1405,19 +1405,6 @@ local function Notify(title, msg, dur, style)
     task.delay(dur, dismiss)
 end
 
-local FOVCircle = Instance.new("Frame")
-FOVCircle.Name = "FOV"
-FOVCircle.Parent = SG
-FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FOVCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
-FOVCircle.BackgroundTransparency = 1
-FOVCircle.Size = UDim2.fromOffset(200, 200)
-FOVCircle.Visible = false
-FOVCircle.ZIndex = 800
-Corner(FOVCircle, 99999)
-local fovSt = Stroke(FOVCircle, T.White, 1.5, 0.7)
-
-local FOV_COLORS = {
     White  = Color3.fromRGB(255, 255, 255),
     Red    = Color3.fromRGB(255, 60, 60),
     Green  = Color3.fromRGB(90, 220, 120),
@@ -5342,13 +5329,11 @@ do
     mkToggle(secSheriffAim, "Silent Aim", false, function(v) S.SheriffSilentAim = v end, 1, "Sheriff")
     mkToggle(secSheriffAim, "Piercing Bullet", false, function(v) S.SheriffSilentAimPiercing = v end, 2)
     mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
-    mkToggle(secSheriffAim, "FOV Check", true, function(v) S.SheriffSilentAimFOVEnabled = v end, 4)
 
     local secKnifeAim = mkSection(Pages.Combat, "Knife Aim", 2)
     secKnifeAim.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
     mkToggle(secKnifeAim, "Silent Aim", false, function(v) S.KnifeSilentAim = v end, 1, "Knife Silent Aim")
     mkToggle(secKnifeAim, "Wall Check", false, function(v) S.KnifeSilentAimWallCheck = v end, 2)
-    mkToggle(secKnifeAim, "FOV Check", false, function(v) S.KnifeSilentAimFOVEnabled = v end, 3)
     mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
 
     local secKnifeThrow = mkSection(Pages.Combat, "Knife Throw", 3)
@@ -5637,8 +5622,8 @@ do
     -- Vector3 argument it saw — on a throw with more than 2 args that clobbers whatever real data was
     -- in slot 3+ (e.g. a velocity or spin value), which is why the throw silently did nothing.
     if self.Name == "KnifeThrown" and S.KnifeSilentAim then
-        local targetChar = (S.KnifeSilentAimPrioritizeSheriff and silentAimTargetChar("SheriffOrHero", S.KnifeSilentAimFOVEnabled, S.KnifeSilentAimWallCheck, "Head"))
-            or silentAimTargetChar("Nearest", S.KnifeSilentAimFOVEnabled, S.KnifeSilentAimWallCheck, "Head")
+        local targetChar = (S.KnifeSilentAimPrioritizeSheriff and silentAimTargetChar("SheriffOrHero", false, S.KnifeSilentAimWallCheck, "Head"))
+            or silentAimTargetChar("Nearest", false, S.KnifeSilentAimWallCheck, "Head")
         if targetChar then
             local aimPart = targetChar:FindFirstChild("Head")
                 or targetChar:FindFirstChild("UpperTorso")
@@ -12556,22 +12541,6 @@ tc(RunService.RenderStepped:Connect(function()
             if h then h.PlatformStand = true end
         end end
 
-        local showFOV = S.ShowFOV and S.FOVEnabled
-        FOVCircle.Visible = showFOV
-        if showFOV then
-            FOVCircle.Size = UDim2.fromOffset(S.FOVRadius*2, S.FOVRadius*2)
-            -- SG has IgnoreGuiInset = false, so its local (0,0) sits at the bottom of the top
-            -- inset (the Roblox top bar), NOT raw screen (0,0) like GetMouseLocation() returns.
-            -- Subtract the inset to convert raw mouse coords into SG's local space, or the
-            -- circle renders shifted down/right of the actual cursor.
-            local mp = UIS:GetMouseLocation()
-            local inset = game:GetService("GuiService"):GetGuiInset()
-            FOVCircle.Position = UDim2.fromOffset(mp.X - inset.X, mp.Y - inset.Y)
-            fovSt.Thickness = S.FOVThickness or 2
-            if S.RainbowFOV then
-                fovSt.Color = Color3.fromHSV((tick()*0.25) % 1, 0.8, 1)
-            else
-                fovSt.Color = FOV_COLORS[S.FOVColor] or T.White
             end
         end
 
