@@ -60,6 +60,7 @@ local S = {
     UnlockAllKnifeEffects = false,
     FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig", VFXAura = "Off",
     VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
+    AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -5441,9 +5442,17 @@ end, 6)
         end
         local function sanitize(container, aura, data)
             data = data or {}
-            local tint = data.tint
+            -- User overrides. Each preset ships a tint and an emission cap tuned for it; these three
+            -- ride on top so an aura can be recoloured, thinned out or made denser without editing
+            -- the table. Density scales BOTH the per-emitter rate and the cap, otherwise raising it
+            -- would just clip against the preset's own ceiling and appear to do nothing.
+            local userColor = (S.AuraColor and S.AuraColor ~= "Preset") and FOV_COLORS[S.AuraColor] or nil
+            local tint = userColor or data.tint
             local seq = tint and ColorSequence.new(tint) or nil
-            local cap = math.clamp(tonumber(data.cap) or (MOBILE and 10 or 20), 1, MOBILE and 40 or 80)
+            local density = math.clamp(tonumber(S.AuraDensity) or 100, 20, 300) / 100
+            local sizeMul = math.clamp(tonumber(S.AuraSize) or 100, 40, 250) / 100
+            local baseCap = tonumber(data.cap) or (MOBILE and 10 or 20)
+            local cap = math.clamp(baseCap * density, 1, MOBILE and 60 or 140)
             for _, obj in ipairs(container:GetDescendants()) do
                 if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
                     pcall(function() obj:Destroy() end)
@@ -5458,7 +5467,7 @@ end, 6)
                     pcall(function()
                         local rate = tonumber(obj.Rate) or 0
                         if rate <= 0 then rate = MOBILE and 6 or 10 end
-                        obj.Rate = math.clamp(rate, 1, cap)
+                        obj.Rate = math.clamp(rate * density, 1, cap)
                         local lifetime = obj.Lifetime
                         if not lifetime or lifetime.Max <= 0 then
                             obj.Lifetime = NumberRange.new(0.6, 1.2)
@@ -5488,6 +5497,16 @@ end, 6)
                                 NumberSequenceKeypoint.new(0.82, 0.28, 0),
                                 NumberSequenceKeypoint.new(1, 1, 0),
                             })
+                        end
+                        -- Particle Size slider: rescale whatever curve the asset (or the block above)
+                        -- ended up with, rather than replacing it, so each preset keeps its shape.
+                        if math.abs(sizeMul - 1) > 0.01 then
+                            local scaled = {}
+                            for _, kp in ipairs(obj.Size.Keypoints) do
+                                scaled[#scaled + 1] = NumberSequenceKeypoint.new(
+                                    kp.Time, math.clamp(kp.Value * sizeMul, 0, 100), kp.Envelope)
+                            end
+                            if #scaled >= 2 then obj.Size = NumberSequence.new(scaled) end
                         end
                         obj.LightInfluence = 0
                         obj.LightEmission = math.max(obj.LightEmission, 0.65)
@@ -5759,6 +5778,13 @@ end, 6)
         mkSlider(secCustoms, "Wing Height", -60, 60, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
         mkSlider(secCustoms, "Wing Back Offset", -40, 90, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
         mkCycle(secCustoms, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
+        -- Aura tuning. Each rebuilds so the change is visible immediately; "Preset" leaves the
+        -- style's own colour alone.
+        mkCycle(secCustoms, "Aura Color",
+            { "Preset", "White", "Red", "Green", "Yellow", "Cyan", "Purple", "Orange", "Pink" },
+            "Preset", function(v) S.AuraColor = v; rebuild() end, 9.1)
+        mkSlider(secCustoms, "Aura Density (%)", 20, 300, 100, function(v) S.AuraDensity = v; rebuild() end, 9.2)
+        mkSlider(secCustoms, "Aura Particle Size (%)", 40, 250, 100, function(v) S.AuraSize = v; rebuild() end, 9.3)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
