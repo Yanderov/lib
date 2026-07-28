@@ -75,7 +75,7 @@ local S = {
     Bhop = false, BhopMax = 28, SpeedGlitch = false, AirSpeed = 50,
     ClickTP = false,
     AutoSaveCfg = true,
-    GuiTransparency = 0.15,
+    GuiTransparency = 0.15, UIBlur = 0, UIGlass = 0,
     HudTransparency = 0.20,
     HeadSit = false,
     Orbit = false, OrbitSpeed = 20, OrbitDist = 6, OrbitHeight = 0,
@@ -606,6 +606,55 @@ local function updateGuiTransparency()
     end
 end
 S._UpdateGuiTransparency = updateGuiTransparency
+
+-- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
+-- Main itself and not a child frame -- an opaque child would square off the window's rounded
+-- corners, because UICorner does not clip descendants.
+S._ApplyGlass = function()
+    local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
+    pcall(function()
+        local g = Main:FindFirstChild("GlassSheen")
+        if amount <= 0.01 then
+            if g then g:Destroy() end
+            return
+        end
+        if not g then
+            g = Instance.new("UIGradient")
+            g.Name = "GlassSheen"
+            g.Rotation = 90
+            g.Parent = Main
+        end
+        g.Color = ColorSequence.new(
+            Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
+            Color3.new(0, 0, 0))
+        g.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
+            NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+    end)
+end
+
+-- Background blur, applied only while the window is on screen so closing the menu always gives the
+-- game back its own picture.
+do
+    local blurFx
+    tc(RunService.RenderStepped:Connect(function()
+        local want = math.clamp(tonumber(S.UIBlur) or 0, 0, 24)
+        local on = want > 0 and Main and Main.Parent and Main.Visible
+        if on then
+            if not blurFx or not blurFx.Parent then
+                blurFx = Instance.new("BlurEffect")
+                blurFx.Name = "InertiaUIBlur"
+                blurFx.Parent = game:GetService("Lighting")
+            end
+            blurFx.Size = want
+        elseif blurFx then
+            blurFx:Destroy()
+            blurFx = nil
+        end
+    end))
+end
 
 local function applyTheme(themeName)
     local theme = Themes[themeName]
@@ -2271,6 +2320,97 @@ editCustomBtn.MouseEnter:Connect(function() editCustomBtn.TextColor3 = T.White; 
 editCustomBtn.MouseLeave:Connect(function() editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end) end)
 
 
+-- Custom theme editor. The button above called S._OpenThemeEditor, which nothing ever defined, so
+-- "Edit Custom Theme..." was a no-op -- that is the whole of the "custom themes do not work"
+-- report. Same deferred-factory trick as the transparency slider: mkSlider/mkCycle do not exist
+-- yet at this point in the file, so the rows are built later from S._BuildThemeEditor.
+--
+-- Every role below is a key of T, and every themed object carries a
+-- ThemeColorRole_<Property> attribute naming one, so writing Themes.Custom[role] and re-running
+-- applyTheme("Custom") repaints cards, tabs, subtabs, HUD and the rest through the existing
+-- mechanism -- no per-widget wiring needed.
+S._ThemeRoles = {
+    "BG", "Sidebar", "Card", "Elev", "Hover", "ActiveBg", "Accent", "AccentSoft",
+    "Tx", "Tx2", "Tx3", "Tx4", "Bd", "Bd2", "TgOn", "TgOff", "KnobOn", "KnobOff", "Glow",
+}
+S._BuildThemeEditor = function()
+    local roleHost = Instance.new("Frame")
+    roleHost.Name = "ThemeEditor"
+    roleHost.Parent = mScroll
+    roleHost.LayoutOrder = 8.6
+    roleHost.BackgroundTransparency = 1
+    roleHost.Size = UDim2.new(1, 0, 0, 0)
+    roleHost.AutomaticSize = Enum.AutomaticSize.Y
+    roleHost.Visible = false
+    local roleLayout = Instance.new("UIListLayout")
+    roleLayout.Parent = roleHost
+    roleLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    roleLayout.Padding = UDim.new(0, 4)
+
+    local selected = "Card"
+    local swatch = Instance.new("Frame")
+    swatch.Name = "Swatch"
+    swatch.Parent = roleHost
+    swatch.LayoutOrder = 0
+    swatch.Size = UDim2.new(1, 0, 0, 24)
+    swatch.BorderSizePixel = 0
+    swatch.BackgroundColor3 = T[selected] or Color3.new(1, 1, 1)
+    Corner(swatch, 6)
+    Stroke(swatch, T.Bd, 1, 0.4)
+
+    local rS, gS, bS
+    local function currentColor()
+        return (Themes.Custom and Themes.Custom[selected]) or T[selected] or Color3.new(1, 1, 1)
+    end
+    local function pushColor()
+        local c = Color3.fromRGB(
+            math.clamp(tonumber(S._ThemeR) or 0, 0, 255),
+            math.clamp(tonumber(S._ThemeG) or 0, 0, 255),
+            math.clamp(tonumber(S._ThemeB) or 0, 0, 255))
+        Themes.Custom = Themes.Custom or {}
+        Themes.Custom[selected] = c
+        swatch.BackgroundColor3 = c
+        S.SelectedTheme = "Custom"
+        if applyTheme then pcall(applyTheme, "Custom") end
+        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+    end
+    local function loadRole()
+        local c = currentColor()
+        S._ThemeR, S._ThemeG = math.round(c.R * 255), math.round(c.G * 255)
+        S._ThemeB = math.round(c.B * 255)
+        swatch.BackgroundColor3 = c
+        if rS then rS.set(S._ThemeR); gS.set(S._ThemeG); bS.set(S._ThemeB) end
+    end
+
+    S._mkCycle(roleHost, "Role", S._ThemeRoles, selected, function(v)
+        selected = v
+        loadRole()
+    end, 1)
+    rS = mkSlider(roleHost, "Red", 0, 255, 0, function(v) S._ThemeR = v; pushColor() end, 2, true)
+    gS = mkSlider(roleHost, "Green", 0, 255, 0, function(v) S._ThemeG = v; pushColor() end, 3, true)
+    bS = mkSlider(roleHost, "Blue", 0, 255, 0, function(v) S._ThemeB = v; pushColor() end, 4, true)
+    loadRole()
+
+    S._mkAction(roleHost, "Reset This Role", function()
+        if Themes.Custom then Themes.Custom[selected] = nil end
+        if applyTheme then pcall(applyTheme, S.SelectedTheme or "Custom") end
+        loadRole()
+        Notify("Theme", "Reset " .. selected, 2)
+    end, 5)
+    S._mkAction(roleHost, "Reset Whole Theme", function()
+        Themes.Custom = {}
+        if applyTheme then pcall(applyTheme, S.SelectedTheme or "Custom") end
+        loadRole()
+        Notify("Theme", "Custom theme cleared", 2)
+    end, 6)
+
+    S._OpenThemeEditor = function()
+        roleHost.Visible = not roleHost.Visible
+        editCustomBtn.Text = roleHost.Visible and "Hide Custom Theme Editor" or "Edit Custom Theme..."
+        if roleHost.Visible then loadRole() end
+    end
+end
+
 -- The generic slider builder is declared later.  Keep this factory inside the
 -- settings scope so it retains the local scrolling container, then run it once
 -- the builder is ready.
@@ -2282,6 +2422,20 @@ S._BuildTransparencySetting = function()
         updateGuiTransparency()
         pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
     end, 9, true)
+    -- Blur is a Lighting BlurEffect, so it blurs the GAME behind the panel. Roblox has no
+    -- backdrop filter, so that is the only real "frosted" option; it is driven only while the menu
+    -- is open (see the RenderStepped hook that reads S.UIBlur) and removed when it is closed.
+    mkSlider(mScroll, "Background Blur", 0, 24, math.clamp(tonumber(S.UIBlur) or 0, 0, 24), function(v)
+        S.UIBlur = v
+        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+    end, 9.1, true)
+    -- Glass is a gloss gradient over the window: a highlight down the top edge fading out, which
+    -- is what reads as "glass" once the panel is already translucent.
+    mkSlider(mScroll, "Glass Sheen (%)", 0, 100, math.clamp(tonumber(S.UIGlass) or 0, 0, 100), function(v)
+        S.UIGlass = v
+        if S._ApplyGlass then pcall(S._ApplyGlass) end
+        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+    end, 9.2, true)
 end
 
 
@@ -4060,6 +4214,10 @@ local function mkAction(parent, label, callback, order)
     table.insert(UIRegistry, { label = string.lower(label), row = btn, card = parent and parent.Parent or nil })
     return entry
 end
+-- Exported because closures built EARLIER in the file (the settings modal's theme editor) need
+-- these, and a local declared further down is not in their lexical scope. mkSlider avoids this by
+-- being forward-declared at the top; these two are not.
+S._mkAction = mkAction
 mkSlider = function(parent, label, min, max, def, callback, order, skipSearchRegistry)
     callback = type(callback) == "function" and callback or function() end
     local frame = Instance.new("Frame")
@@ -4206,6 +4364,17 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
             upd(val); pcall(callback, val)
         end,
     })
+    -- Handle for callers that need to move the slider WITHOUT firing its callback -- the theme
+    -- editor repoints its R/G/B sliders at whichever role you select, and firing there would write
+    -- the previous role's colour into the new one.
+    return {
+        set = function(v)
+            v = tonumber(v); if not v then return end
+            val = math.clamp(math.floor(v + 0.5), min, max)
+            upd(val)
+        end,
+        get = function() return val end,
+    }
 end
 
 if S._BuildTransparencySetting then
@@ -4539,6 +4708,7 @@ local function mkCycle(parent, label, options, default, callback, order)
     })
     return { get = function() return options[idx] end }
 end
+S._mkCycle = mkCycle
 local function getTarget(arg1, arg2, arg3)
     local fov, priorityRole
     if typeof(arg1) == "Vector3" then
@@ -5024,6 +5194,12 @@ for _, gs in ipairs(CustomAssets.GunSounds) do
     table.insert(gunPaths, gs.Path)
 end
 
+-- Built here rather than next to the transparency slider: the theme editor also needs mkCycle and
+-- mkAction, which are declared after that point.
+if S._BuildThemeEditor then
+    S._BuildThemeEditor()
+    S._BuildThemeEditor = nil
+end
 -- Both halves finally exist here: the settings-modal closure and the asset list + fetcher.
 if S._BuildWallpaperPicker then
     S._BuildWallpaperPicker(bgPaths, fetchCustomAsset)
