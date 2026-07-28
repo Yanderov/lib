@@ -16078,6 +16078,15 @@ do
         if type(attr) ~= "number" then return false end
         origAttr = origAttr or attr
         local target = targetWindup(origAttr)
+        -- Bail out before the scan when there is provably nothing to do: neither Fast Throw nor the
+        -- windup slider is on (target == the game's own value) and we have never patched anything,
+        -- so there is nothing to restore either. The scan below walks the entire GC table calling
+        -- debug.getupvalues on every function in it, which is by far the most expensive thing the
+        -- hub does -- and it ran on EVERY knife equip regardless of whether the feature was on,
+        -- freezing the client ("Script has run for over 30 seconds" pointing straight at this loop).
+        -- Turning the feature on re-enters through S._ReapplyThrowSpeed, and once lastTarget is set
+        -- we keep scanning so switching the feature back off can restore the original value.
+        if lastTarget == nil and near(target, origAttr) then return true end
         local ok, gc = pcall(getgc, true)
         if not ok or type(gc) ~= "table" then return false end
         local patched = false
