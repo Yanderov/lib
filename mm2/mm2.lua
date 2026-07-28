@@ -14946,6 +14946,7 @@ do
 
 
 do
+local function buildEmotesTab()
 local secEmotes = registerPlayerSubTabSection(mkSection(Pages.Player, "Emotes", 1), "Emotes")
 local EmoteHttpService = game:GetService("HttpService")
 local emoteCatalog = {
@@ -15145,6 +15146,8 @@ mkAction(secEmotes, "Stop Emote", function() stopEmbeddedEmote(); emoteStatus.Te
 mkAction(secEmotes, "Load All Emotes", function() task.spawn(loadRemoteEmoteCatalog) end, 6)
 tc(LP.CharacterRemoving:Connect(stopEmbeddedEmote))
 refreshEmbeddedEmotes()
+end
+buildEmotesTab()
 end
     local secPacks = registerPlayerSubTabSection(mkSection(Pages.Player, "Animations", 1), "Animations")
     local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
