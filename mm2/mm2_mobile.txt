@@ -62,7 +62,7 @@ local S = {
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, CustomCharacterPack = "Off",
+    FakeHeadless = false, FakeKorblox = false, CustomCharacterPack = "Off", WingAura = "Default",
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -5014,12 +5014,28 @@ end, 6)
     end
     do
         local WING_ASSET_ID = "76200335500118"
+        local AURA_ASSETS = {
+            ["APG Aura"] = "15170157085",
+            ["Poseidon Aura"] = "9467770239",
+            ["Mega Pie Aura"] = "8991059421",
+        }
         local wingObjects, wingLoading = {}, false
+        local auraTicket = 0
+        local function clearWingAura(char)
+            char = char or LP.Character
+            if not char then return end
+            for _, obj in ipairs(char:GetDescendants()) do
+                if obj.Name == "InertiaArchdemonWingAura" or obj.Name == "InertiaArchdemonAuraAttachment" then
+                    pcall(function() obj:Destroy() end)
+                end
+            end
+        end
         local function clearWings()
             for _, obj in ipairs(wingObjects) do
                 if obj and obj.Parent then pcall(function() obj:Destroy() end) end
             end
             table.clear(wingObjects)
+            auraTicket = auraTicket + 1
             local char = LP.Character
             if char then
                 for _, child in ipairs(char:GetChildren()) do
@@ -5027,14 +5043,56 @@ end, 6)
                         pcall(function() child:Destroy() end)
                     end
                 end
-                for _, obj in ipairs(char:GetDescendants()) do
-                    if obj.Name == "InertiaArchdemonWingAura" or obj.Name == "InertiaArchdemonAuraAttachment" then
-                        pcall(function() obj:Destroy() end)
-                    end
+                clearWingAura(char)
+            end
+        end
+        local function prepPart(part)
+            part.Anchored = false
+            part.CanCollide = false
+            part.CanTouch = false
+            part.CanQuery = false
+            part.Massless = true
+        end
+        local function stripAuraScripts(container)
+            for _, obj in ipairs(container:GetDescendants()) do
+                if obj:IsA("BaseScript") or obj:IsA("ModuleScript") then
+                    pcall(function() obj:Destroy() end)
                 end
             end
         end
-        local function addWingAura(root)
+        local function tuneAuraFx(container)
+            for _, obj in ipairs(container:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    prepPart(obj)
+                    obj.Transparency = 1
+                elseif obj:IsA("ParticleEmitter") then
+                    obj.Name = "InertiaArchdemonWingAura"
+                    pcall(function() obj.Rate = math.min(obj.Rate, MOBILE and 28 or 55) end)
+                    pcall(function() obj.LightInfluence = 0 end)
+                    pcall(function() obj.LockedToPart = true end)
+                elseif obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                    obj.Name = "InertiaArchdemonWingAura"
+                end
+            end
+        end
+        local function weldAuraModel(model, root)
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if not primary then return false end
+            model.PrimaryPart = primary
+            model:PivotTo(root.CFrame * CFrame.new(0, 0.15, 0.55))
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    prepPart(part)
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Name = "InertiaArchdemonWingAura"
+                    weld.Part0 = root
+                    weld.Part1 = part
+                    weld.Parent = part
+                end
+            end
+            return true
+        end
+        local function addDefaultWingAura(root)
             local att = Instance.new("Attachment")
             att.Name = "InertiaArchdemonAuraAttachment"
             att.Position = Vector3.new(0, 0.25, 0.55)
@@ -5076,12 +5134,68 @@ end, 6)
             table.insert(wingObjects, att)
             table.insert(wingObjects, light)
         end
-        local function prepPart(part)
-            part.Anchored = false
-            part.CanCollide = false
-            part.CanTouch = false
-            part.CanQuery = false
-            part.Massless = true
+        local function addAssetWingAura(root, mode, assetId, ticket)
+            task.spawn(function()
+                local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. assetId) end)
+                local char = LP.Character
+                root = char and root and root.Parent and root or (char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")))
+                if not (ok and type(loaded) == "table" and #loaded > 0 and S.VFXWings and S.WingAura == mode and ticket == auraTicket and char and root) then
+                    if S.VFXWings and S.WingAura == mode then
+                        Notify("Wing Aura", "Asset load failed: " .. assetId, 3)
+                    end
+                    return
+                end
+                clearWingAura(char)
+                local holder = Instance.new("Model")
+                holder.Name = "InertiaArchdemonWingAura"
+                local attach = Instance.new("Attachment")
+                attach.Name = "InertiaArchdemonAuraAttachment"
+                attach.Position = Vector3.new(0, 0.2, 0.55)
+                attach.Parent = root
+                table.insert(wingObjects, attach)
+                local added = 0
+                for _, obj in ipairs(loaded) do
+                    local clone = obj:Clone()
+                    stripAuraScripts(clone)
+                    tuneAuraFx(clone)
+                    if clone:IsA("ParticleEmitter") or clone:IsA("Fire") or clone:IsA("Smoke") or clone:IsA("Sparkles") then
+                        clone.Name = "InertiaArchdemonWingAura"
+                        clone.Parent = attach
+                    elseif clone:IsA("Attachment") then
+                        clone.Name = "InertiaArchdemonAuraAttachment"
+                        clone.Parent = root
+                    else
+                        clone.Parent = holder
+                    end
+                    added = added + 1
+                end
+                holder.Parent = char
+                if #holder:GetChildren() > 0 then
+                    tuneAuraFx(holder)
+                    if not weldAuraModel(holder, root) then
+                        holder:Destroy()
+                    else
+                        table.insert(wingObjects, holder)
+                    end
+                else
+                    holder:Destroy()
+                end
+                if added > 0 then
+                    Notify("Wing Aura", mode .. " loaded", 2)
+                end
+            end)
+        end
+        local function addWingAura(root)
+            clearWingAura()
+            auraTicket = auraTicket + 1
+            local mode = S.WingAura or "Default"
+            if mode == "Off" then return end
+            local assetId = AURA_ASSETS[mode]
+            if assetId then
+                addAssetWingAura(root, mode, assetId, auraTicket)
+            else
+                addDefaultWingAura(root)
+            end
         end
         local function weldModelToRoot(model, root)
             local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
@@ -5171,6 +5285,10 @@ end, 6)
             task.delay(0.9, function() if S.VFXWings then rebuildWings() end end)
         end))
         mkToggle(secCustoms, "Archdemon Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 8)
+        mkCycle(secCustoms, "Wing Aura", {"Default", "APG Aura", "Poseidon Aura", "Mega Pie Aura", "Off"}, "Default", function(v)
+            S.WingAura = v
+            if S.VFXWings then rebuildWings() end
+        end, 9)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
