@@ -5746,7 +5746,14 @@ end, 6)
     local secKnifeEffects = mkSection(Pages.Visuals, "Knife Effects", 13)
     mkToggle(secKnifeEffects, "Unlock All Knife Effects (Visual)", false, function(v)
         S.UnlockAllKnifeEffects = v
-        if S._RefreshKnifeEffectCatalog then S._RefreshKnifeEffectCatalog() end
+        -- Off the caller's thread on purpose. Refreshing the catalog requires MM2's own ItemModule
+        -- and Database.Sync, and requiring a game module from our thread leaves that thread unable
+        -- to touch the hub's GUI afterwards ("cannot access 'Instance'"). The boot config restore
+        -- applies every control from ONE thread, so when this control's turn came it poisoned the
+        -- rest of the run: measured, controls 1-52 applied cleanly and 53 onwards -- this one --
+        -- all failed, which is why ~14 toggles booted drawn opposite to their value and ate the
+        -- first click. Spawning keeps the damage inside a throwaway thread.
+        if S._RefreshKnifeEffectCatalog then task.spawn(S._RefreshKnifeEffectCatalog) end
     end, 1)
 
     -- Dual Wield: removed
