@@ -1113,19 +1113,20 @@ local function Notify(title, msg, dur, style)
     if MOBILE then
         local camera = workspace.CurrentCamera
         local vp = camera and camera.ViewportSize
-        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.3), 140, 180) end
+        if vp then toastWidth = math.clamp(math.floor(vp.X - 28), 260, 360) end
     end
     local bodyTextSize = math.clamp(math.round((MOBILE and 10 or 12) * (S.TextSizeScale or 1)), 9, 16)
+    local titleTextSize = math.clamp(math.round((MOBILE and 11 or 13) * (S.TextSizeScale or 1)), 10, 17)
     local bodyHeight = roleReveal and 52 or 19
     if not roleReveal then
         pcall(function()
             local measured = game:GetService("TextService"):GetTextSize(
-                bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 44, 96)
+                bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 38, MOBILE and 160 or 96)
             )
-            bodyHeight = math.clamp(math.ceil(measured.Y), 19, 60)
+            bodyHeight = math.clamp(math.ceil(measured.Y), 19, MOBILE and 118 or 72)
         end)
     end
-    local finalHeight = roleReveal and 98 or (48 + bodyHeight)
+    local finalHeight = roleReveal and 98 or (50 + bodyHeight)
 
     local toast = Instance.new("Frame")
     toast.Name = "NotificationSlot"
@@ -1195,8 +1196,9 @@ local function Notify(title, msg, dur, style)
     tt.Text = titleText
     tt.TextColor3 = T.White; pcall(function() tt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
     tt.TextTransparency = 0
-    tt.TextSize = MOBILE and 11 or 13
-    tt.TextTruncate = Enum.TextTruncate.AtEnd
+    tt.TextSize = titleTextSize
+    tt.TextTruncate = MOBILE and Enum.TextTruncate.None or Enum.TextTruncate.AtEnd
+    tt.TextWrapped = MOBILE
     tt.TextXAlignment = Enum.TextXAlignment.Left
     tt.ZIndex = 904
     if roleReveal then bindLocalizedText(tt, "Round Roles", "Round Roles", true) end
@@ -1286,7 +1288,7 @@ local function Notify(title, msg, dur, style)
         bt.Text = bodyText
         bt.TextColor3 = T.White; pcall(function() bt:SetAttribute("ThemeColorRole_TextColor3", "White") end)
         bt.TextTransparency = 0
-        bt.TextSize = 13
+        bt.TextSize = bodyTextSize
         bt.TextTruncate = Enum.TextTruncate.None
         bt.TextWrapped = true
         bt.TextXAlignment = Enum.TextXAlignment.Left
@@ -6411,34 +6413,46 @@ do
             message = message:gsub("^[-*•]%s+", "")
             if message == "" then return false, "" end
             if lastSentText ~= "" and message:lower() == lastSentText:lower() then return false, "" end
-            -- Keep one natural chat message instead of flooding the channel with model output.
-            if #message > 180 then
-                local clipped = message:sub(1, 180)
+            local originalMessage = message
+            local chunks = {}
+            local maxLen = 175
+            while #message > maxLen do
+                local clipped = message:sub(1, maxLen)
                 local cut = clipped:match("^(.+)%s")
-                message = (cut and #cut >= 80 and cut or clipped) .. "…"
+                if not cut or #cut < 60 then cut = clipped end
+                table.insert(chunks, cut)
+                message = message:sub(#cut + 1):match("^%s*(.-)%s*$") or ""
             end
-            local sent = false
-            pcall(function()
-                local TextChatService = game:GetService("TextChatService")
-                local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral") 
-                    or TextChatService.TextChannels:FindFirstChildWhichIsA("TextChannel")
-                if channel then
-                    channel:SendAsync(message)
-                    sent = true
-                end
-            end)
-            if not sent then
+            if message ~= "" then
+                table.insert(chunks, message)
+            end
+            local sentAny = false
+            for _, part in ipairs(chunks) do
+                local sent = false
                 pcall(function()
-                    local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents") 
-                        and game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
-                    if sayRemote then
-                        sayRemote:FireServer(message, "All")
+                    local TextChatService = game:GetService("TextChatService")
+                    local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+                        or TextChatService.TextChannels:FindFirstChildWhichIsA("TextChannel")
+                    if channel then
+                        channel:SendAsync(part)
                         sent = true
                     end
                 end)
+                if not sent then
+                    pcall(function()
+                        local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
+                            and game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
+                        if sayRemote then
+                            sayRemote:FireServer(part, "All")
+                            sent = true
+                        end
+                    end)
+                end
+                sentAny = sentAny or sent
+                if #chunks > 1 then task.wait(0.18) end
             end
-            if sent then lastSentText = message end
-            return sent, message
+            if sentAny then lastSentText = originalMessage end
+            return sentAny, originalMessage
         end
 
         local aiRequestInProgress = false
