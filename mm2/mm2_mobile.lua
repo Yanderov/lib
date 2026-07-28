@@ -3516,11 +3516,6 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     stateMark.BorderSizePixel = 0
     Corner(stateMark, 2)
     local entry = { label = label, cfgId = _cfgId(parent, type(configLabel) == "string" and configLabel or label), bindKey = nil, oldKey = nil, isToggle = true, state = default }
-    local function syncEntryState()
-        local actual = _toggleStateFromS(entry.cfgId)
-        if actual ~= nil and actual ~= entry.state then entry.state = actual end
-        return entry.state
-    end
     local function setVis(on, anim)
         local tCol = on and T.TgOn or T.TgOff
         pcall(function() track:SetAttribute("ThemeColorRole_BackgroundColor3", on and "TgOn" or "TgOff") end)
@@ -3566,6 +3561,25 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
             knobShell.BackgroundColor3 = shellCol
             knob.BackgroundColor3 = kCol
         end
+    end
+    -- Reads the authoritative S flag and adopts it. Defined after setVis because it now REPAINTS on
+    -- change: it used to assign entry.state and return, leaving the knob drawn in the old position.
+    -- Every caller is nominally a read -- the config system's get(), the hover handlers,
+    -- updateVisuals -- so a silent state change left the UI showing the opposite of what the toggle
+    -- actually held. The boot restore in particular treats get() as a pure sample: it snapshots
+    -- every control, waits a second, snapshots again, and reads any difference as a deliberate user
+    -- click to be preserved -- which a mutating getter can manufacture on its own.
+    -- NOTE: this closes a real state/paint divergence, but it is NOT the cause of the "toggle needs
+    -- two or three clicks" report. That one survives this fix: ~14 toggles still boot with
+    -- entry.state set and the knob drawn off, because setVis fails silently on its on==true path
+    -- while called under pcall from the config restore. Still being traced.
+    local function syncEntryState()
+        local actual = _toggleStateFromS(entry.cfgId)
+        if actual ~= nil and actual ~= entry.state then
+            entry.state = actual
+            setVis(entry.state, false)
+        end
+        return entry.state
     end
     function entry.updateVisuals()
         -- No keyboard on a touch build, so the bind badge never shows there; the
