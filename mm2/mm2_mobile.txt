@@ -62,7 +62,7 @@ local S = {
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 01 Angel Classic", VFXAura = "Off",
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig", VFXAura = "Off",
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -4933,16 +4933,16 @@ end, 6)
         local RED_VFX = Color3.fromRGB(255, 48, 42)
         local DARK_RED_VFX = Color3.fromRGB(145, 0, 18)
         local WINGS = {
-            ["White 01 Angel Classic"] = { id = "221993607", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
-            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 01 Angel Classic"] = { id = "221993607", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.2 },
+            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.2 },
+            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
+            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
+            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
+            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
+            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
+            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.0 },
+            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.0 },
+            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.0 },
             ["Black 01 Classic"] = { id = "225736624", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 02 Wide"] = { id = "643579878", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 03 Floating"] = { id = "14891552293", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
@@ -5070,6 +5070,19 @@ end, 6)
                         if obj.Rate <= 0 then obj.Rate = MOBILE and 6 or 10 end
                         obj.Rate = math.min(obj.Rate, data.cap or 20)
                         if seq then obj.Color = seq end
+                        if obj.Texture == "" then
+                            obj.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+                            obj.Size = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 0.18),
+                                NumberSequenceKeypoint.new(0.5, 0.42),
+                                NumberSequenceKeypoint.new(1, 0.08),
+                            })
+                            obj.Transparency = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 1),
+                                NumberSequenceKeypoint.new(0.15, 0.22),
+                                NumberSequenceKeypoint.new(1, 1),
+                            })
+                        end
                         obj.LightInfluence = 0
                         obj.LightEmission = math.max(obj.LightEmission, 0.65)
                         obj.LockedToPart = true
@@ -5101,11 +5114,35 @@ end, 6)
             source:Clone().Parent = model
             return model
         end
-        local function weldModel(model, root, offset)
+        local function normalizeModel(model, data)
+            data = data or {}
+            local target = tonumber(data.max) or 4.4
+            pcall(function()
+                local _, size = model:GetBoundingBox()
+                local biggest = math.max(size.X, size.Y, size.Z)
+                if biggest > target and biggest > 0 then
+                    model:ScaleTo(target / biggest)
+                end
+            end)
+        end
+        local function weldModel(model, root, offset, data)
             local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
             if not primary then return nil end
             model.PrimaryPart = primary
+            normalizeModel(model, data)
             model:PivotTo(root.CFrame * (offset or CFrame.new(0, 0, 0.75)))
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("BasePart") and part ~= primary then
+                    pcall(function()
+                        local wc = Instance.new("WeldConstraint")
+                        wc.Name = "InertiaToolboxPartWeld"
+                        wc.Part0 = primary
+                        wc.Part1 = part
+                        wc.Parent = primary
+                        own(wc)
+                    end)
+                end
+            end
             local weld = Instance.new("Weld")
             weld.Name = "InertiaToolboxWeld"
             weld.Part0 = root
@@ -5115,14 +5152,13 @@ end, 6)
             own(weld)
             return weld
         end
-        local function animate(model, weld, wholeOnly)
+        local function animate(model, weld, wholeOnly, data)
+            data = data or {}
             local motors = {}
-            if not wholeOnly then
-                for _, obj in ipairs(model:GetDescendants()) do
-                    if obj:IsA("Motor6D") then
-                        local full = obj:GetFullName():lower()
-                        table.insert(motors, { m = obj, c0 = obj.C0, side = full:find("left", 1, true) and -1 or 1 })
-                    end
+            for _, obj in ipairs(model:GetDescendants()) do
+                if obj:IsA("Motor6D") then
+                    local full = obj:GetFullName():lower()
+                    table.insert(motors, { m = obj, c0 = obj.C0, side = full:find("left", 1, true) and -1 or 1 })
                 end
             end
             local base = weld.C0
@@ -5131,11 +5167,16 @@ end, 6)
                     clean()
                     return
                 end
-                local t, flap = tick(), math.sin(t * 2.55)
-                weld.C0 = base * CFrame.Angles(math.sin(t * 1.25) * 0.018, math.sin(t * 0.9) * 0.018, flap * 0.015)
+                local t = tick()
+                local flap = math.sin(t * 3.35)
+                local breathe = math.sin(t * 1.75)
+                local amp = tonumber(data.flap) or 0.18
+                weld.C0 = base
+                    * CFrame.new(0, breathe * 0.055, math.cos(t * 1.25) * 0.025)
+                    * CFrame.Angles(breathe * 0.045, flap * amp, math.sin(t * 2.4) * 0.045)
                 for _, item in ipairs(motors) do
                     if item.m and item.m.Parent then
-                        item.m.C0 = item.c0 * CFrame.Angles(0, item.side * flap * 0.13, math.abs(flap) * 0.05)
+                        item.m.C0 = item.c0 * CFrame.Angles(0, item.side * flap * 0.42, math.abs(flap) * 0.12)
                     end
                 end
             end))
@@ -5173,7 +5214,7 @@ end, 6)
             clean()
             local char, root = LP.Character, rootPart(LP.Character)
             if not (char and root) then return end
-            local wingData, auraData = WINGS[S.VFXWingStyle] or WINGS["White 01 Angel Classic"], AURAS[S.VFXAura or "Off"]
+            local wingData, auraData = WINGS[S.VFXWingStyle] or WINGS["White 02 Angel Rig"], AURAS[S.VFXAura or "Off"]
             if not (S.VFXWings or auraData) then return end
             local ticket = fx.ticket
             fx.busy = true
@@ -5186,10 +5227,10 @@ end, 6)
                         if model then
                             sanitize(model, false, wingData)
                             model.Parent = char
-                            local weld = weldModel(model, root, wingData.offset)
+                            local weld = weldModel(model, root, wingData.offset, wingData)
                             if weld then
                                 own(model)
-                                animate(model, weld, wingData.whole)
+                                animate(model, weld, wingData.whole, wingData)
                             else
                                 model:Destroy()
                                 Notify("VFX Wings", "Asset has no attachable parts.", 3)
@@ -5211,7 +5252,7 @@ end, 6)
             end)
         end))
         mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
-        mkCycle(secCustoms, "VFX Wing Style", wingNames, "White 01 Angel Classic", function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        mkCycle(secCustoms, "VFX Wing Style", wingNames, "White 02 Angel Rig", function(v) S.VFXWingStyle = v; rebuild() end, 8)
         mkCycle(secCustoms, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
