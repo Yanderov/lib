@@ -4344,12 +4344,6 @@ local function serverHop()
         pcall(function() TS:Teleport(game.PlaceId, LP) end)
     end)
 end
-local function ceilingTP()
-    local c = LP.Character
-    local hrp = c and c:FindFirstChild("HumanoidRootPart")
-    if hrp and S._SafeTeleportSelf(hrp.CFrame + Vector3.new(0, 250, 0)) then Notify("Teleport", "Up 250 studs", 2) end
-end
-
 do
     -- Subtab bar setup for Visuals
     local visualsSubTabBar = Instance.new("Frame")
@@ -5869,9 +5863,8 @@ do
 
     local sec5 = mkSection(Pages.Teleport, "Actions", 4)
     mkAction(sec5, "Reset Character", function() respawnChar() end, 1)
-    mkAction(sec5, "Ceiling Teleport", function() ceilingTP() end, 2)
-    mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 3)
-    mkAction(sec5, "Server Hop", function() serverHop() end, 4)
+    mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 2)
+    mkAction(sec5, "Server Hop", function() serverHop() end, 3)
 
 
     -- Custom Goto Player row
