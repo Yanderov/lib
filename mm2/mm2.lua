@@ -774,17 +774,18 @@ pcall(function()
     if readfile and isfile and isfile("MM2_Configs/_autoload.json") then
         local data = game:GetService("HttpService"):JSONDecode(readfile("MM2_Configs/_autoload.json"))
         if data then
-            if data.SelectedTheme and Themes[data.SelectedTheme] then
-                S.SelectedTheme = data.SelectedTheme
+            local sd = type(data.S) == "table" and data.S or data
+            if sd.SelectedTheme and Themes[sd.SelectedTheme] then
+                S.SelectedTheme = sd.SelectedTheme
             end
-            if data.Language then
-                S.Language = data.Language
+            if sd.Language then
+                S.Language = sd.Language
             end
-            if data.TextSizeScale then
-                S.TextSizeScale = data.TextSizeScale
+            if sd.TextSizeScale then
+                S.TextSizeScale = sd.TextSizeScale
             end
-            if type(data.NotificationPosition) == "string" then
-                S.NotificationPosition = data.NotificationPosition
+            if type(sd.NotificationPosition) == "string" then
+                S.NotificationPosition = sd.NotificationPosition
             end
         end
     end
@@ -10638,6 +10639,43 @@ local CfgHttp = game:GetService("HttpService")
 local CFG_DIR = "MM2_Configs"
 local FILE_OK = (writefile and readfile and isfile) and true or false
 local configLoadedSuccessfully = false
+local applyingConfig = false
+local autoSaveQueued = false
+local lastAutoSaveEnc = nil
+
+local function _cfgNorm(v)
+    return tostring(v or ""):lower():gsub("[^%w]", "")
+end
+
+local CFG_CONTROL_KEY_ALIASES = {
+    autosave = "AutoSaveCfg",
+    gunchamsmode = "ItemChamsMode",
+    gunchamscolor = "ItemChamsColor",
+    gunchamsrainbow = "ItemChamsRainbow",
+    vfxwingstyle = "VFXWingStyle",
+    vfxaura = "VFXAura",
+    aiprovider = "AIChatProvider",
+    respondtoallmessages = "AIChatRespondToAll",
+}
+
+local function _cfgValueFromState(controlId)
+    local label = tostring(controlId or ""):match("([^/]+)$") or controlId
+    local labelKey = _cfgNorm(label)
+    local alias = CFG_CONTROL_KEY_ALIASES[labelKey]
+    if alias and S[alias] ~= nil then return S[alias] end
+    for k, v in pairs(S) do
+        if type(v) ~= "function" and type(v) ~= "table" and not tostring(k):find("^_") then
+            if _cfgNorm(k) == labelKey then return v end
+        end
+    end
+    for k, v in pairs(S) do
+        if type(v) ~= "function" and type(v) ~= "table" and not tostring(k):find("^_") then
+            local key = _cfgNorm(k)
+            if #key >= 5 and string.find(labelKey, key, 1, true) then return v end
+        end
+    end
+    return nil
+end
 
 local function _cfgEnsureDir()
     if not FILE_OK then return end
@@ -10661,11 +10699,15 @@ local function _cfgSanitize(name)
     return name
 end
 local function buildConfig()
-    local data = { S = {}, hud = {}, binds = {} }
+    local data = { S = {}, hud = {}, binds = {}, controls = {} }
     for k, v in pairs(S) do
         if type(v) ~= "function" and type(v) ~= "table" and not k:find("^_") then
             data.S[k] = v
         end
+    end
+    for _, c in ipairs(ConfigControls) do
+        local ok, value = pcall(c.get)
+        if ok then data.controls[c.id] = value end
     end
     data.CustomTheme = {}
     for k, v in pairs(Themes.Custom) do
@@ -10695,6 +10737,23 @@ local function saveConfig(name)
     return (pcall(function() writefile(CFG_DIR .. "/" .. name .. ".json", enc) end))
 end
 S.SaveConfig = saveConfig
+local function writeAutoConfig()
+    if not (FILE_OK and S.AutoSaveCfg and configLoadedSuccessfully and not applyingConfig) then return end
+    local ok, enc = pcall(function() return CfgHttp:JSONEncode(buildConfig()) end)
+    if not ok or enc == lastAutoSaveEnc then return end
+    _cfgEnsureDir()
+    if pcall(function() writefile(CFG_DIR .. "/_autoload.json", enc) end) then
+        lastAutoSaveEnc = enc
+    end
+end
+S._RequestAutoSave = function()
+    if not FILE_OK or applyingConfig or autoSaveQueued then return end
+    autoSaveQueued = true
+    task.defer(function()
+        autoSaveQueued = false
+        pcall(writeAutoConfig)
+    end)
+end
 local function loadConfig(name)
     name = _cfgSanitize(name)
     if not FILE_OK or name == "" then return false end
@@ -10702,6 +10761,8 @@ local function loadConfig(name)
     if not isfile(path) then return false end
     local ok, dat = pcall(function() return CfgHttp:JSONDecode(readfile(path)) end)
     if not ok or type(dat) ~= "table" then return false end
+
+    applyingConfig = true
 
     if dat.S then
         for k, v in pairs(dat.S) do S[k] = v end
@@ -10729,10 +10790,19 @@ local function loadConfig(name)
         end
     end
     
-    -- Sync UI controls (sliders, toggles)
+    -- Sync UI controls (sliders, toggles). New configs use data.controls; older autoload
+    -- files only had data.S, so fall back to matching the control label against S. Without
+    -- this, the feature state restored but the visible toggle stayed on its default state.
     for _, c in ipairs(ConfigControls) do
-        if dat.controls and dat.controls[c.id] ~= nil and not (S._cfgSkip and S._cfgSkip[c.id]) then
-            pcall(c.set, dat.controls[c.id])
+        local hasValue, value = false, nil
+        if type(dat.controls) == "table" and dat.controls[c.id] ~= nil then
+            hasValue, value = true, dat.controls[c.id]
+        elseif not dat.controls and dat.S then
+            value = _cfgValueFromState(c.id)
+            hasValue = value ~= nil
+        end
+        if hasValue and not (S._cfgSkip and S._cfgSkip[c.id]) then
+            pcall(c.set, value)
         end
     end
     
@@ -10765,6 +10835,10 @@ local function loadConfig(name)
     if type(S._UpdateAvatarMods) == "function" then pcall(S._UpdateAvatarMods) end
     if type(updateFullBright) == "function" then pcall(updateFullBright) end
     if type(applyTheme) == "function" then pcall(applyTheme) end
+    if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
+    applyingConfig = false
+    configLoadedSuccessfully = true
+    if name ~= "_autoload" then pcall(writeAutoConfig) end
     return true
 end
 S.LoadConfig = loadConfig
@@ -10894,19 +10968,9 @@ if FILE_OK then
     -- Periodic fallback: immediate save requests handle normal changes, while this loop catches any
     -- state mutation that happened outside a UI callback. Unchanged configs are still a no-op.
     task.spawn(function()
-        local lastEnc = nil
         while S.Gui and S.Gui.Parent do
             task.wait(5)
-            if S.AutoSaveCfg and configLoadedSuccessfully then
-                pcall(function()
-                    local enc = CfgHttp:JSONEncode(buildConfig())
-                    if enc ~= lastEnc then
-                        _cfgEnsureDir()
-                        writefile(CFG_DIR .. "/_autoload.json", enc)
-                        lastEnc = enc
-                    end
-                end)
-            end
+            pcall(writeAutoConfig)
         end
     end)
 end
@@ -11585,6 +11649,35 @@ do
             or ITEM_CHAM_COLORS[S.ItemChamsColor] or ITEM_CHAM_COLORS.White
         local t = ITEM_CHAM_TRANSPARENCY[S.ItemChamsMode] or ITEM_CHAM_TRANSPARENCY.Outline
         return color, t.fill, t.outline, S.ItemChamsMode
+    end
+    local function looksLikeGun(obj)
+        local n = tostring(obj and obj.Name or ""):lower()
+        return n == "gun" or n == "gundrop" or n == "revolver"
+            or n:find("gun", 1, true) ~= nil
+            or n:find("revolver", 1, true) ~= nil
+            or n:find("pistol", 1, true) ~= nil
+            or n:find("blaster", 1, true) ~= nil
+            or n:find("firearm", 1, true) ~= nil
+    end
+    S._findGunChamAdornee = function(container)
+        if not container then return nil, nil end
+        for _, obj in ipairs(container:GetChildren()) do
+            if (obj:IsA("Tool") or obj:IsA("Model")) and looksLikeGun(obj) then
+                local part = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart", true)
+                if part then return obj, part end
+            elseif obj:IsA("BasePart") and looksLikeGun(obj) then
+                return obj, obj
+            end
+        end
+        for _, obj in ipairs(container:GetDescendants()) do
+            if (obj:IsA("Tool") or obj:IsA("Model")) and looksLikeGun(obj) then
+                local part = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart", true)
+                if part then return obj, part end
+            elseif obj:IsA("BasePart") and looksLikeGun(obj) then
+                return obj, obj
+            end
+        end
+        return nil, nil
     end
 end
 -- ===== ROLE TRACKING (event-driven — NO per-frame / repeated blocking InvokeServer) =====
@@ -12508,7 +12601,7 @@ tc(RunService.RenderStepped:Connect(function()
 
         -- PERF: skip this whole per-player loop unless the Gun Held cham toggle is on. When it turns
         -- off we run ONE final pass to clean up leftover highlights, then stop.
-        local anyCham = S.GunHeldChams or S.RoleChams
+        local anyCham = S.GunHeldChams or S.GunChams or S.RoleChams
         if anyCham or S._chamsWereOn then
         -- PERF: chams don't need a per-frame refresh. Throttling to ~12x/sec avoids scanning every
         -- player's Character every single frame.
@@ -12542,11 +12635,11 @@ tc(RunService.RenderStepped:Connect(function()
                     removeCham(ch, "RoleChamsHighlight")
                 end
 
-                -- Gun chams (gun currently in a player's hand)
-                local gunTool = ch:FindFirstChild("Gun") or ch:FindFirstChild("Revolver")
-                local gunPart = gunTool and (gunTool:FindFirstChild("Handle") or gunTool:FindFirstChildWhichIsA("BasePart"))
-                if gunPart then
-                    if S.GunHeldChams then
+                -- Gun chams (gun currently in a player's hand). MM2 skins often rename or nest the
+                -- visible handle, so use the broader detector instead of only Character.Gun.Handle.
+                local gunTool, gunPart = S._findGunChamAdornee and S._findGunChamAdornee(ch)
+                local heldGunCham = S.GunHeldChams or S.GunChams
+                if gunPart and heldGunCham then
                         local color, fillT, outlineT, chamMode = S._getItemChamStyle()
                         if chamMode == "Maze" or chamMode == "Mirror" then
                             removeCham(gunPart, "GunHeldChams")
@@ -12555,8 +12648,11 @@ tc(RunService.RenderStepped:Connect(function()
                             S._restoreItemChamMaterials()
                             createHighlight(gunPart, color, "GunHeldChams", fillT, outlineT)
                         end
-                    else
-                        removeCham(gunPart, "GunHeldChams")
+                else
+                    for _, old in ipairs(ch:GetDescendants()) do
+                        if old.Name == "GunHeldChams" and old:IsA("Highlight") then
+                            old:Destroy()
+                        end
                     end
                 end
             end
@@ -12570,6 +12666,10 @@ tc(RunService.RenderStepped:Connect(function()
             if now - (S._lastGunDropScan or 0) >= 0.25 then
                 S._lastGunDropScan = now
                 S._cachedGunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
+                if not S._cachedGunDrop and S._findGunChamAdornee then
+                    local _, part = S._findGunChamAdornee(workspace)
+                    S._cachedGunDrop = part
+                end
             end
             local gd = S._cachedGunDrop
             if gd and gd.Parent then
