@@ -7,3 +7,11 @@ mm2/patch_*.py
 mm2/check_syntax*.py
 mm2/fix_double_end.py
 patch_loader.py
+animations_block.lua
+diff.txt
+fix_*.py
+patch*.py
+mm2_old.lua
+mm2/scratch/
+mm2/luau*.exe
+mm2/luau.zip
