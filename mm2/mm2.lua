@@ -4871,8 +4871,175 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
 end, 6)
+    do
+        local wingModel, wingConn
+        local colorMap = {
+            White = Color3.fromRGB(245, 245, 245),
+            Cyan = Color3.fromRGB(80, 230, 255),
+            Purple = Color3.fromRGB(185, 110, 255),
+            Pink = Color3.fromRGB(255, 120, 210),
+            Red = Color3.fromRGB(255, 75, 75),
+            Gold = Color3.fromRGB(255, 205, 90),
+            Void = Color3.fromRGB(95, 70, 150),
+        }
+        local function wingColor()
+            if S.VFXWingsRainbow then return Color3.fromHSV((tick() % 4) / 4, 0.85, 1) end
+            return colorMap[S.VFXWingsColor or "Cyan"] or colorMap.Cyan
+        end
+        local function clearWings()
+            if wingConn then pcall(function() wingConn:Disconnect() end); wingConn = nil end
+            if wingModel then pcall(function() wingModel:Destroy() end); wingModel = nil end
+        end
+        local function mkWingPart(parent, root, name, size, cf, color, transparency)
+            local p = Instance.new("Part")
+            p.Name = name
+            p.Size = size
+            p.CFrame = cf
+            p.Anchored = false
+            p.CanCollide = false
+            p.CanTouch = false
+            p.CanQuery = false
+            p.Massless = true
+            p.Material = Enum.Material.Neon
+            p.Color = color
+            p.Transparency = transparency or 0.18
+            p.Parent = parent
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = root
+            weld.Part1 = p
+            weld.Parent = p
+            return p
+        end
+        local function addBeam(root, feather, rootPos, color)
+            local a0 = Instance.new("Attachment")
+            a0.Name = "WingRoot"
+            a0.Position = rootPos
+            a0.Parent = root
+            local a1 = Instance.new("Attachment")
+            a1.Name = "WingTip"
+            a1.Position = Vector3.new(0, feather.Size.Y * 0.42, 0)
+            a1.Parent = feather
+            local beam = Instance.new("Beam")
+            beam.Name = "WingBeam"
+            beam.Attachment0 = a0
+            beam.Attachment1 = a1
+            beam.FaceCamera = true
+            beam.Width0 = 0.10
+            beam.Width1 = 0.02
+            beam.LightEmission = 1
+            beam.LightInfluence = 0
+            beam.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.2), color)
+            beam.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.25),
+                NumberSequenceKeypoint.new(0.72, 0.05),
+                NumberSequenceKeypoint.new(1, 0.82),
+            })
+            beam.Parent = feather
+            return beam
+        end
+        local function addParticles(root, color, style, intensity)
+            local att = Instance.new("Attachment")
+            att.Name = "WingVFXCore"
+            att.Position = Vector3.new(0, 0.28, 0.64)
+            att.Parent = root
+            local pe = Instance.new("ParticleEmitter")
+            pe.Name = "WingDust"
+            pe.Texture = (style == "Flame") and "rbxasset://textures/particles/fire_main.dds" or "rbxasset://textures/particles/sparkles_main.dds"
+            pe.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.25), color)
+            pe.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.75),
+                NumberSequenceKeypoint.new(0.22, 0.2),
+                NumberSequenceKeypoint.new(1, 1),
+            })
+            pe.Size = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.12 + intensity * 0.01),
+                NumberSequenceKeypoint.new(0.55, 0.35 + intensity * 0.018),
+                NumberSequenceKeypoint.new(1, 0),
+            })
+            pe.Lifetime = NumberRange.new(0.55, 1.15)
+            pe.Rate = math.clamp(8 + intensity * 0.35, 8, 42)
+            pe.Speed = NumberRange.new(0.4, 1.7 + intensity * 0.025)
+            pe.SpreadAngle = Vector2.new(36, 60)
+            pe.Drag = 4
+            pe.LightEmission = 1
+            pe.LightInfluence = 0
+            pe.Rotation = NumberRange.new(0, 360)
+            pe.RotSpeed = NumberRange.new(-90, 90)
+            pe.Parent = att
+            local light = Instance.new("PointLight")
+            light.Name = "WingGlow"
+            light.Color = color
+            light.Brightness = math.clamp(0.7 + intensity / 65, 0.7, 2.2)
+            light.Range = math.clamp(5 + intensity / 10, 5, 14)
+            light.Parent = att
+            return pe, light
+        end
+        local function rebuildWings()
+            clearWings()
+            if not S.VFXWings then return end
+            local char = LP.Character
+            local root = char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
+            if not root then return end
+            local color = wingColor()
+            local style = S.VFXWingsStyle or "Cyber"
+            local intensity = tonumber(S.VFXWingsIntensity) or 55
+            local model = Instance.new("Model")
+            model.Name = "InertiaVFXWings"
+            model.Parent = char
+            wingModel = model
+            local beams, feathers = {}, {}
+            local spread = (style == "Angel") and 1.08 or (style == "Void" and 1.22 or 1.15)
+            local back = (style == "Flame") and 0.72 or 0.62
+            for side = -1, 1, 2 do
+                for i = 1, 5 do
+                    local len = (1.75 - i * 0.17) * spread
+                    local y = 0.48 - i * 0.18
+                    local x = side * (0.52 + i * 0.18)
+                    local angle = math.rad(side * (24 + i * 9))
+                    local roll = math.rad(side * (22 + i * 5))
+                    local cf = root.CFrame
+                        * CFrame.new(x, y, back + i * 0.018)
+                        * CFrame.Angles(0, angle, roll)
+                    local feather = mkWingPart(model, root, "WingFeather", Vector3.new(0.10, len, 0.045), cf, color, style == "Angel" and 0.08 or 0.16)
+                    table.insert(feathers, feather)
+                    table.insert(beams, addBeam(root, feather, Vector3.new(side * 0.34, 0.28 - i * 0.04, 0.52), color))
+                end
+            end
+            local particles, light = addParticles(root, color, style, intensity)
+            wingConn = RunService.RenderStepped:Connect(function()
+                if not (S.VFXWings and wingModel and wingModel.Parent) then clearWings(); return end
+                local c = wingColor()
+                local pulse = 0.5 + 0.5 * math.sin(tick() * 3.1)
+                for _, p in ipairs(feathers) do
+                    if p.Parent then
+                        p.Color = c
+                        p.Transparency = math.clamp((style == "Angel" and 0.06 or 0.14) + pulse * 0.08, 0.04, 0.34)
+                    end
+                end
+                for _, b in ipairs(beams) do
+                    if b.Parent then
+                        b.Color = ColorSequence.new(c:Lerp(Color3.new(1, 1, 1), 0.22), c)
+                        b.Width0 = 0.08 + pulse * 0.06
+                    end
+                end
+                if particles and particles.Parent then
+                    particles.Color = ColorSequence.new(c:Lerp(Color3.new(1, 1, 1), 0.25), c)
+                end
+                if light and light.Parent then light.Color = c end
+            end)
+        end
+        S._RefreshVFXWings = rebuildWings
+        tc(LP.CharacterAdded:Connect(function()
+            task.delay(0.9, function() if S.VFXWings then rebuildWings() end end)
+        end))
+        mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 7)
+        mkCycle(secCustoms, "VFX Wings Style", {"Cyber", "Angel", "Void", "Flame"}, "Cyber", function(v) S.VFXWingsStyle = v; rebuildWings() end, 8)
+        mkCycle(secCustoms, "VFX Wings Color", {"Cyan", "Purple", "Pink", "Red", "Gold", "White", "Void"}, "Cyan", function(v) S.VFXWingsColor = v; rebuildWings() end, 9)
+        mkToggle(secCustoms, "VFX Wings Rainbow", false, function(v) S.VFXWingsRainbow = v; rebuildWings() end, 10)
+        mkSlider(secCustoms, "VFX Wings Intensity", 0, 100, 55, function(v) S.VFXWingsIntensity = v; rebuildWings() end, 11)
+    end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
-    -- avatar cosmetics, assets, crosshair, and knife-effect visuals.
+    -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
 
 
     
@@ -14451,51 +14618,145 @@ do
 
 do
 local secEmotes = mkSection(Pages.Player, "Emotes", 1)
-local emotesLaunching = false
-mkAction(secEmotes, "Open Emotes GUI", function()
-    if _G.EmotesGUIRunning then
-        Notify("Emotes", "Already open.", 2)
+local EmoteHttpService = game:GetService("HttpService")
+local emoteCatalog = {
+    { name = "Wave", id = 507770239 },
+    { name = "Point", id = 507770453 },
+    { name = "Cheer", id = 507770677 },
+    { name = "Laugh", id = 507770818 },
+    { name = "Dance 1", id = 507771019 },
+    { name = "Dance 2", id = 507776043 },
+    { name = "Dance 3", id = 507777268 },
+    { name = "Stadium", id = 3360686498 },
+    { name = "Tilt", id = 3360692915 },
+    { name = "Shrug", id = 3576968026 },
+    { name = "Salute", id = 3360689775 },
+    { name = "Hello", id = 3576686446 },
+    { name = "Around Town", id = 3576747102 },
+    { name = "Fashionable", id = 3576745472 },
+    { name = "Godlike", id = 3823158750 },
+    { name = "Dolphin Dance", id = 5918726674 },
+    { name = "Applaud", id = 5911729486 },
+}
+local currentEmoteTrack, currentEmoteAnim
+local emoteStatus = Instance.new("TextLabel")
+emoteStatus.Name = "EmoteStatus"
+emoteStatus.Parent = secEmotes
+emoteStatus.LayoutOrder = 1
+emoteStatus.BackgroundTransparency = 1
+emoteStatus.Size = UDim2.new(1, 0, 0, 28)
+emoteStatus.Font = F
+emoteStatus.TextSize = 12
+emoteStatus.TextColor3 = T.Tx3; pcall(function() emoteStatus:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+emoteStatus.TextXAlignment = Enum.TextXAlignment.Left
+emoteStatus.TextWrapped = true
+emoteStatus.Text = "Built-in emotes. Search and tap Play; no separate 7yd7 popup."
+local emoteSearch = S._mkSearchBox(secEmotes, 2, "Search emotes...")
+local emoteScroll = S._mkListScroll(secEmotes, 3, MOBILE and 360 or 320)
+local function stopEmbeddedEmote()
+    if currentEmoteTrack then pcall(function() currentEmoteTrack:Stop(0.15) end); currentEmoteTrack = nil end
+    if currentEmoteAnim then pcall(function() currentEmoteAnim:Destroy() end); currentEmoteAnim = nil end
+end
+local function playEmbeddedEmote(item)
+    local id = tonumber(item and item.id)
+    if not id then emoteStatus.Text = "Invalid emote id."; return end
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then emoteStatus.Text = "Character is not ready."; return end
+    local animator = hum:FindFirstChildOfClass("Animator") or hum:WaitForChild("Animator", 1)
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = hum
+    end
+    stopEmbeddedEmote()
+    local anim = Instance.new("Animation")
+    anim.Name = "InertiaEmbeddedEmote"
+    anim.AnimationId = "rbxassetid://" .. tostring(id)
+    anim.Parent = SG
+    local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+    if not (ok and track) then
+        pcall(function() anim:Destroy() end)
+        emoteStatus.Text = "This emote is blocked in this place."
         return
     end
-    if emotesLaunching then
-        Notify("Emotes", "Launching...", 2)
-        return
+    currentEmoteAnim = anim
+    currentEmoteTrack = track
+    pcall(function() track.Priority = Enum.AnimationPriority.Action end)
+    pcall(function() track.Looped = true end)
+    local played = pcall(function() track:Play(0.12, 1, tonumber(S.EmoteSpeed) or 1) end)
+    emoteStatus.Text = played and ("Playing: " .. tostring(item.name or id)) or "Failed to play emote."
+end
+local function refreshEmbeddedEmotes()
+    for _, ch in ipairs(emoteScroll:GetChildren()) do
+        if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
     end
-    emotesLaunching = true
-    Notify("Emotes", "Opening 7yd7...", 2)
-    task.spawn(function()
-        local content = nil
-        if readfile then
-            for _, path in ipairs({
-                "7yd7_emotes.lua",
-                "mm2/7yd7_emotes.lua",
-                "C:\\Users\\sadhasdkfj\\Desktop\\script\\mm2\\7yd7_emotes.lua",
-            }) do
-                local ok, data = pcall(function() return readfile(path) end)
-                if ok and type(data) == "string" and data ~= "" then content = data break end
+    local q = string.lower(emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local shown, matches = 0, 0
+    for _, item in ipairs(emoteCatalog) do
+        local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
+        local hay = string.lower(name .. " " .. tostring(item.id or ""))
+        if q == "" or string.find(hay, q, 1, true) then
+            matches += 1
+            if shown < 90 then
+                shown += 1
+                S._mkThumbRow(emoteScroll, shown, tostring(item.id), name, function()
+                    playEmbeddedEmote(item)
+                end)
             end
         end
-        if not content then
-            local ok, data = pcall(function()
-                return game:HttpGet("https://raw.githubusercontent.com/Yanderov/lib/main/mm2/7yd7_emotes.lua")
-            end)
-            if ok and type(data) == "string" and data ~= "" then content = data end
-        end
-        if not content then
-            emotesLaunching = false
-            Notify("Emotes", "Emotes source unavailable.", 3)
-            return
-        end
-        local f, err = loadstring(content)
-        if f then
-            local ok, runErr = pcall(f)
-            if not ok then Notify("Emotes", tostring(runErr), 3) end
-        else
-            Notify("Emotes", tostring(err or "compile failed"), 3)
-        end
-        emotesLaunching = false
+    end
+    if matches == 0 then
+        local empty = Instance.new("TextLabel")
+        empty.Name = "Status"
+        empty.Parent = emoteScroll
+        empty.LayoutOrder = 1
+        empty.BackgroundTransparency = 1
+        empty.Size = UDim2.new(1, 0, 0, 34)
+        empty.Font = F
+        empty.TextSize = 12
+        empty.TextColor3 = T.Tx3; pcall(function() empty:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+        empty.Text = "No emotes found."
+    end
+    emoteStatus.Text = "Emotes in GUI: " .. tostring(#emoteCatalog) .. " loaded, showing " .. tostring(shown) .. " / " .. tostring(matches)
+    if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+end
+local function loadRemoteEmoteCatalog()
+    emoteStatus.Text = "Loading emote catalog inside Inertia..."
+    local ok, json = pcall(function()
+        return game:HttpGet("https://raw.githubusercontent.com/7yd7/sniper-Emote/refs/heads/test/EmoteSniper.json")
     end)
-end, 1)
+    if not (ok and type(json) == "string" and json ~= "") then
+        emoteStatus.Text = "Catalog HTTP blocked; using built-in emotes."
+        refreshEmbeddedEmotes()
+        return
+    end
+    local okDecode, decoded = pcall(function() return EmoteHttpService:JSONDecode(json) end)
+    local data = okDecode and decoded and decoded.data
+    if type(data) ~= "table" then
+        emoteStatus.Text = "Catalog decode failed; using built-in emotes."
+        refreshEmbeddedEmotes()
+        return
+    end
+    local nextCatalog, seen = {}, {}
+    for _, item in ipairs(data) do
+        local id = tonumber(item.id)
+        if id and id > 0 and not seen[id] then
+            seen[id] = true
+            table.insert(nextCatalog, { name = tostring(item.name or ("Emote " .. id)), id = id })
+        end
+    end
+    if #nextCatalog > 0 then
+        table.sort(nextCatalog, function(a, b) return tostring(a.name):lower() < tostring(b.name):lower() end)
+        emoteCatalog = nextCatalog
+    end
+    refreshEmbeddedEmotes()
+end
+emoteSearch:GetPropertyChangedSignal("Text"):Connect(refreshEmbeddedEmotes)
+mkAction(secEmotes, "Stop Emote", function() stopEmbeddedEmote(); emoteStatus.Text = "Stopped." end, 4)
+mkAction(secEmotes, "Refresh Emote Catalog", function() task.spawn(loadRemoteEmoteCatalog) end, 5)
+tc(LP.CharacterRemoving:Connect(stopEmbeddedEmote))
+refreshEmbeddedEmotes()
+task.spawn(loadRemoteEmoteCatalog)
 end
     local secPacks = mkSection(Pages.Animations or Pages.Player, "Animation Pack", 1)
     local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
