@@ -3852,6 +3852,44 @@ opHdr.TextSize = 16
 opHdr.TextColor3 = T.White; pcall(function() opHdr:SetAttribute("ThemeColorRole_TextColor3", "White") end)
 opHdr.TextXAlignment = Enum.TextXAlignment.Left
 
+-- Make OptionPicker modal draggable by header
+do
+    local dr, di, ds, sp, so
+    opHdr.Active = true
+    opHdr.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dr = true
+            di = i
+            ds = i.Position
+            sp = OptionPickerModal.Position
+            so = OptionPickerModal.Parent and (OptionPickerModal.AbsolutePosition - OptionPickerModal.Parent.AbsolutePosition) or nil
+        end
+    end)
+    tc(UIS.InputChanged:Connect(function(i)
+        local mouseDrag = di and di.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
+        local touchDrag = di and di.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
+        if dr and (i == di or mouseDrag or touchDrag) then
+            local d = i.Position - ds
+            local host = so and OptionPickerModal.Parent and OptionPickerModal.Parent.AbsoluteSize
+            if host and host.X > 0 and host.Y > 0 then
+                local size = OptionPickerModal.AbsoluteSize
+                local function fit(v, extent, span)
+                    if span >= extent then return (extent - span) / 2 end
+                    return math.clamp(v, 0, extent - span)
+                end
+                local x = fit(so.X + d.X, host.X, size.X)
+                local y = fit(so.Y + d.Y, host.Y, size.Y)
+                OptionPickerModal.Position = UDim2.fromScale(x / host.X, y / host.Y)
+            end
+        end
+    end))
+    tc(UIS.InputEnded:Connect(function(i)
+        if dr and (i == di or i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+            dr = false
+        end
+    end))
+end
+
 local opClose = Instance.new("TextButton")
 opClose.Parent = OptionPickerModal
 opClose.AnchorPoint = Vector2.new(1, 0)
