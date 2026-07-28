@@ -1404,8 +1404,9 @@ local function Notify(title, msg, dur, style)
     progressTween:Play()
     task.delay(dur, dismiss)
 end
-
-local FOV_COLORS = {\n    White  = Color3.fromRGB(255, 255, 255),\n    Red    = Color3.fromRGB(255, 60, 60),
+local FOV_COLORS = {
+    White  = Color3.fromRGB(255, 255, 255),
+    Red    = Color3.fromRGB(255, 60, 60),
     Green  = Color3.fromRGB(90, 220, 120),
     Blue   = Color3.fromRGB(214, 214, 214), -- legacy option kept neutral for the no-blue UI/HUD style
     Yellow = Color3.fromRGB(255, 225, 90),
