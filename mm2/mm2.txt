@@ -2548,7 +2548,7 @@ ContentArea.Position = MOBILE and UDim2.new(0, 8, 0, M.titleH) or UDim2.new(0, 1
 -- Mobile no longer reserves M.navH for a bottom tab dock: tabs are their own screen now, reached
 -- with the back arrow, so that height goes back to the content. On a 372px-tall phone panel this
 -- is the difference between a 192px and a ~278px content area.
-ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + M.navH + 10)) or UDim2.new(1, -152, 1, -67)
+ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + 12)) or UDim2.new(1, -152, 1, -67)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ContentArea.ScrollBarThickness = 0
@@ -2963,7 +2963,8 @@ local function mkSBItem(name, iconKind, page, order)
     pin.BorderSizePixel = 0
     pin.Visible = false
     Corner(pin, 3)
-    local item = { name = name, btn = btn, bar = bar, icon = icon, label = label, stroke = btnStroke, page = page, dot = dot, pin = pin, order = order, fav = false }
+    -- iconKind is kept so the mobile home grid can build its own tile with the same glyph.
+    local item = { name = name, btn = btn, bar = bar, icon = icon, iconKind = iconKind, label = label, stroke = btnStroke, page = page, dot = dot, pin = pin, order = order, fav = false }
     btn.MouseButton1Click:Connect(function()
         SFX.Click()
         -- Clicking a tab clears any active search and opens that full tab (setting the SearchBox text
@@ -3015,29 +3016,9 @@ if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9
 -- untouched. Wrapped in do...end so none of this reaches the main chunk's register budget.
 if MOBILE then
 do
-    -- The dock sits above the hint line, so it stops short of the panel's bottom edge.
-    SB.Position = UDim2.new(0, 8, 1, -(M.navH + 4))
-    SB.Size = UDim2.new(1, -16, 0, M.railItemH)
-
-    local hint = Instance.new("TextLabel")
-    hint.Name = "MobileDockHint"
-    hint.Parent = Main
-    hint.BackgroundTransparency = 1
-    hint.Position = UDim2.new(0, 8, 1, -18)
-    hint.Size = UDim2.new(1, -16, 0, 14)
-    hint.Font = F
-    hint.TextSize = 11
-    hint.TextColor3 = T.Tx4
-    pcall(function() hint:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
-    hint.TextXAlignment = Enum.TextXAlignment.Center
-    hint.Text = "> Scroll sideways for more tabs"
-    -- Only worth saying when the dock actually overflows.
-    local function syncHint()
-        hint.Visible = SB.AbsoluteCanvasSize.X > SB.AbsoluteSize.X + 2
-    end
-    SB:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(syncHint)
-    SB:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncHint)
-    task.defer(syncHint)
+    -- No bottom dock: the tabs are the home screen's icon grid, so a permanent strip would only
+    -- repeat them and cost ~70px of a phone's height.
+    SB.Visible = false
 
     local backBtn = Instance.new("TextButton")
     backBtn.Name = "MobileBack"
@@ -3144,13 +3125,26 @@ do
     pcall(function() userLbl:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
     userLbl.Text = "@" .. LP.Name
 
+    -- FPS and ping share one row so the icon grid starts as high up the screen as possible.
+    local statRow = Instance.new("Frame")
+    statRow.Name = "HomeStats"
+    statRow.Parent = menu
+    statRow.LayoutOrder = 2
+    statRow.BackgroundTransparency = 1
+    statRow.Size = UDim2.new(1, 0, 0, 58)
+    local statLayout = Instance.new("UIListLayout")
+    statLayout.Parent = statRow
+    statLayout.FillDirection = Enum.FillDirection.Horizontal
+    statLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    statLayout.Padding = UDim.new(0, 10)
+
     -- Live stat tiles: big value, quiet caption, same shape as the profile card.
     local function statCard(order, caption)
         local f = Instance.new("Frame")
         f.Name = caption
-        f.Parent = menu
+        f.Parent = statRow
         f.LayoutOrder = order
-        f.Size = UDim2.new(1, 0, 0, 66)
+        f.Size = UDim2.new(0.5, -5, 1, 0)
         f.BackgroundColor3 = T.Card
         pcall(function() f:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
         f.BorderSizePixel = 0
@@ -3159,10 +3153,10 @@ do
         local cap = Instance.new("TextLabel")
         cap.Parent = f
         cap.BackgroundTransparency = 1
-        cap.Position = UDim2.new(0, 14, 0, 8)
-        cap.Size = UDim2.new(1, -28, 0, 16)
+        cap.Position = UDim2.new(0, 12, 0, 6)
+        cap.Size = UDim2.new(1, -24, 0, 15)
         cap.Font = F
-        cap.TextSize = 12
+        cap.TextSize = 11
         cap.TextXAlignment = Enum.TextXAlignment.Left
         cap.TextColor3 = T.Tx3
         pcall(function() cap:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
@@ -3171,18 +3165,33 @@ do
         val.Name = "Value"
         val.Parent = f
         val.BackgroundTransparency = 1
-        val.Position = UDim2.new(0, 14, 0, 26)
-        val.Size = UDim2.new(1, -28, 0, 30)
+        val.Position = UDim2.new(0, 12, 0, 22)
+        val.Size = UDim2.new(1, -24, 0, 30)
         val.Font = FB
-        val.TextSize = 26
+        val.TextSize = 24
         val.TextXAlignment = Enum.TextXAlignment.Left
         val.TextColor3 = T.Tx
         pcall(function() val:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
         val.Text = "--"
         return val
     end
-    local fpsVal = statCard(2, "FPS")
-    local pingVal = statCard(3, "Network Latency")
+    local fpsVal = statCard(1, "FPS")
+    local pingVal = statCard(2, "Network Latency")
+
+    -- The tabs themselves: an icon grid, which is the whole point of the home screen.
+    local tabGrid = Instance.new("Frame")
+    tabGrid.Name = "HomeTabs"
+    tabGrid.Parent = menu
+    tabGrid.LayoutOrder = 3
+    tabGrid.BackgroundTransparency = 1
+    tabGrid.Size = UDim2.new(1, 0, 0, 0)
+    tabGrid.AutomaticSize = Enum.AutomaticSize.Y
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.Parent = tabGrid
+    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gridLayout.CellPadding = UDim2.fromOffset(10, 10)
+    gridLayout.CellSize = UDim2.fromOffset(76, 76)
+    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
     task.spawn(function()
         while menu and menu.Parent do
@@ -3220,8 +3229,40 @@ do
         showMenu()
     end)
 
-    -- Tabs live in the dock now, so the dock buttons drive the drill-down directly.
     for _, item in ipairs(SBItems) do
+        local tile = Instance.new("TextButton")
+        tile.Name = item.name
+        tile.Parent = tabGrid
+        tile.LayoutOrder = item.order
+        tile.AutoButtonColor = false
+        tile.Text = ""
+        tile.BackgroundColor3 = T.Elev
+        pcall(function() tile:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        tile.BorderSizePixel = 0
+        Corner(tile, 16)
+        Stroke(tile, T.Bd2, 1, 0.4)
+        -- Its own glyph instance: the dock button owns the one in item.icon and reparenting that
+        -- would empty the (hidden) dock the search code still walks.
+        local glyph = S._MakeNavIcon and S._MakeNavIcon(tile, item.iconKind) or nil
+        if glyph then
+            glyph.slot.AnchorPoint = Vector2.new(0.5, 0.5)
+            glyph.slot.Position = UDim2.fromScale(0.5, 0.5)
+            glyph.slot.Size = UDim2.fromOffset(40, 40)
+            glyph.image.Size = UDim2.fromOffset(32, 32)
+        else
+            -- No getcustomasset on this executor: fall back to the name so the tile is not blank.
+            tile.Text = item.name
+            tile.Font = FB
+            tile.TextSize = 13
+            tile.TextWrapped = true
+            tile.TextColor3 = T.Tx
+            pcall(function() tile:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        end
+        tile.MouseButton1Click:Connect(function()
+            SFX.Click()
+            showPage(item)
+        end)
+        -- The dock buttons are hidden but other code still fires them.
         item.btn.MouseButton1Click:Connect(function() showPage(item) end)
     end
 
