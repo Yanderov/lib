@@ -497,33 +497,50 @@ S._UpdateAvatarMods = function()
         end
     end
 
-    -- Swapping all three leg parts to their own Korblox meshes looked broken: three separately
-    -- scaled skeletal pieces read as detached blobs. The approach that actually works is the
-    -- long-standing community one — put the full skeletal leg on the upper part and simply hide
-    -- the lower leg and the foot, since that one mesh already covers the whole limb.
-    -- R6 has none of these parts, so the look-ups miss and the leg stays stock.
-    local upper = char:FindFirstChild("RightUpperLeg")
-    if upper and upper:IsA("MeshPart") then
-        if S.FakeKorblox then
-            if not savedLimb[upper] then
-                savedLimb[upper] = { mesh = upper.MeshId, tex = upper.TextureID }
-            end
-            pcall(function() upper.MeshId = "rbxassetid://902942096" end)
-            pcall(function() upper.TextureID = "rbxassetid://902843398" end)
-        elseif savedLimb[upper] then
-            local orig = savedLimb[upper]
-            pcall(function() upper.MeshId = orig.mesh end)
-            pcall(function() upper.TextureID = orig.tex end)
-            savedLimb[upper] = nil
-        end
-    end
-    for _, name in ipairs({ "RightLowerLeg", "RightFoot" }) do
-        local part = char:FindFirstChild(name)
-        if part and part:IsA("BasePart") then
-            if S.FakeKorblox then
+    -- The skeleton mesh covers the whole limb, but re-skinning RightUpperLeg with it renders it
+    -- squeezed: a MeshPart keeps the InitialSize of the mesh it replaced, so the new mesh is
+    -- scaled into the upper third of the leg. Draw it as a cosmetic Part + SpecialMesh instead —
+    -- SpecialMesh has an explicit Scale, so the skeleton can be stretched to the real hip-to-floor
+    -- length while the rig parts keep their own Size, collision and mass. Swapping all three leg
+    -- meshes was tried first and reads as detached blobs; one mesh over a hidden leg is the look.
+    -- 0.81 = the mesh's own height in studs at Scale 1, measured live against a 1x1x1 reference.
+    local legNames = char:FindFirstChild("RightUpperLeg")
+        and { "RightUpperLeg", "RightLowerLeg", "RightFoot" } or { "Right Leg" }
+    local anchor = char:FindFirstChild(legNames[1])
+    local rig = char:FindFirstChild("InertiaKorbloxLeg")
+    if S.FakeKorblox and anchor then
+        local total = 0
+        for _, name in ipairs(legNames) do
+            local part = char:FindFirstChild(name)
+            if part and part:IsA("BasePart") then
                 if savedLimb[part] == nil then savedLimb[part] = { trans = part.Transparency } end
                 part.Transparency = 1
-            elseif savedLimb[part] then
+                total = total + part.Size.Y
+            end
+        end
+        if not rig then
+            rig = Instance.new("Part")
+            rig.Name = "InertiaKorbloxLeg"
+            rig.Size = Vector3.new(0.2, 0.2, 0.2)
+            rig.CanCollide, rig.CanQuery, rig.CanTouch, rig.Massless = false, false, false, true
+            local mesh = Instance.new("SpecialMesh")
+            mesh.MeshType = Enum.MeshType.FileMesh
+            mesh.MeshId = "rbxassetid://902942096"
+            mesh.TextureId = "rbxassetid://902843398"
+            mesh.Scale = Vector3.new(total, total, total) / 0.81
+            mesh.Parent = rig
+            -- Position before welding: a WeldConstraint locks in whatever offset it is born with.
+            rig.CFrame = anchor.CFrame * CFrame.new(0, anchor.Size.Y / 2 - total / 2, 0)
+            rig.Parent = char
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0, weld.Part1 = rig, anchor
+            weld.Parent = rig
+        end
+    else
+        if rig then rig:Destroy() end
+        for _, name in ipairs(legNames) do
+            local part = char:FindFirstChild(name)
+            if part and savedLimb[part] then
                 part.Transparency = savedLimb[part].trans or 0
                 savedLimb[part] = nil
             end
@@ -10436,7 +10453,7 @@ local function applyConfig(data)
             if v == nil and c.id:sub(-#"Dynamic Island") == "Dynamic Island" then
                 v = data.controls[c.id:sub(1, #c.id - #"Dynamic Island") .. "Watermark HUD"]
             end
-            if v ~= nil then pcall(function() c.set(v) end) end
+            if v ~= nil and not (S._cfgSkip and S._cfgSkip[c.id]) then pcall(function() c.set(v) end) end
         end
     end
     if type(data.hud) == "table" then
@@ -10643,8 +10660,26 @@ do
 end
 if FILE_OK then
     task.spawn(function()
+        -- The boot restore is deferred a second so pages that finish building late have
+        -- registered their controls first. That left a window where anything the user
+        -- switched on straight after injecting was silently switched back off again by the
+        -- restore — the "I have to click every feature twice after injecting" bug. Snapshot
+        -- every control before the wait and skip the ones whose value moved in the meantime,
+        -- so a deliberate click always outranks the saved config.
+        local boot = {}
+        for _, c in ipairs(ConfigControls) do
+            local ok, v = pcall(c.get)
+            if ok then boot[c.id] = v end
+        end
         task.wait(1)
+        local skip = {}
+        for _, c in ipairs(ConfigControls) do
+            local ok, v = pcall(c.get)
+            if ok and boot[c.id] ~= nil and v ~= boot[c.id] then skip[c.id] = true end
+        end
+        S._cfgSkip = skip
         pcall(function() if S.LoadConfig then S.LoadConfig("_autoload") end end)
+        S._cfgSkip = nil
     end)
     -- Periodic fallback: immediate save requests handle normal changes, while this loop catches any
     -- state mutation that happened outside a UI callback. Unchanged configs are still a no-op.
