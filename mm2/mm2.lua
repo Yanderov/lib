@@ -572,25 +572,6 @@ LP.CharacterAdded:Connect(function()
     end)
 end)
 
-local editCustomBtn = Instance.new("TextButton")
-editCustomBtn.Parent = mScroll
-editCustomBtn.LayoutOrder = 8.5
-editCustomBtn.Size = UDim2.new(1, 0, 0, 28)
-editCustomBtn.BackgroundColor3 = T.Elev; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-editCustomBtn.BorderSizePixel = 0
-editCustomBtn.Font = F
-editCustomBtn.TextSize = 13
-editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
-editCustomBtn.Text = "Edit Custom Theme..."
-editCustomBtn.ZIndex = 1001
-Corner(editCustomBtn, 6)
-Stroke(editCustomBtn, T.Bd, 1, 0.4)
-editCustomBtn.MouseButton1Click:Connect(function()
-    SFX.Click()
-    if S._OpenThemeEditor then S._OpenThemeEditor() end
-end)
-editCustomBtn.MouseEnter:Connect(function() editCustomBtn.TextColor3 = T.White; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end) end)
-editCustomBtn.MouseLeave:Connect(function() editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end) end)
 end
 
 local function updateGuiTransparency()
@@ -7004,6 +6985,7 @@ do
             
             return box
         end
+        S._mkIdBox = mkIdBox
 
         local SHOOT_SOUND_PRESETS = {
             { name = "Bell",      id = "rbxassetid://7128958209" },
@@ -7075,10 +7057,13 @@ do
         local secBoombox = mkSection(Pages.Misc, "Boombox Lib", 10.5)
         S._RegisterMiscSection(secBoombox, "Utility")
         local bbxId = ""
-        mkIdBox(secBoombox, "Song ID", 1, "Roblox Audio ID", 
-            function() return bbxId end, 
-            function(v) bbxId = v end
-        )
+        local makeIdBox = S._mkIdBox
+        if type(makeIdBox) == "function" then
+            makeIdBox(secBoombox, "Song ID", 1, "Roblox Audio ID",
+                function() return bbxId end,
+                function(v) bbxId = v end
+            )
+        end
         local btnPlay = Instance.new("TextButton")
         btnPlay.Parent = secBoombox
         btnPlay.LayoutOrder = 2
@@ -12534,9 +12519,6 @@ tc(RunService.RenderStepped:Connect(function()
             if h then h.PlatformStand = true end
         end end
 
-            end
-        end
-
         -- PERF: skip this whole per-player loop unless the Gun Held cham toggle is on. When it turns
         -- off we run ONE final pass to clean up leftover highlights, then stop.
         local anyCham = S.GunHeldChams or S.RoleChams
@@ -14262,7 +14244,6 @@ do
 
     -- ================= ANIMATIONS =================
     -- Wrapped in its own do-block (same reason: avoid hitting the 200-local limit).
-    -- S._PlayerTabs.pCard is written before this block ends.
     do
     -- Real Animate script structure (verified live on this game): each movement state is a
     -- StringValue holding one or more Animation children whose .AnimationId we overwrite directly.
@@ -14838,11 +14819,9 @@ end, 1)
             end)
         end,
     })
-    S._PlayerTabs.pCard = secPacks and secPacks.Parent  -- expose card to outer scope
     end -- end Animations do-block
 
-    do
-
+end -- end Player tab do-block
 
     -- ---- subtab visibility ----
 
