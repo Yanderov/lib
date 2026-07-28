@@ -80,7 +80,7 @@ local S = {
     Bang = false, BangSpeed = 3, Jerk = false,
     BlockJump = false,
     InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false, ClickMenu = false,
-    Fling = false, WalkFling = false, FlyFling = false, InvisFling = false,
+    Fling = false, FlyFling = false, InvisFling = false,
     CoinESP = false, FastAutofarm = false, FastAutofarmSpeed = 20,
     -- Safe Mode caps how far the root may be moved in ONE frame. MM2 rejects a
     -- position that jumps further than a player could plausibly travel in a step
@@ -8387,21 +8387,14 @@ do
     mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then startJerk() else stopJerk() end end, 3)
     mkToggle(secTr, "Click Fling", false, function(v) S.ClickFling = v end, 4)
     mkToggle(secTr, "Click Menu", false, function(v) S.ClickMenu = v end, 4.05)
-    -- ALL fling mechanics below are ported AS LITERALLY AS POSSIBLE from the Infinite Yield reference
-    -- file (New Text Document.txt) — two distinct commands, kept distinct here too:
-    --   Touch Fling = IY 'fling'     (BodyAngularVelocity spin — launches anyone who touches you)
-    --   Walk Fling  = IY 'walkfling' (per-frame Velocity spike, no spin — launches whoever you walk into)
-    -- The targeted actions (All/Murderer/Sheriff/Target/Click) reuse the 'fling' spin engine as their
+    -- Touch Fling is kept separate from the targeted actions. The targeted actions (All/Murderer/
+    -- Sheriff/Target/Click) reuse the 'fling' spin engine as their
     -- base (the reference has no concept of "fling THIS specific player" — that targeting/homing part
     -- is necessarily this script's own addition on top of the verbatim spin).
     mkToggle(secTr, "Touch Fling", false, function(v)
         S.TouchFling = v
         if S._TouchFlingToggle then S._TouchFlingToggle(v) end
     end, 5)
-    mkToggle(secTr, "Walk Fling", false, function(v)
-        S.WalkFling = v
-        if S._WalkFlingToggle then S._WalkFlingToggle(v) end
-    end, 6)
     -- How long each targeted fling (Fling Target / All / Murderer / Sheriff / Click) rides the victim.
     -- Longer = the spin keeps ramming them for more time, so they get launched harder and it doesn't
     -- give up early on a target that's briefly stuck on geometry.
@@ -11479,10 +11472,12 @@ local function loadConfig(name)
         "FOVEnabled", "ShowFOV", "RainbowFOV", "AutoSprint", "InfiniteJump", "Freeze",
         "InstantRespawn", "AutoRespawn", "MoonGravity", "SkyEnabled", "SkyRainbow",
         "FogEnabled", "FogRainbow", "NoFog", "FlyAnim", "FxAura", "FxAuraRainbow",
-        "ThrowAura",
+        "ThrowAura", "WalkFling",
     }) do
         S[key] = false
     end
+    -- Walk Fling was removed; discard the legacy key instead of recreating it from old configs.
+    S.WalkFling = nil
     S.ThrowAuraRange = nil
     S.CamFOV = 70
 
@@ -13055,95 +13050,22 @@ end
 S._IYFlingStop = stopIYFling
 end
 
--- ===== WALK FLING (IY 'walkfling' / 'unwalkfling', ported as literally as possible) =====
--- Reference loop, verbatim: repeat RunService.Heartbeat:Wait() -> spike root.Velocity to
--- vel*10000 + (0,10000,0) -> RunService.RenderStepped:Wait() -> restore vel -> RunService.Stepped:Wait()
--- -> vel + alternating (0, ±0.1, 0) -> until walkflinging == false. No spin, no BodyAngularVelocity —
--- purely a per-frame velocity spike, so contact launches whoever you WALK INTO, while noclip (like the
--- reference's "noclip nonotify") keeps your own body from being shoved back by the impact.
-do
-local walkFlinging = false
-local walkNoClipWasOn = false
-local walkToken = 0
-local walkDiedConn
-
-local function stopWalkFling()
-    walkFlinging = false
-    walkToken = walkToken + 1
-    if walkDiedConn then pcall(function() walkDiedConn:Disconnect() end); walkDiedConn = nil end
-    S.NoClip = walkNoClipWasOn
-    S.WalkFling = false
-end
-
-local function startWalkFling()
-    if walkFlinging then return true end
-    local c = LP.Character
-    local hum = c and c:FindFirstChildOfClass("Humanoid")
-    local root = c and c:FindFirstChild("HumanoidRootPart")
-    if not (c and hum and root and hum.Health > 0) then return false end
-
-    walkNoClipWasOn = S.NoClip == true
-    S.NoClip = true
-    walkFlinging = true
-    S.WalkFling = true
-    walkToken = walkToken + 1
-    local myToken = walkToken
-    walkDiedConn = tc(hum.Died:Connect(stopWalkFling))
-
-    task.spawn(function()
-        local movel = 0.1
-        while walkFlinging and myToken == walkToken do
-            RunService.Heartbeat:Wait()
-            local character = LP.Character
-            local r = character and character:FindFirstChild("HumanoidRootPart")
-            while walkFlinging and myToken == walkToken and not (character and character.Parent and r and r.Parent) do
-                RunService.Heartbeat:Wait()
-                character = LP.Character
-                r = character and character:FindFirstChild("HumanoidRootPart")
-            end
-            if not (walkFlinging and myToken == walkToken) then break end
-
-            local vel = r.Velocity
-            pcall(function() r.Velocity = vel * 10000 + Vector3.new(0, 10000, 0) end)
-
-            RunService.RenderStepped:Wait()
-            if walkFlinging and myToken == walkToken and character.Parent and r.Parent then
-                pcall(function() r.Velocity = vel end)
-            end
-
-            RunService.Stepped:Wait()
-            if walkFlinging and myToken == walkToken and character.Parent and r.Parent then
-                pcall(function() r.Velocity = vel + Vector3.new(0, movel, 0) end)
-                movel = movel * -1
-            end
-        end
-    end)
-    return true
-end
-
-S._WalkFlingToggle = function(enabled) if enabled then startWalkFling() else stopWalkFling() end end
-S._WalkFlingStop = stopWalkFling
-end
-
 -- Compat aliases for older callers (config restores, unload path).
 S._ReferenceFlingToggle = S._TouchFlingToggle
-S._ReferenceWalkFlingToggle = S._WalkFlingToggle
 S._ReferenceFlyFlingToggle = function() end
 S._ReferenceInvisFlingToggle = function() end
 S._StopReferenceFlings = function()
     if S._IYFlingStop then S._IYFlingStop() end
-    if S._WalkFlingStop then S._WalkFlingStop() end
     S.Fling = false
     S.TouchFling = false
-    S.WalkFling = false
     S.FlyFling = false
     S.InvisFling = false
 end
 
 -- Restore active fling modes after respawn.
 tc(LP.CharacterAdded:Connect(function(char)
-    local wantTouch, wantWalk = S.TouchFling, S.WalkFling
-    if not (wantTouch or wantWalk) then return end
+    local wantTouch = S.TouchFling
+    if not wantTouch then return end
     task.spawn(function()
         char:WaitForChild("HumanoidRootPart", 10)
         task.wait(0.5)
@@ -13151,11 +13073,6 @@ tc(LP.CharacterAdded:Connect(function(char)
             if S._IYFlingStop then S._IYFlingStop() end
             S.TouchFling = true
             S._TouchFlingToggle(true)
-        end
-        if wantWalk and S.WalkFling and S._WalkFlingToggle then
-            if S._WalkFlingStop then S._WalkFlingStop() end
-            S.WalkFling = true
-            S._WalkFlingToggle(true)
         end
     end)
 end))
