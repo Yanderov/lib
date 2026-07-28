@@ -5077,6 +5077,14 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         { Name = "Chevron", Style = "Chevron" },
         { Name = "Orbit Dot", Style = "OrbitDot" },
         { Name = "Cross Dot", Style = "CrossDot" },
+        { Name = "Classic Gap", Style = "ClassicGap" },
+        { Name = "T Cross", Style = "TCross" },
+        { Name = "Dot Only", Style = "DotOnly" },
+        { Name = "Micro Dot", Style = "MicroDot" },
+        { Name = "Thin Cross", Style = "ThinCross" },
+        { Name = "Ring Gap", Style = "RingGap" },
+        { Name = "Arrow Up", Style = "ArrowUp" },
+        { Name = "Corner Ticks", Style = "CornerTicks" },
     }
     for _, preset in ipairs(vectorStyles) do
         cursorEntries[#cursorEntries + 1] = {
@@ -5797,7 +5805,12 @@ end, 6)
                 color = Color3.fromRGB(150, 255, 175)
             end
 
-            local function part(width, height, x, y, rotation, fill)
+            -- cornerOverride: nil = pill/round (the old unconditional behaviour, right for bars and
+            -- dots but NOT for outline shapes -- an 18x18 square got radius 9 and rendered as a
+            -- circle, which is why SquareDot and DiamondGrid never looked like a square or a
+            -- diamond). noOutline: the caller is going to apply its own UIStroke, and Roblox honours
+            -- only one per object, so adding the black one here silently discarded the coloured one.
+            local function part(width, height, x, y, rotation, fill, cornerOverride, noOutline)
                 local item = Instance.new("Frame")
                 item.Parent = vectorCursorGui
                 item.BorderSizePixel = 0
@@ -5808,8 +5821,16 @@ end, 6)
                 item.Position = UDim2.fromOffset(center + px(x), center + px(y))
                 item.Rotation = rotation or 0
                 item.ZIndex = 4001
-                Corner(item, math.max(1, math.floor(px(math.min(width, height)) / 2)))
-                Stroke(item, Color3.fromRGB(0, 0, 0), math.max(1, px(1)), 0.3)
+                local radius = cornerOverride
+                if radius == nil then
+                    radius = math.max(1, math.floor(px(math.min(width, height)) / 2))
+                else
+                    radius = radius > 0 and math.max(1, px(radius)) or 0
+                end
+                if radius > 0 then Corner(item, radius) end
+                if not noOutline then
+                    Stroke(item, Color3.fromRGB(0, 0, 0), math.max(1, px(1)), 0.3)
+                end
                 return item
             end
             local function line(width, height, x, y, rotation)
@@ -5842,21 +5863,22 @@ end, 6)
                 line(5, 2, 14, 0)
                 dot(2, 0, 0)
             elseif style == "DiamondGrid" then
-                local diamond = part(16, 16, 0, 0, 45, nil)
+                local diamond = part(16, 16, 0, 0, 45, nil, 0, true)
                 diamond.BackgroundTransparency = 1
-                diamond.Size = UDim2.fromOffset(px(16), px(16))
                 Stroke(diamond, color, math.max(1, px(2)), 0.05)
                 dot(3, 0, 0)
             elseif style == "Brackets" then
-                local r, arm, thick = 10, 5, 2
-                line(arm, thick, -r, -r)
-                line(thick, arm, -r, -r)
-                line(arm, thick, r, -r)
-                line(thick, arm, r, -r)
-                line(arm, thick, -r, r)
-                line(thick, arm, -r, r)
-                line(arm, thick, r, r)
-                line(thick, arm, r, r)
+                -- Each arm is offset by half its length so it runs INWARD from the corner. Centring
+                -- both arms on the corner point drew a small plus at each corner, not a bracket.
+                local r, arm, thick = 10, 6, 2
+                local function corner(sx, sy)
+                    line(arm, thick, sx * (r - arm / 2), sy * r)
+                    line(thick, arm, sx * r, sy * (r - arm / 2))
+                end
+                corner(-1, -1)
+                corner(1, -1)
+                corner(-1, 1)
+                corner(1, 1)
                 dot(2, 0, 0)
             elseif style == "StarPoint" then
                 line(2, 17, 0, 0)
@@ -5875,7 +5897,7 @@ end, 6)
                 ring(17, 2, 0.02)
                 dot(3, 0, 0)
             elseif style == "SquareDot" then
-                local square = part(18, 18, 0, 0, 0, nil)
+                local square = part(18, 18, 0, 0, 0, nil, 2, true)
                 square.BackgroundTransparency = 1
                 Stroke(square, color, math.max(1, px(2)), 0.05)
                 dot(3, 0, 0)
@@ -5897,6 +5919,41 @@ end, 6)
                 line(6, 2, -9, 0)
                 line(6, 2, 9, 0)
                 dot(3, 0, 0)
+            -- The plain shooter shapes the old list was missing: a gap cross with no centre dot is
+            -- what most players actually aim with, and the tiny ones stay readable at small sizes.
+            elseif style == "ClassicGap" then
+                line(2, 7, 0, -8)
+                line(2, 7, 0, 8)
+                line(7, 2, -8, 0)
+                line(7, 2, 8, 0)
+            elseif style == "TCross" then
+                line(2, 8, 0, 7)
+                line(14, 2, 0, 0)
+            elseif style == "DotOnly" then
+                dot(5, 0, 0)
+            elseif style == "MicroDot" then
+                dot(2, 0, 0)
+            elseif style == "ThinCross" then
+                line(1, 20, 0, 0)
+                line(20, 1, 0, 0)
+            elseif style == "RingGap" then
+                ring(20, 2, 0.05)
+                line(2, 5, 0, -13)
+                line(2, 5, 0, 13)
+            elseif style == "ArrowUp" then
+                line(2, 9, -3, -4, -38)
+                line(2, 9, 3, -4, 38)
+                line(2, 8, 0, 4)
+            elseif style == "CornerTicks" then
+                local r, arm, thick = 9, 4, 2
+                local function tick(sx, sy)
+                    line(arm, thick, sx * (r - arm / 2), sy * r)
+                    line(thick, arm, sx * r, sy * (r - arm / 2))
+                end
+                tick(-1, -1)
+                tick(1, -1)
+                tick(-1, 1)
+                tick(1, 1)
             end
         end
 
