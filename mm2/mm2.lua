@@ -4872,6 +4872,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Fake Korblox (Local)", false, function(v)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
+end, 6)
     do
         local fxAuraTgt = nil
         local activeMeshes = {}
