@@ -2875,6 +2875,7 @@ local function mkSBItem(name, iconKind, page, order)
         activePage = page
         ContentArea.CanvasPosition = Vector2.zero
         refreshSB()
+        if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
     end)
     -- Right-click toggles favourite: pinned tabs jump to the top (LayoutOrder pushed far below the
     -- others so they sort first, keeping their relative order); right-click again to unpin.
@@ -11272,6 +11273,7 @@ end
 do
     if not FILE_OK then
         local sec = mkSection(Pages.Config, "Configs", 1)
+        pcall(function() sec.Parent:SetAttribute("ForceFullWidth", true) end)
         local warn = Instance.new("TextLabel")
         warn.Parent = sec; warn.LayoutOrder = 1; warn.BackgroundTransparency = 1
         warn.Size = UDim2.new(1, 0, 0, 46); warn.Font = F; warn.TextSize = 13
@@ -11280,6 +11282,7 @@ do
         warn.Text = "This executor has no file API (writefile/readfile), so configs cannot be saved."
     else
         local sec1 = mkSection(Pages.Config, "Configs", 1)
+        pcall(function() sec1.Parent:SetAttribute("ForceFullWidth", true) end)
         local nameBox = Instance.new("TextBox")
         nameBox.Parent = sec1; nameBox.LayoutOrder = 1
         nameBox.Size = UDim2.new(1, 0, 0, 30); nameBox.BackgroundColor3 = T.Elev; pcall(function() nameBox:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
@@ -11341,6 +11344,7 @@ do
         end, 5)
         mkAction(sec1, "Refresh List", function() refreshList() end, 6)
         local sec2 = mkSection(Pages.Config, "Auto", 2)
+        pcall(function() sec2.Parent:SetAttribute("ForceFullWidth", true) end)
         mkToggle(sec2, "Auto Save", true, function(v) S.AutoSaveCfg = v end, 1)
         local info = Instance.new("TextLabel")
         info.Parent = sec2; info.LayoutOrder = 2; info.BackgroundTransparency = 1
@@ -11349,6 +11353,7 @@ do
         info.TextXAlignment = Enum.TextXAlignment.Left
         info.Text = "Auto Save keeps settings, keybinds, HUD visibility and HUD positions; changes are saved immediately and restored on next launch."
     end
+    if S._RefreshPageLayout and activePage == Pages.Config then pcall(S._RefreshPageLayout, false) end
 end
 if FILE_OK then
     task.spawn(function()
