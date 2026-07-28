@@ -16535,14 +16535,42 @@ do
         return menu
     end
 
-    local function makeRing(player)
+    local makeRing
+    local function openMenuFor(player)
+        if not (S.ClickMenu and player and player ~= LP) then return end
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not (hrp and hum and hum.Health > 0) then return end
+        local bb = rings[player]
+        if not bb or not bb.Parent then
+            bb = makeRing(player)
+            rings[player] = bb
+        end
+        bb.Adornee = hrp
+        local menu = bb:FindFirstChild("Menu")
+        if not menu then return end
+        if openFor == player then closeMenu() return end
+        closeMenu()
+        openFor = player
+        menu.Visible = true
+        local scale = menu:FindFirstChildOfClass("UIScale")
+        if scale then
+            scale.Scale = 0.7
+            TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                { Scale = 1 }):Play()
+        end
+        SFX.On()
+    end
+
+    makeRing = function(player)
         local bb = Instance.new("BillboardGui")
         bb.Name = "MM2_ClickRing"
-        -- Drawn on top: at the feet with occlusion on, the ring disappears behind the character
-        -- and the ground, and an invisible click target is a broken click target.
+        -- Drawn above the torso: rings at the feet were often hidden by the map/floor or missed by
+        -- executor Billboard input, which made Click Menu look dead even while the toggle was on.
         bb.AlwaysOnTop = true
-        bb.Size = UDim2.fromOffset(46, 46)
-        bb.StudsOffsetWorldSpace = Vector3.new(0, -2.6, 0)
+        bb.Size = UDim2.fromOffset(MOBILE and 62 or 54, MOBILE and 62 or 54)
+        bb.StudsOffsetWorldSpace = Vector3.new(0, 3.05, 0)
         bb.MaxDistance = CULL
         bb.ResetOnSpawn = false
         bb.Parent = SG
@@ -16582,22 +16610,41 @@ do
         buildMenu(bb, player)
 
         ring.MouseButton1Click:Connect(function()
-            local menu = bb:FindFirstChild("Menu")
-            if not menu then return end
-            if openFor == player then closeMenu() return end
-            closeMenu()
-            openFor = player
-            menu.Visible = true
-            local scale = menu:FindFirstChildOfClass("UIScale")
-            if scale then
-                scale.Scale = 0.7
-                TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                    { Scale = 1 }):Play()
-            end
-            SFX.On()
+            openMenuFor(player)
         end)
         return bb
     end
+
+    local function playerFromInput(input)
+        local hit
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mouse = LP:GetMouse()
+            hit = mouse and mouse.Target
+        elseif input.UserInputType == Enum.UserInputType.Touch then
+            local cam = workspace.CurrentCamera
+            local pos = input.Position
+            if cam and pos then
+                local ray = cam:ViewportPointToRay(pos.X, pos.Y)
+                local params = RaycastParams.new()
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                params.FilterDescendantsInstances = LP.Character and { LP.Character } or {}
+                local res = workspace:Raycast(ray.Origin, ray.Direction * CULL, params)
+                hit = res and res.Instance
+            end
+        end
+        local char = hit and hit:FindFirstAncestorWhichIsA("Model")
+        local player = char and Players:GetPlayerFromCharacter(char)
+        if player and player ~= LP then return player end
+        return nil
+    end
+
+    tc(UIS.InputBegan:Connect(function(input, processed)
+        if processed or not S.ClickMenu then return end
+        if Main and Main.Visible then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local player = playerFromInput(input)
+        if player then openMenuFor(player) end
+    end))
 
     local function dropRing(player)
         local bb = rings[player]
