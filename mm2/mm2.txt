@@ -61,6 +61,7 @@ local S = {
     FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig", VFXAura = "Off",
     VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
+    WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -15644,7 +15645,7 @@ end
 
 -- ============ PLAYER TAB (Emotes + Animations, thumbnails + search) ============
 do
-    local PlayerTabs = { active = "Emotes", animSections = {}, emoteSections = {} }
+    local PlayerTabs = { active = "Emotes", animSections = {}, emoteSections = {}, bodySections = {} }
     do
         local bar = Instance.new("Frame")
         bar.Name = "SubTabBar"
@@ -15662,8 +15663,11 @@ do
 
         PlayerTabs.emotesBtn = Instance.new("TextButton")
         PlayerTabs.animBtn = Instance.new("TextButton")
-        PlayerTabs.emotesStroke = mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 1, 1 / 2, -4)
-        PlayerTabs.animStroke = mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 2, 1 / 2, -4)
+        PlayerTabs.bodyBtn = Instance.new("TextButton")
+        -- Three subtabs now, so each takes a third of the bar instead of a half.
+        PlayerTabs.emotesStroke = mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 1, 1 / 3, -6)
+        PlayerTabs.animStroke = mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 2, 1 / 3, -6)
+        PlayerTabs.bodyStroke = mkSubTabBtn(bar, PlayerTabs.bodyBtn, "Body", 3, 1 / 3, -6)
     end
 
     local function registerPlayerSubTabSection(section, tabName)
@@ -15673,6 +15677,8 @@ do
             table.insert(PlayerTabs.animSections, entry)
         elseif tabName == "Emotes" then
             table.insert(PlayerTabs.emoteSections, entry)
+        elseif tabName == "Body" then
+            table.insert(PlayerTabs.bodySections, entry)
         end
         section:SetAttribute("PlayerSubTab", tabName)
         section:SetAttribute("ForceFullWidth", true)
@@ -15685,20 +15691,22 @@ do
 
     local function updatePlayerSubTabs()
         local isAnim = PlayerTabs.active == "Animations"
+        local isBody = PlayerTabs.active == "Body"
+        local isEmotes = not isAnim and not isBody
         styleSubTabActive(PlayerTabs.animBtn, PlayerTabs.animStroke, isAnim)
-        styleSubTabActive(PlayerTabs.emotesBtn, PlayerTabs.emotesStroke, not isAnim)
-        for _, entry in ipairs(PlayerTabs.animSections) do
-            local sec = entry.section
-            local card = entry.card or (sec and sec.Parent)
-            if card then card.Visible = isAnim end
-            if sec then sec.Visible = isAnim end
+        styleSubTabActive(PlayerTabs.emotesBtn, PlayerTabs.emotesStroke, isEmotes)
+        styleSubTabActive(PlayerTabs.bodyBtn, PlayerTabs.bodyStroke, isBody)
+        local function setGroup(list, on)
+            for _, entry in ipairs(list) do
+                local sec = entry.section
+                local card = entry.card or (sec and sec.Parent)
+                if card then card.Visible = on end
+                if sec then sec.Visible = on end
+            end
         end
-        for _, entry in ipairs(PlayerTabs.emoteSections) do
-            local sec = entry.section
-            local card = entry.card or (sec and sec.Parent)
-            if card then card.Visible = not isAnim end
-            if sec then sec.Visible = not isAnim end
-        end
+        setGroup(PlayerTabs.animSections, isAnim)
+        setGroup(PlayerTabs.emoteSections, isEmotes)
+        setGroup(PlayerTabs.bodySections, isBody)
         if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
         task.defer(function()
             if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
@@ -15716,6 +15724,12 @@ do
         PlayerTabs.active = "Emotes"
         updatePlayerSubTabs()
     end)
+    PlayerTabs.bodyBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        PlayerTabs.active = "Body"
+        updatePlayerSubTabs()
+    end)
+    S._RegisterBodySection = function(section) return registerPlayerSubTabSection(section, "Body") end
 
     -- ---- shared helpers ----
     -- One clickable row: thumbnail (rbxthumb, no HTTP needed) + title. Used by both Emotes and the
@@ -17657,4 +17671,174 @@ do
     SG.Destroying:Connect(function()
         for p in pairs(rings) do dropRing(p) end
     end)
+end
+
+-- ============ BODY: WIWI (local ragdoll prop) + SPAWNER ============
+-- Client-side only. None of this replicates, so no other player ever sees it -- that is the
+-- platform's ceiling rather than a choice, and it is also why it is safe in a game with a young
+-- playerbase. Wrapped in do...end so its locals stay out of the main chunk's register budget.
+do
+    local secWiwi = S._RegisterBodySection and S._RegisterBodySection(mkSection(Pages.Player, "Wiwi", 1))
+    if secWiwi then
+        local attached = {}
+        local spawned = {}
+
+        local function clearWorn()
+            for _, p in ipairs(attached) do pcall(function() p:Destroy() end) end
+            table.clear(attached)
+        end
+
+        -- A chain of small parts hanging off anchorPart, plus two spheres at the base. Massless and
+        -- CanCollide=false so it can never shove the character, which a colliding chain does.
+        local function buildProp(anchorPart, offset, scale, stiffness, into)
+            local segLen = 0.42 * scale
+            local prev = anchorPart
+            for i = 1, 3 do
+                local seg = Instance.new("Part")
+                seg.Name = "InertiaWiwiSeg"
+                seg.Shape = Enum.PartType.Cylinder
+                seg.Size = Vector3.new(segLen, 0.34 * scale, 0.34 * scale)
+                seg.Color = Color3.fromRGB(232, 178, 160)
+                seg.Material = Enum.Material.SmoothPlastic
+                seg.CanCollide = false
+                seg.CanQuery = false
+                seg.CanTouch = false
+                seg.Massless = true
+                seg.CFrame = anchorPart.CFrame * offset * CFrame.new(0, -segLen * (i - 1), 0)
+                seg.Parent = workspace
+                pcall(function() own(seg) end)
+                table.insert(into, seg)
+
+                local a0 = Instance.new("Attachment")
+                a0.Parent = prev
+                a0.CFrame = (prev == anchorPart) and offset or CFrame.new(-segLen / 2, 0, 0)
+                local a1 = Instance.new("Attachment")
+                a1.Parent = seg
+                a1.CFrame = CFrame.new(segLen / 2, 0, 0)
+
+                local socket = Instance.new("BallSocketConstraint")
+                socket.Attachment0 = a0
+                socket.Attachment1 = a1
+                socket.LimitsEnabled = true
+                -- Physics Strength maps to the swing cone: high = stiff, low = floppy.
+                socket.UpperAngle = math.clamp(70 - stiffness * 0.55, 8, 70)
+                socket.TwistLimitsEnabled = true
+                socket.TwistLowerAngle = -20
+                socket.TwistUpperAngle = 20
+                socket.Restitution = 0
+                socket.Parent = seg
+                prev = seg
+            end
+            for side = -1, 1, 2 do
+                local ball = Instance.new("Part")
+                ball.Name = "InertiaWiwiBall"
+                ball.Shape = Enum.PartType.Ball
+                ball.Size = Vector3.new(0.3 * scale, 0.3 * scale, 0.3 * scale)
+                ball.Color = Color3.fromRGB(232, 178, 160)
+                ball.Material = Enum.Material.SmoothPlastic
+                ball.CanCollide = false
+                ball.CanQuery = false
+                ball.CanTouch = false
+                ball.Massless = true
+                ball.CFrame = anchorPart.CFrame * offset * CFrame.new(side * 0.17 * scale, 0.1 * scale, 0)
+                ball.Parent = workspace
+                pcall(function() own(ball) end)
+                table.insert(into, ball)
+
+                local b0 = Instance.new("Attachment")
+                b0.Parent = anchorPart
+                b0.CFrame = offset * CFrame.new(side * 0.17 * scale, 0.1 * scale, 0)
+                local b1 = Instance.new("Attachment")
+                b1.Parent = ball
+                local bs = Instance.new("BallSocketConstraint")
+                bs.Attachment0 = b0
+                bs.Attachment1 = b1
+                bs.LimitsEnabled = true
+                bs.UpperAngle = math.clamp(45 - stiffness * 0.35, 5, 45)
+                bs.Restitution = 0
+                bs.Parent = ball
+            end
+        end
+
+        local function rebuildWorn()
+            clearWorn()
+            if not S.WiwiEnabled then return end
+            local char = LP.Character
+            local torso = char and (char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso"))
+            if not torso then return end
+            local scale = math.clamp((tonumber(S.WiwiSize) or 100) / 100, 0.3, 3)
+            local strength = math.clamp(tonumber(S.WiwiPhysics) or 50, 0, 100)
+            buildProp(torso, CFrame.new(0, -0.35 * scale, -0.55 * scale)
+                * CFrame.Angles(0, 0, math.rad(90)), scale, strength, attached)
+        end
+        S._RebuildWiwi = rebuildWorn
+
+        mkToggle(secWiwi, "Wiwi", false, function(v)
+            S.WiwiEnabled = v
+            rebuildWorn()
+        end, 1)
+        mkSlider(secWiwi, "Wiwi Size (%)", 30, 300, 100, function(v)
+            S.WiwiSize = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2)
+        mkSlider(secWiwi, "Physics Strength", 0, 100, 50, function(v)
+            S.WiwiPhysics = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 3)
+
+        mkSlider(secWiwi, "Spawn Count", 1, 25, 5, function(v) S.WiwiSpawnCount = v end, 4)
+        mkSlider(secWiwi, "Spawn Size (%)", 30, 400, 100, function(v) S.WiwiSpawnSize = v end, 5)
+        mkAction(secWiwi, "Spawn Wiwis", function()
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then Notify("Wiwi", "No character", 2) return end
+            local count = math.clamp(tonumber(S.WiwiSpawnCount) or 5, 1, 25)
+            local scale = math.clamp((tonumber(S.WiwiSpawnSize) or 100) / 100, 0.3, 4)
+            for i = 1, count do
+                local anchor = Instance.new("Part")
+                anchor.Name = "InertiaWiwiAnchor"
+                anchor.Size = Vector3.new(0.3, 0.3, 0.3)
+                anchor.Transparency = 1
+                anchor.CanCollide = false
+                anchor.CanQuery = false
+                anchor.CanTouch = false
+                anchor.CFrame = hrp.CFrame * CFrame.new(math.random(-6, 6), 3 + i * 0.4, math.random(-6, 6))
+                anchor.Parent = workspace
+                pcall(function() own(anchor) end)
+                table.insert(spawned, anchor)
+                buildProp(anchor, CFrame.Angles(0, 0, math.rad(90)), scale, 40, spawned)
+            end
+            Notify("Wiwi", "Spawned " .. count, 2)
+        end, 6)
+        mkAction(secWiwi, "Clear Spawned", function()
+            for _, p in ipairs(spawned) do pcall(function() p:Destroy() end) end
+            table.clear(spawned)
+            Notify("Wiwi", "Cleared", 2)
+        end, 7)
+
+        -- The clamp everything else depends on. Without it a teleport or Fly hands the chain a huge
+        -- velocity, the socket drags the anchor, and the player gets flung across the map.
+        tc(RunService.Heartbeat:Connect(function()
+            local function clampList(list)
+                for _, p in ipairs(list) do
+                    if p and p.Parent and p:IsA("BasePart") then
+                        local v = p.AssemblyLinearVelocity
+                        if v.Magnitude > 55 then p.AssemblyLinearVelocity = v.Unit * 55 end
+                        local w = p.AssemblyAngularVelocity
+                        if w.Magnitude > 30 then p.AssemblyAngularVelocity = w.Unit * 30 end
+                    end
+                end
+            end
+            clampList(attached)
+            clampList(spawned)
+        end))
+
+        tc(LP.CharacterAdded:Connect(function()
+            task.delay(1.2, function() if S.WiwiEnabled then rebuildWorn() end end)
+        end))
+        SG.Destroying:Connect(function()
+            clearWorn()
+            for _, p in ipairs(spawned) do pcall(function() p:Destroy() end) end
+        end)
+    end
 end
