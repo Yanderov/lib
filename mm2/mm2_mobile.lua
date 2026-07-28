@@ -1532,9 +1532,9 @@ accGrad.Parent = AccLine
 accGrad.Rotation = 0
 accGrad.Color = ColorSequence.new(T.White, T.White:Lerp(T.Glow, 0.28))
 accGrad.Transparency = NumberSequence.new({
-    NumberSequenceKeypoint.new(0, 1),
-    NumberSequenceKeypoint.new(0.5, 0.1),
-    NumberSequenceKeypoint.new(1, 1),
+    NumberSequenceKeypoint.new(0, 1, 0),
+    NumberSequenceKeypoint.new(0.5, 0.1, 0),
+    NumberSequenceKeypoint.new(1, 1, 0),
 })
 local TBar = Instance.new("Frame")
 TBar.Name = "TBar"
@@ -5051,6 +5051,7 @@ end, 6)
             data = data or {}
             local tint = data.tint
             local seq = tint and ColorSequence.new(tint) or nil
+            local cap = math.clamp(tonumber(data.cap) or (MOBILE and 10 or 20), 1, MOBILE and 40 or 80)
             for _, obj in ipairs(container:GetDescendants()) do
                 if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
                     pcall(function() obj:Destroy() end)
@@ -5064,19 +5065,19 @@ end, 6)
                 elseif aura and obj:IsA("ParticleEmitter") then
                     pcall(function()
                         if obj.Rate <= 0 then obj.Rate = MOBILE and 6 or 10 end
-                        obj.Rate = math.min(obj.Rate, data.cap or 20)
+                        obj.Rate = math.min(tonumber(obj.Rate) or cap, cap)
                         if seq then obj.Color = seq end
                         if obj.Texture == "" then
                             obj.Texture = "rbxasset://textures/particles/sparkles_main.dds"
                             obj.Size = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 0.18),
-                                NumberSequenceKeypoint.new(0.5, 0.42),
-                                NumberSequenceKeypoint.new(1, 0.08),
+                                NumberSequenceKeypoint.new(0, 0.18, 0),
+                                NumberSequenceKeypoint.new(0.5, 0.42, 0),
+                                NumberSequenceKeypoint.new(1, 0.08, 0),
                             })
                             obj.Transparency = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 1),
-                                NumberSequenceKeypoint.new(0.15, 0.22),
-                                NumberSequenceKeypoint.new(1, 1),
+                                NumberSequenceKeypoint.new(0, 1, 0),
+                                NumberSequenceKeypoint.new(0.15, 0.22, 0),
+                                NumberSequenceKeypoint.new(1, 1, 0),
                             })
                         end
                         obj.LightInfluence = 0
@@ -10326,8 +10327,8 @@ do
         pe.Name = "MM2_FX_LocalEmitter"
         pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
         pe.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.35))
-        pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.22), NumberSequenceKeypoint.new(0.7, 0.55), NumberSequenceKeypoint.new(1, 0)})
-        pe.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.8, 0.35), NumberSequenceKeypoint.new(1, 1)})
+        pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.22, 0), NumberSequenceKeypoint.new(0.7, 0.55, 0), NumberSequenceKeypoint.new(1, 0, 0)})
+        pe.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1, 0), NumberSequenceKeypoint.new(0.8, 0.35, 0), NumberSequenceKeypoint.new(1, 1, 0)})
         pe.Lifetime = NumberRange.new(0.28, 0.55)
         pe.Rate = MOBILE and 18 or 34
         pe.Speed = NumberRange.new(0.2, 0.8)
@@ -10342,7 +10343,7 @@ do
         tr.Attachment0 = a0
         tr.Attachment1 = a1
         tr.Color = ColorSequence.new(color, color:Lerp(Color3.new(0, 0, 0), 0.45))
-        tr.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1)})
+        tr.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.15, 0), NumberSequenceKeypoint.new(1, 1, 0)})
         tr.Lifetime = 0.22
         tr.LightEmission = 0.45
         tr.Parent = handle
@@ -13532,8 +13533,8 @@ tc(RunService.RenderStepped:Connect(function()
                         o.box.BackgroundTransparency = 0.15
                         o.boxGrad.Color = ColorSequence.new(Color3.new(1, 1, 1))
                         o.boxGrad.Transparency = NumberSequence.new({
-                            NumberSequenceKeypoint.new(0, 0.1),
-                            NumberSequenceKeypoint.new(1, 1),
+                            NumberSequenceKeypoint.new(0, 0.1, 0),
+                            NumberSequenceKeypoint.new(1, 1, 0),
                         })
                         o.boxGrad.Enabled = true
                     elseif fillStyle == "Rainbow" then
