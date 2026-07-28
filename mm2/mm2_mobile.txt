@@ -9839,6 +9839,7 @@ end
 do
     local RS = game:GetService("ReplicatedStorage")
     local catalogContainer, catalogCount = nil, 0
+    local appliedEffectObjects, appliedEffectId, appliedKnife = {}, nil, nil
 
     local function clearLegacyAura(char)
         if not char then return end
@@ -9847,6 +9848,136 @@ do
                 pcall(function() obj:Destroy() end)
             end
         end
+    end
+
+    local function clearAppliedKnifeEffect()
+        for _, obj in ipairs(appliedEffectObjects) do
+            if obj and obj.Parent then pcall(function() obj:Destroy() end) end
+        end
+        table.clear(appliedEffectObjects)
+        appliedEffectId, appliedKnife = nil, nil
+        clearLegacyAura(LP.Character)
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        if bp then clearLegacyAura(bp) end
+    end
+
+    local function ownEffect(obj)
+        if obj then table.insert(appliedEffectObjects, obj) end
+        return obj
+    end
+
+    local function currentKnife()
+        local char, bp = LP.Character, LP:FindFirstChildOfClass("Backpack")
+        local knife = (char and (char:FindFirstChild("Knife") or char:FindFirstChild("KnifeServer")))
+            or (bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("KnifeServer")))
+        if knife then return knife, knife:FindFirstChild("Handle") or knife:FindFirstChild("KnifeVisual") or knife:FindFirstChildWhichIsA("BasePart", true) end
+        return nil, nil
+    end
+
+    local function hasVisual(obj)
+        if not obj then return false end
+        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire")
+            or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Light") or obj:IsA("Attachment")
+            or obj:IsA("BasePart") then
+            return true
+        end
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") or d:IsA("Fire")
+                or d:IsA("Smoke") or d:IsA("Sparkles") or d:IsA("Light") or d:IsA("Attachment")
+                or d:IsA("BasePart") then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function sanitizeVisual(obj)
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("BaseScript") or d:IsA("ModuleScript") or d:IsA("Camera") then
+                pcall(function() d:Destroy() end)
+            elseif d:IsA("BasePart") then
+                d.Anchored = false
+                d.CanCollide = false
+                d.CanTouch = false
+                d.CanQuery = false
+                d.Massless = true
+            elseif d:IsA("ParticleEmitter") then
+                pcall(function()
+                    if d.Rate <= 0 then d.Rate = MOBILE and 10 or 18 end
+                    d.Rate = math.min(d.Rate, MOBILE and 28 or 55)
+                    d.LightInfluence = 0
+                    d.LockedToPart = true
+                    d.Enabled = true
+                end)
+            elseif d:IsA("Trail") or d:IsA("Beam") then
+                pcall(function() d.Enabled = true end)
+            end
+        end
+    end
+
+    local function ensureTrailAttachments(obj, handle)
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("Trail") or d:IsA("Beam") then
+                local a0 = d.Attachment0
+                local a1 = d.Attachment1
+                if not a0 or not a0.Parent then
+                    a0 = Instance.new("Attachment")
+                    a0.Name = "MM2_FX_A0"
+                    a0.Position = Vector3.new(0, -0.55, 0)
+                    a0.Parent = handle
+                    ownEffect(a0)
+                    d.Attachment0 = a0
+                end
+                if not a1 or not a1.Parent then
+                    a1 = Instance.new("Attachment")
+                    a1.Name = "MM2_FX_A1"
+                    a1.Position = Vector3.new(0, 0.85, 0)
+                    a1.Parent = handle
+                    ownEffect(a1)
+                    d.Attachment1 = a1
+                end
+            end
+        end
+    end
+
+    local function mountVisual(obj, tool, handle)
+        local clone = obj:Clone()
+        clone.Name = "MM2_FX_" .. tostring(obj.Name)
+        sanitizeVisual(clone)
+        if clone:IsA("ParticleEmitter") or clone:IsA("Fire") or clone:IsA("Smoke")
+            or clone:IsA("Sparkles") or clone:IsA("Light") then
+            clone.Parent = handle
+        elseif clone:IsA("Trail") or clone:IsA("Beam") then
+            clone.Parent = handle
+            ensureTrailAttachments(clone, handle)
+        elseif clone:IsA("Attachment") then
+            clone.Parent = handle
+        elseif clone:IsA("BasePart") then
+            clone.CFrame = handle.CFrame
+            clone.Parent = tool
+            local weld = Instance.new("WeldConstraint")
+            weld.Name = "MM2_FX_Weld"
+            weld.Part0 = handle
+            weld.Part1 = clone
+            weld.Parent = clone
+        elseif clone:IsA("Model") then
+            clone.Parent = tool
+            pcall(function() clone:PivotTo(handle.CFrame) end)
+            for _, part in ipairs(clone:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Name = "MM2_FX_Weld"
+                    weld.Part0 = handle
+                    weld.Part1 = part
+                    weld.Parent = part
+                end
+            end
+        else
+            clone.Parent = handle
+        end
+        ensureTrailAttachments(clone, handle)
+        ownEffect(clone)
+        return true
     end
 
     local function getCatalogContainer()
@@ -9902,6 +10033,160 @@ do
         return result
     end
 
+    local function findEffectSource(effect)
+        local data = effect and effect.Data
+        local key = data and data.KnifeModule
+        if typeof(key) == "Instance" then return key end
+        key = tostring(key or effect and effect.Id or "")
+        if key == "" then return nil end
+        local candidates = {
+            RS:FindFirstChild("Modules"),
+            RS:FindFirstChild("Effects"),
+            RS,
+        }
+        local norm = key:lower()
+        for _, root in ipairs(candidates) do
+            if root then
+                for _, d in ipairs(root:GetDescendants()) do
+                    local dn = d.Name:lower()
+                    if dn == norm or dn == norm .. "effect" or dn == norm .. "knifeeffect" then
+                        return d
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function cloneVisualsFrom(source, tool, handle)
+        local made = 0
+        if hasVisual(source) and not source:IsA("ModuleScript") then
+            if mountVisual(source, tool, handle) then made += 1 end
+        end
+        for _, child in ipairs(source:GetChildren()) do
+            if hasVisual(child) and mountVisual(child, tool, handle) then made += 1 end
+        end
+        return made
+    end
+
+    local function tryModuleApply(source, tool, handle)
+        if not (source and source:IsA("ModuleScript")) then return 0 end
+        local before, made = {}, 0
+        for _, d in ipairs(tool:GetDescendants()) do before[d] = true end
+        local ok, moduleValue = pcall(require, source)
+        if not ok then return 0 end
+        local calls = {}
+        if type(moduleValue) == "function" then
+            calls = { moduleValue }
+        elseif type(moduleValue) == "table" then
+            for _, name in ipairs({"Apply", "ApplyKnife", "KnifeEffect", "Create", "Start", "Enable", "new"}) do
+                if type(moduleValue[name]) == "function" then table.insert(calls, moduleValue[name]) end
+            end
+            for _, v in pairs(moduleValue) do
+                if typeof(v) == "Instance" and hasVisual(v) and mountVisual(v, tool, handle) then made += 1 end
+            end
+        end
+        for _, fn in ipairs(calls) do
+            local tries = {
+                function() return fn(handle) end,
+                function() return fn(tool) end,
+                function() return fn(tool, handle) end,
+                function() return fn(handle, tool) end,
+            }
+            for _, call in ipairs(tries) do
+                local countBefore = #tool:GetDescendants()
+                pcall(call)
+                if #tool:GetDescendants() > countBefore then break end
+            end
+        end
+        for _, d in ipairs(tool:GetDescendants()) do
+            if not before[d] then
+                local top = d
+                while top.Parent and top.Parent ~= tool and top.Parent ~= handle do top = top.Parent end
+                if top and not before[top] and string.sub(top.Name or "", 1, 7) ~= "MM2_FX_" then
+                    top.Name = "MM2_FX_" .. tostring(top.Name)
+                    ownEffect(top)
+                    made += 1
+                end
+            end
+        end
+        return made
+    end
+
+    local function fallbackEffect(effect, tool, handle)
+        local seed = 0
+        for i = 1, #effect.Id do seed += string.byte(effect.Id, i) end
+        local color = Color3.fromHSV((seed % 360) / 360, 0.82, 1)
+        local a0 = Instance.new("Attachment")
+        a0.Name = "MM2_FX_A0"
+        a0.Position = Vector3.new(0, -0.55, 0)
+        a0.Parent = handle
+        ownEffect(a0)
+        local a1 = Instance.new("Attachment")
+        a1.Name = "MM2_FX_A1"
+        a1.Position = Vector3.new(0, 0.85, 0)
+        a1.Parent = handle
+        ownEffect(a1)
+        local pe = Instance.new("ParticleEmitter")
+        pe.Name = "MM2_FX_LocalEmitter"
+        pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+        pe.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.35))
+        pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.22), NumberSequenceKeypoint.new(0.7, 0.55), NumberSequenceKeypoint.new(1, 0)})
+        pe.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.8, 0.35), NumberSequenceKeypoint.new(1, 1)})
+        pe.Lifetime = NumberRange.new(0.28, 0.55)
+        pe.Rate = MOBILE and 18 or 34
+        pe.Speed = NumberRange.new(0.2, 0.8)
+        pe.SpreadAngle = Vector2.new(80, 80)
+        pe.LightEmission = 0.7
+        pe.LightInfluence = 0
+        pe.LockedToPart = true
+        pe.Parent = handle
+        ownEffect(pe)
+        local tr = Instance.new("Trail")
+        tr.Name = "MM2_FX_LocalTrail"
+        tr.Attachment0 = a0
+        tr.Attachment1 = a1
+        tr.Color = ColorSequence.new(color, color:Lerp(Color3.new(0, 0, 0), 0.45))
+        tr.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1)})
+        tr.Lifetime = 0.22
+        tr.LightEmission = 0.45
+        tr.Parent = handle
+        ownEffect(tr)
+        return true
+    end
+
+    local function applyKnifeEffect(effectId, effectData, silent)
+        if not (S.UnlockAllKnifeEffects and effectId) then return false end
+        local tool, handle = currentKnife()
+        if not (tool and handle) then
+            if not silent then Notify("Knife Effect", "Equip/hold Knife first; saved for next Knife.", 3) end
+            return false
+        end
+        if appliedKnife == tool and appliedEffectId == effectId and handle:FindFirstChild("MM2_FX_Applied") then return true end
+        clearAppliedKnifeEffect()
+        local marker = Instance.new("BoolValue")
+        marker.Name = "MM2_FX_Applied"
+        marker.Parent = handle
+        ownEffect(marker)
+        local effect = { Id = tostring(effectId), Data = effectData or {} }
+        local source = findEffectSource(effect)
+        local made = source and (cloneVisualsFrom(source, tool, handle) + tryModuleApply(source, tool, handle)) or 0
+        if made <= 0 then fallbackEffect(effect, tool, handle) end
+        appliedKnife, appliedEffectId = tool, tostring(effectId)
+        if not silent then Notify("Knife Effect", "Applied: " .. tostring((effectData and (effectData.Name or effectData.ItemName)) or effectId), 2) end
+        return true
+    end
+
+    S._ApplySelectedKnifeEffect = function(silent)
+        if not (S.UnlockAllKnifeEffects and S.ActiveVisualEffect) then return false end
+        for _, effect in ipairs(getKnifeEffects()) do
+            if effect.Id == tostring(S.ActiveVisualEffect) then
+                return applyKnifeEffect(effect.Id, effect.Data, silent)
+            end
+        end
+        return false
+    end
+
     local function visualCardCount(container)
         local count = 0
         if container then
@@ -9946,7 +10231,7 @@ do
                     actionButton.MouseButton1Click:Connect(function()
                         if SFX and SFX.Click then pcall(SFX.Click) end
                         S.ActiveVisualEffect = effect.Id
-                        if Notify then pcall(function() Notify("Visual Effect", "Set local effect to " .. tostring(effect.Data.Name or effect.Id), 2) end) end
+                        applyKnifeEffect(effect.Id, effect.Data, false)
                         pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
                     end)
                 end
@@ -9961,8 +10246,10 @@ do
     local function refreshCatalog()
         if S.UnlockAllKnifeEffects then
             populateCatalog()
+            if S.ActiveVisualEffect then pcall(S._ApplySelectedKnifeEffect, true) end
         else
             clearCatalog(getCatalogContainer())
+            clearAppliedKnifeEffect()
         end
     end
 
@@ -9976,10 +10263,29 @@ do
         clearCatalog(getCatalogContainer())
     end)
     tc(LP.CharacterAdded:Connect(clearLegacyAura))
+    tc(LP.CharacterAdded:Connect(function()
+        task.delay(0.8, function() pcall(S._ApplySelectedKnifeEffect, true) end)
+    end))
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if bp then
+        tc(bp.ChildAdded:Connect(function(child)
+            if child.Name == "Knife" or child.Name == "KnifeServer" then
+                task.delay(0.15, function() pcall(S._ApplySelectedKnifeEffect, true) end)
+            end
+        end))
+    end
+    if LP.Character then
+        tc(LP.Character.ChildAdded:Connect(function(child)
+            if child.Name == "Knife" or child.Name == "KnifeServer" then
+                task.delay(0.15, function() pcall(S._ApplySelectedKnifeEffect, true) end)
+            end
+        end))
+    end
     SG.Destroying:Connect(function()
         clearCatalog(getCatalogContainer())
-        clearLegacyAura(LP.Character)
+        clearAppliedKnifeEffect()
         if S._RefreshKnifeEffectCatalog == refreshCatalog then S._RefreshKnifeEffectCatalog = nil end
+        S._ApplySelectedKnifeEffect = nil
     end)
 end
 -- ============ DUAL WIELD (visual only) ============
@@ -10840,6 +11146,7 @@ local function loadConfig(name)
     if type(updateFullBright) == "function" then pcall(updateFullBright) end
     if type(applyTheme) == "function" then pcall(applyTheme) end
     if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
+    if type(S._ApplySelectedKnifeEffect) == "function" then pcall(S._ApplySelectedKnifeEffect, true) end
     applyingConfig = false
     configLoadedSuccessfully = true
     if name ~= "_autoload" then pcall(writeAutoConfig) end
