@@ -1644,14 +1644,13 @@ local function _toggleStateFromS(controlId)
     for k, v in pairs(S) do
         if type(v) == "boolean" and _toggleNorm(k) == labelKey then return v end
     end
-    for k, v in pairs(S) do
-        if type(v) == "boolean" then
-            local key = _toggleNorm(k)
-            if #key >= 5 and (string.find(fullKey, key, 1, true) or string.find(labelKey, key, 1, true)) then
-                return v
-            end
-        end
-    end
+    -- A substring fallback used to live here, scanning every boolean in S and returning the first
+    -- whose key merely appeared inside the toggle's id. That is why toggles needed two or three
+    -- clicks to switch on: toggle() re-runs this right AFTER the callback, so "Gun Chams Rainbow"
+    -- set S.ItemChamsRainbow and then had its state overwritten by whatever S.GunChams happened to
+    -- be. pairs() order is not stable either, so the number of clicks varied between sessions.
+    -- Un-aliased toggles now return nil, which leaves entry.state authoritative — add an entry to
+    -- TOGGLE_STATE_ALIASES / FULL_TOGGLE_STATE_ALIASES if a toggle really must mirror an S flag.
     return nil
 end
 local function _cfgId(parent, label)
@@ -11484,12 +11483,10 @@ local function _cfgValueFromState(controlId)
             if _cfgNorm(k) == labelKey then return v end
         end
     end
-    for k, v in pairs(S) do
-        if type(v) ~= "function" and type(v) ~= "table" and not tostring(k):find("^_") then
-            local key = _cfgNorm(k)
-            if #key >= 5 and string.find(labelKey, key, 1, true) then return v end
-        end
-    end
+    -- Same substring fallback as the toggle resolver had, and the same bug: a control called
+    -- "Gun Chams Rainbow" would match S.GunChams and get somebody else's value written into the
+    -- config, so a saved layout came back wrong and auto-save kept persisting the mismatch.
+    -- Only exact matches and explicit aliases count now; nil leaves the control's own value alone.
     return nil
 end
 
