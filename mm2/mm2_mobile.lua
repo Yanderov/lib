@@ -2993,7 +2993,6 @@ do
     -- wrapped shouty text inside a 48px circle.  First match wins, so the more
     -- specific words are listed first.
     local FLOAT_ICON_RULES = {
-        { "menu", "misc" },
         { "esp", "eye" }, { "cham", "eye" }, { "visual", "eye" }, { "tracer", "eye" },
         { "aim", "combat" }, { "kill", "combat" }, { "shoot", "combat" }, { "gun", "combat" },
         { "knife", "combat" }, { "fling", "combat" },
@@ -3190,9 +3189,6 @@ do
 
     S._floatSet = function(id, on)
         if not MOBILE then return end
-        -- The menu button is permanent: on a device with no keyboard, removing it
-        -- would leave no way to reopen the hub.
-        if id == "ui:menu" and not on then return end
         if on then
             createButton(id)
         else
@@ -3221,7 +3217,6 @@ do
     -- Config restore hands us the whole saved layout at once.
     S._floatApplyMap = function(map)
         if not MOBILE then return end
-        local keepMenu = FloatPos["ui:menu"]
         for id in pairs(Buttons) do destroyButton(id) end
         FloatPos = {}
         if type(map) == "table" then
@@ -3231,10 +3226,6 @@ do
                     createButton(id)
                 end
             end
-        end
-        if Entries["ui:menu"] then
-            if not FloatPos["ui:menu"] then FloatPos["ui:menu"] = keepMenu end
-            createButton("ui:menu")
         end
         for id in pairs(Entries) do repaintChips(id) end
         if S._refreshFloatTab then pcall(S._refreshFloatTab) end
@@ -8942,7 +8933,20 @@ do
     -- On by default on mobile: it is that build's only always-on HUD, and the
     -- menu animates in and out of it.  mkToggle does not fire its callback for
     -- the initial state, so the HUD itself is shown right after this.
-    mkToggle(sec, "Dynamic Island", MOBILE, function(v)
+    local islandToggle
+    islandToggle = mkToggle(sec, "Dynamic Island", MOBILE, function(v)
+        if MOBILE and not v then
+            S.HUD_Watermark = true
+            S._SetHUDVisible(HUDEls["Watermark"], true)
+            task.defer(function()
+                if islandToggle then
+                    islandToggle.state = true
+                    islandToggle.updateVisuals()
+                end
+            end)
+            Notify("Dynamic Island", "Required on mobile: tap it to open or close the menu.", 2)
+            return
+        end
         S.HUD_Watermark = v
         local wf = HUDEls["Watermark"].frame
         if v then
@@ -11437,9 +11441,9 @@ do
     end))
 end
 CloseBtn.MouseButton1Click:Connect(function()
-    -- Mobile: X only hides the sheet (the floating MENU button brings it back).
-    -- Destroying the whole hub here would also destroy that button, leaving a
-    -- touch user with no way to reopen anything short of re-injecting.
+    -- Mobile: X only hides the sheet; the Dynamic Island is the single
+    -- reopen/close control, so we do not duplicate it with a floating Menu
+    -- button.
     if MOBILE then
         S._SetMenuVisible(false)
         return
@@ -15474,16 +15478,6 @@ end
 -- Built LAST on purpose: it lists every control in AllBinds, and that list is
 -- only complete once every other tab has finished building.
 if MOBILE and Pages.Buttons then
-    -- The menu button drives the window itself rather than a game feature, and
-    -- it is the one button that cannot be removed: deleting it on a device with
-    -- no keyboard would leave no way to reopen the menu at all.
-    S._floatRegisterEntry({
-        cfgId = "ui:menu",
-        label = "Menu",
-        isToggle = true,
-        trigger = function() S._SetMenuVisible(not Main.Visible) end,
-    })
-
     local secFloat = mkSection(Pages.Buttons, "Floating Buttons", 1)
 
     local note = Instance.new("TextLabel")
@@ -15525,10 +15519,9 @@ if MOBILE and Pages.Buttons then
             table.insert(order, { id = entry.cfgId, label = tostring(entry.label or entry.cfgId), entry = entry })
         end
     end
-    table.insert(order, 1, { id = "ui:menu", label = "Menu" })
-    -- Menu first, then alphabetical: the one permanent button stays at the top.
+    -- Floating buttons are for actual features; the menu itself is controlled
+    -- by the Dynamic Island on mobile.
     table.sort(order, function(a, b)
-        if (a.id == "ui:menu") ~= (b.id == "ui:menu") then return a.id == "ui:menu" end
         return string.lower(a.label) < string.lower(b.label)
     end)
 
@@ -15574,7 +15567,6 @@ if MOBILE and Pages.Buttons then
         local enable, enableStroke = mkPill(row, "ENABLE", -82)
         local remove, removeStroke = mkPill(row, "REMOVE", -4)
 
-        local locked = item.id == "ui:menu"
         local function paint()
             local on = S._floatIsOn(item.id)
             enable.BackgroundColor3 = on and T.ActiveBg or T.Elev
@@ -15583,14 +15575,13 @@ if MOBILE and Pages.Buttons then
             enableStroke.Color = on and T.Accent or T.Bd2
             enableStroke.Transparency = on and 0.15 or 0.42
             label.TextColor3 = on and T.Tx or T.Tx2
-            remove.Visible = not locked
             remove.TextColor3 = on and T.Tx or T.Tx4
             removeStroke.Transparency = on and 0.35 or 0.6
         end
         paints[item.id] = paint
         enable.MouseButton1Click:Connect(function() S._floatSet(item.id, true); SFX.Click() end)
         remove.MouseButton1Click:Connect(function()
-            if not locked then S._floatSet(item.id, false); SFX.Click() end
+            S._floatSet(item.id, false); SFX.Click()
         end)
         paint()
         table.insert(UIRegistry, { label = string.lower(item.label), row = row, card = secFloat.Parent })
@@ -15613,9 +15604,6 @@ if MOBILE and Pages.Buttons then
     S._refreshFloatTab = function()
         for _, paint in pairs(paints) do pcall(paint) end
     end
-
-    -- The menu button exists from the first frame, before any config has loaded.
-    S._floatSet("ui:menu", true)
 end
 
 -- Sub-tab strips (Sheriff/Murderer/Survivors, ESP/Environment/Shaders, ...) are
