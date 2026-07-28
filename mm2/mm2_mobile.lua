@@ -1421,11 +1421,12 @@ local FOV_COLORS = {
 local M = MOBILE and {
     rowH = 42, rowFont = 13, trackW = 50, trackH = 28, knobShell = 24, knob = 18,
     sliderH = 60, barH = 9, grab = 18, actionH = 42,
-    cycleW = 132, cycleH = 32, titleH = 94, navH = 68, navItemW = 74,
-    -- Mobile navigation is now a bottom icon dock. Full-height content gets the
-    -- whole width, while the dock stays thumb-friendly and horizontally scrolls
-    -- when every tab is present.
-    railW = 0, railItemH = 56,
+    cycleW = 132, cycleH = 32, titleH = 94, navH = 70, navItemW = 52,
+    -- Mobile navigation is a bottom dock of ICON-ONLY squares that scrolls
+    -- sideways when the tabs outrun the width. Captions are dropped there: a
+    -- 52px square fits the 44px touch minimum and eight of them fit a phone,
+    -- where eight 74px captioned pills did not.
+    railW = 0, railItemH = 52,
     badgeGap = 64, cycleLabelGap = 134,
 } or {
     -- These are the exact numbers the desktop build has always used; changing
@@ -2551,7 +2552,7 @@ ContentArea.Position = MOBILE and UDim2.new(0, 8, 0, M.titleH) or UDim2.new(0, 1
 -- Mobile no longer reserves M.navH for a bottom tab dock: tabs are their own screen now, reached
 -- with the back arrow, so that height goes back to the content. On a 372px-tall phone panel this
 -- is the difference between a 192px and a ~278px content area.
-ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + 12)) or UDim2.new(1, -152, 1, -67)
+ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + M.navH + 10)) or UDim2.new(1, -152, 1, -67)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ContentArea.ScrollBarThickness = 0
@@ -2908,21 +2909,23 @@ local function mkSBItem(name, iconKind, page, order)
     local navIcons = S._MakeNavIcon ~= nil
     local icon = S._MakeNavIcon and S._MakeNavIcon(btn, iconKind) or nil
     if icon and MOBILE then
-        -- Dock item: glyph centred near the top, caption underneath it.
-        icon.slot.AnchorPoint = Vector2.new(0.5, 0)
-        icon.slot.Position = UDim2.new(0.5, 0, 0, 6)
-        icon.slot.Size = UDim2.fromOffset(26, 26)
-        icon.image.Size = UDim2.fromOffset(19, 19)
+        -- Icon-only dock square: the glyph owns the whole tile, no caption under it.
+        icon.slot.AnchorPoint = Vector2.new(0.5, 0.5)
+        icon.slot.Position = UDim2.fromScale(0.5, 0.5)
+        icon.slot.Size = UDim2.fromOffset(30, 30)
+        icon.image.Size = UDim2.fromOffset(23, 23)
     end
     local label = Instance.new("TextLabel")
     label.Parent = btn
     label.BackgroundTransparency = 1
     if MOBILE then
-        -- getcustomasset is missing on some executors, so the icon can be nil; the
-        -- caption then owns the whole pill instead of leaving a gap.
-        label.Position = navIcons and UDim2.new(0, 2, 0, 34) or UDim2.new(0, 2, 0, 0)
-        label.Size = navIcons and UDim2.new(1, -4, 0, 17) or UDim2.new(1, -4, 1, 0)
-        label.TextSize = navIcons and 10 or 11
+        -- Caption is hidden while a glyph exists (icon-only dock). getcustomasset is missing on
+        -- some executors, and then there is no glyph at all, so the caption has to come back or the
+        -- tile would be blank -- that is the only case it still renders.
+        label.Position = UDim2.new(0, 2, 0, 0)
+        label.Size = UDim2.new(1, -4, 1, 0)
+        label.TextSize = 11
+        label.Visible = not navIcons
     else
         label.Position = UDim2.new(0, navIcons and 36 or 14, 0, 0)
         -- Reserve only what the corner markers need. At -54 the caption ended exactly
@@ -3016,7 +3019,29 @@ if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9
 -- untouched. Wrapped in do...end so none of this reaches the main chunk's register budget.
 if MOBILE then
 do
-    SB.Visible = false
+    -- The dock sits above the hint line, so it stops short of the panel's bottom edge.
+    SB.Position = UDim2.new(0, 8, 1, -(M.navH + 4))
+    SB.Size = UDim2.new(1, -16, 0, M.railItemH)
+
+    local hint = Instance.new("TextLabel")
+    hint.Name = "MobileDockHint"
+    hint.Parent = Main
+    hint.BackgroundTransparency = 1
+    hint.Position = UDim2.new(0, 8, 1, -18)
+    hint.Size = UDim2.new(1, -16, 0, 14)
+    hint.Font = F
+    hint.TextSize = 11
+    hint.TextColor3 = T.Tx4
+    pcall(function() hint:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
+    hint.TextXAlignment = Enum.TextXAlignment.Center
+    hint.Text = "> Scroll sideways for more tabs"
+    -- Only worth saying when the dock actually overflows.
+    local function syncHint()
+        hint.Visible = SB.AbsoluteCanvasSize.X > SB.AbsoluteSize.X + 2
+    end
+    SB:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(syncHint)
+    SB:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncHint)
+    task.defer(syncHint)
 
     local backBtn = Instance.new("TextButton")
     backBtn.Name = "MobileBack"
@@ -3062,11 +3087,119 @@ do
     menu.AutomaticCanvasSize = Enum.AutomaticSize.Y
     menu.ScrollBarThickness = 0
     menu.ZIndex = 5
-    local grid = Instance.new("UIGridLayout")
-    grid.Parent = menu
-    grid.SortOrder = Enum.SortOrder.LayoutOrder
-    grid.CellPadding = UDim2.fromOffset(10, 10)
-    grid.CellSize = UDim2.new(0.5, -5, 0, 62)
+    local list = Instance.new("UIListLayout")
+    list.Parent = menu
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+    list.Padding = UDim.new(0, 10)
+
+    -- Home card: who is logged in. Same avatar URL the desktop profile header already resolved.
+    local card = Instance.new("Frame")
+    card.Name = "HomeProfile"
+    card.Parent = menu
+    card.LayoutOrder = 1
+    card.Size = UDim2.new(1, 0, 0, 74)
+    card.BackgroundColor3 = T.Card
+    pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+    card.BorderSizePixel = 0
+    Corner(card, 14)
+    Stroke(card, T.Bd2, 1, 0.4)
+
+    local av = Instance.new("ImageLabel")
+    av.Parent = card
+    av.Position = UDim2.new(0, 12, 0.5, -24)
+    av.Size = UDim2.fromOffset(48, 48)
+    av.BackgroundTransparency = 1
+    -- Resolved here rather than reusing the desktop header's avatarUrl: that one read back nil in
+    -- this scope and the failed assignment aborted the rest of this block, which is why the stat
+    -- cards never got built. Fetch in a spawned thread because GetUserThumbnailAsync yields.
+    av.Image = "rbxasset://textures/ui/Guidetool/PlayerIcon.png"
+    task.spawn(function()
+        local ok, url = pcall(function()
+            return Players:GetUserThumbnailAsync(LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+        end)
+        if ok and type(url) == "string" and url ~= "" then av.Image = url end
+    end)
+    Corner(av, 9999)
+    Stroke(av, T.Bd2, 1, 0.4)
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Parent = card
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Position = UDim2.new(0, 72, 0, 16)
+    nameLbl.Size = UDim2.new(1, -84, 0, 20)
+    nameLbl.Font = FB
+    nameLbl.TextSize = 17
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLbl.TextColor3 = T.Tx
+    pcall(function() nameLbl:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+    nameLbl.Text = LP.DisplayName
+
+    local userLbl = Instance.new("TextLabel")
+    userLbl.Parent = card
+    userLbl.BackgroundTransparency = 1
+    userLbl.Position = UDim2.new(0, 72, 0, 38)
+    userLbl.Size = UDim2.new(1, -84, 0, 18)
+    userLbl.Font = F
+    userLbl.TextSize = 13
+    userLbl.TextXAlignment = Enum.TextXAlignment.Left
+    userLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    userLbl.TextColor3 = T.Tx3
+    pcall(function() userLbl:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+    userLbl.Text = "@" .. LP.Name
+
+    -- Live stat tiles: big value, quiet caption, same shape as the profile card.
+    local function statCard(order, caption)
+        local f = Instance.new("Frame")
+        f.Name = caption
+        f.Parent = menu
+        f.LayoutOrder = order
+        f.Size = UDim2.new(1, 0, 0, 66)
+        f.BackgroundColor3 = T.Card
+        pcall(function() f:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+        f.BorderSizePixel = 0
+        Corner(f, 14)
+        Stroke(f, T.Bd2, 1, 0.4)
+        local cap = Instance.new("TextLabel")
+        cap.Parent = f
+        cap.BackgroundTransparency = 1
+        cap.Position = UDim2.new(0, 14, 0, 8)
+        cap.Size = UDim2.new(1, -28, 0, 16)
+        cap.Font = F
+        cap.TextSize = 12
+        cap.TextXAlignment = Enum.TextXAlignment.Left
+        cap.TextColor3 = T.Tx3
+        pcall(function() cap:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+        cap.Text = caption
+        local val = Instance.new("TextLabel")
+        val.Name = "Value"
+        val.Parent = f
+        val.BackgroundTransparency = 1
+        val.Position = UDim2.new(0, 14, 0, 26)
+        val.Size = UDim2.new(1, -28, 0, 30)
+        val.Font = FB
+        val.TextSize = 26
+        val.TextXAlignment = Enum.TextXAlignment.Left
+        val.TextColor3 = T.Tx
+        pcall(function() val:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        val.Text = "--"
+        return val
+    end
+    local fpsVal = statCard(2, "FPS")
+    local pingVal = statCard(3, "Network Latency")
+
+    task.spawn(function()
+        while menu and menu.Parent do
+            if menu.Visible then
+                fpsVal.Text = tostring(curFPS)
+                pcall(function()
+                    local ps = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+                    pingVal.Text = string.format("%.0fms", ps:GetValue())
+                end)
+            end
+            task.wait(0.5)
+        end
+    end)
 
     local function showMenu()
         for _, pg in pairs(Pages) do pg.Visible = false end
@@ -3091,27 +3224,8 @@ do
         showMenu()
     end)
 
+    -- Tabs live in the dock now, so the dock buttons drive the drill-down directly.
     for _, item in ipairs(SBItems) do
-        local card = Instance.new("TextButton")
-        card.Name = item.name
-        card.Parent = menu
-        card.LayoutOrder = item.order
-        card.AutoButtonColor = false
-        card.BackgroundColor3 = T.Elev
-        pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-        card.BorderSizePixel = 0
-        card.Font = FB
-        card.TextSize = 16
-        card.Text = item.name
-        card.TextColor3 = T.Tx
-        pcall(function() card:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
-        Corner(card, 14)
-        Stroke(card, T.Bd2, 1, 0.4)
-        card.MouseButton1Click:Connect(function()
-            SFX.Click()
-            showPage(item)
-        end)
-        -- The dock buttons still exist (hidden) and other code fires them, so keep them in sync.
         item.btn.MouseButton1Click:Connect(function() showPage(item) end)
     end
 
@@ -9269,7 +9383,9 @@ do
     quickScale.Parent = HUD.quickFrame
     S._ResizeQuickStatus = function()
         local available = Main.AbsoluteSize.Y - 444
-        local show = available >= 132
+        -- Desktop-only: this panel is pinned to the sidebar column's free space. The mobile build
+        -- has no such column, so it floated on top of the content area instead.
+        local show = (not MOBILE) and available >= 132
         HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, math.clamp(available, 132, 196))
         if show and not HUD.quickFrame.Visible then
             HUD.quickFrame.Visible = true
