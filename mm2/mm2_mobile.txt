@@ -5105,8 +5105,13 @@ end, 6)
                     if tint then pcall(function() obj.Color = tint end) end
                 elseif aura and obj:IsA("ParticleEmitter") then
                     pcall(function()
-                        if obj.Rate <= 0 then obj.Rate = MOBILE and 6 or 10 end
-                        obj.Rate = math.min(tonumber(obj.Rate) or cap, cap)
+                        local rate = tonumber(obj.Rate) or 0
+                        if rate <= 0 then rate = MOBILE and 6 or 10 end
+                        obj.Rate = math.clamp(rate, 1, cap)
+                        local lifetime = obj.Lifetime
+                        if not lifetime or lifetime.Max <= 0 then
+                            obj.Lifetime = NumberRange.new(0.6, 1.2)
+                        end
                         if seq then obj.Color = seq end
                         if obj.Texture == "" then
                             obj.Texture = "rbxasset://textures/particles/sparkles_main.dds"
@@ -5118,6 +5123,18 @@ end, 6)
                             obj.Transparency = NumberSequence.new({
                                 NumberSequenceKeypoint.new(0, 1, 0),
                                 NumberSequenceKeypoint.new(0.15, 0.22, 0),
+                                NumberSequenceKeypoint.new(1, 1, 0),
+                            })
+                        end
+                        local visible = false
+                        for _, keypoint in ipairs(obj.Transparency.Keypoints) do
+                            if keypoint.Value < 0.95 then visible = true; break end
+                        end
+                        if not visible then
+                            obj.Transparency = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 1, 0),
+                                NumberSequenceKeypoint.new(0.12, 0.2, 0),
+                                NumberSequenceKeypoint.new(0.82, 0.28, 0),
                                 NumberSequenceKeypoint.new(1, 1, 0),
                             })
                         end
@@ -5166,40 +5183,92 @@ end, 6)
                 end
             end)
         end
-        local function weldModel(model, root, offset, data)
+        local function weldModel(model, root, offset, data, mode)
             local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if not primary and mode == "Aura" then
+                -- Some aura packages contain only Attachments/ParticleEmitters. Give them a tiny
+                -- invisible carrier so the emitters can still follow the character.
+                primary = Instance.new("Part")
+                primary.Name = "InertiaToolboxAuraAnchor"
+                primary.Size = Vector3.new(0.2, 0.2, 0.2)
+                prepPart(primary, true)
+                primary.Parent = model
+            end
             if not primary then return nil end
             model.PrimaryPart = primary
-            normalizeModel(model, data)
-            -- Use one torso-relative anchor for every asset. The old per-asset Z offsets were
-            -- authored against unrelated pivots, which left some wings below or floating beside
-            -- the back. Preserve only any authored rotation and clamp the translation to the spine.
-            local authored = offset or CFrame.new(0, 0.12, 0.62)
-            local ox, oy, oz = authored:ToOrientation()
-            local op = authored.Position
-            local anchorOffset = CFrame.new(
-                0,
-                math.clamp(op.Y, 0.12, 0.24),
-                math.clamp(op.Z, 0.42, 0.62)
-            ) * CFrame.Angles(ox, oy, oz)
-            local target = root.CFrame * anchorOffset
-            model:PivotTo(target)
-
-            -- Correct asset pivots by aligning the model's actual bounds to the torso anchor.
-            -- This is translation-only, so the wing orientation chosen by the asset is preserved.
-            pcall(function()
-                local pivot = model:GetPivot()
-                local bounds = model:GetBoundingBox()
-                local delta = target.Position - bounds.Position
-                if delta.Magnitude > 0.001 then
-                    model:PivotTo(CFrame.fromMatrix(
-                        pivot.Position + delta,
-                        pivot.RightVector,
-                        pivot.UpVector,
-                        -pivot.LookVector
-                    ))
+            if mode == "Aura" then
+                local emitterCount = 0
+                for _, obj in ipairs(model:GetDescendants()) do
+                    if obj:IsA("Attachment") and obj.Parent and not (obj.Parent:IsA("BasePart") or obj.Parent:IsA("Bone")) then
+                        pcall(function() obj.Parent = primary end)
+                    elseif obj:IsA("ParticleEmitter") then
+                        emitterCount = emitterCount + 1
+                        if obj.Parent and not (obj.Parent:IsA("BasePart") or obj.Parent:IsA("Attachment")) then
+                            pcall(function() obj.Parent = primary end)
+                        end
+                    end
                 end
-            end)
+                if emitterCount == 0 then
+                    local tint = data and data.tint or Color3.fromRGB(255, 255, 255)
+                    local emitter = Instance.new("ParticleEmitter")
+                    emitter.Name = "InertiaToolboxAuraFallback"
+                    emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+                    emitter.Color = ColorSequence.new(tint)
+                    emitter.Rate = MOBILE and 5 or 8
+                    emitter.Lifetime = NumberRange.new(0.65, 1.15)
+                    emitter.Speed = NumberRange.new(0.2, 0.8)
+                    emitter.Size = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 0.18, 0),
+                        NumberSequenceKeypoint.new(0.5, 0.42, 0),
+                        NumberSequenceKeypoint.new(1, 0.08, 0),
+                    })
+                    emitter.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 1, 0),
+                        NumberSequenceKeypoint.new(0.15, 0.2, 0),
+                        NumberSequenceKeypoint.new(1, 1, 0),
+                    })
+                    emitter.LightInfluence = 0
+                    emitter.LightEmission = 0.8
+                    emitter.LockedToPart = true
+                    emitter.Enabled = true
+                    emitter.Parent = primary
+                end
+            end
+            if mode == "Aura" then
+                -- Keep aura placement independent from the wing-specific bounds correction.
+                -- Aura assets are authored around different origins and should stay at the torso.
+                normalizeModel(model, { max = MOBILE and 2.6 or 3.0 })
+                model:PivotTo(root.CFrame * (offset or CFrame.new(0, 0, 0)))
+            else
+                normalizeModel(model, data)
+                -- Use one torso-relative anchor for every wing asset. The old per-asset Z offsets
+                -- were authored against unrelated pivots, which left some wings below or floating.
+                local authored = offset or CFrame.new(0, 0.12, 0.62)
+                local ox, oy, oz = authored:ToOrientation()
+                local op = authored.Position
+                local anchorOffset = CFrame.new(
+                    0,
+                    math.clamp(op.Y, 0.12, 0.24),
+                    math.clamp(op.Z, 0.42, 0.62)
+                ) * CFrame.Angles(ox, oy, oz)
+                local target = root.CFrame * anchorOffset
+                model:PivotTo(target)
+
+                -- Correct wing pivots by aligning actual bounds to the torso anchor.
+                pcall(function()
+                    local pivot = model:GetPivot()
+                    local bounds = model:GetBoundingBox()
+                    local delta = target.Position - bounds.Position
+                    if delta.Magnitude > 0.001 then
+                        model:PivotTo(CFrame.fromMatrix(
+                            pivot.Position + delta,
+                            pivot.RightVector,
+                            pivot.UpVector,
+                            -pivot.LookVector
+                        ))
+                    end
+                end)
+            end
             for _, part in ipairs(model:GetDescendants()) do
                 if part:IsA("BasePart") and part ~= primary then
                     pcall(function()
@@ -5271,7 +5340,7 @@ end, 6)
             if not model then return end
             sanitize(model, true, data)
             model.Parent = LP.Character
-            local weld = weldModel(model, root, CFrame.new(0, -0.15, 0))
+            local weld = weldModel(model, root, CFrame.new(0, -0.15, 0), data, "Aura")
             if weld then
                 own(model)
                 animateAura(model, weld)
