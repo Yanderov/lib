@@ -2328,7 +2328,11 @@ opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 10
 opSlider.ZIndex = 1001; Corner(opSlider, 6); Stroke(opSlider, T.Bd, 1, 0.4)
 opSlider.FocusLost:Connect(function()
     local v = tonumber(opSlider.Text)
-    if v then S.UIWallpaperOpacity = math.clamp(v, 0, 100) / 100; applyWall() end
+    if v then
+        S.UIWallpaperOpacity = math.clamp(v, 0, 100) / 100
+        applyWall()
+        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
+    end
     opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 100))
 end)
 task.defer(applyWall)
@@ -3805,6 +3809,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
                 val = num
                 upd(val)
                 pcall(callback, val)
+                pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
             else
                 vlbl.Text = tostring(val)
             end
@@ -3823,6 +3828,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
             val = nv
             upd(val)
             pcall(callback, val)
+            pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         end
     end
     -- Touch counts as a drag here. Matching only MouseButton1/MouseMovement (as
@@ -4163,7 +4169,10 @@ local function mkCycle(parent, label, options, default, callback, order)
     for i, o in ipairs(options) do if o == default then idx = i break end end
     local function apply(fire)
         btn.Text = tostring(options[idx])
-        if fire then pcall(callback, options[idx]) end
+        if fire then
+            pcall(callback, options[idx])
+            pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
+        end
     end
     apply(false)
     btn.MouseButton1Click:Connect(function()
@@ -7908,6 +7917,7 @@ do
                     Notify("Target", (S.ManualTargets[plrName] and "Added: " or "Removed: ") .. plrName, 2)
                 end
                 for _, r in ipairs(rowRefreshers) do r() end
+                pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
             end)
             -- Right-click toggles the whitelist for this player (not the Auto row).
             if plrName then
@@ -7916,6 +7926,7 @@ do
                     if S.Whitelist[plrName] then S.Whitelist[plrName] = nil else S.Whitelist[plrName] = true end
                     Notify("Whitelist", (S.Whitelist[plrName] and "Protected (skipped): " or "Removed: ") .. plrName, 2)
                     for _, r in ipairs(rowRefreshers) do r() end
+                    pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
                 end)
             end
             table.insert(rowRefreshers, refreshVis)
@@ -11434,8 +11445,9 @@ end
 do
 local CfgHttp = game:GetService("HttpService")
 local CFG_DIR = "MM2_Configs"
-local FILE_OK = (writefile and readfile and isfile) and true or false
+local FILE_OK = (type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function") and true or false
 local configLoadedSuccessfully = false
+local bootRestorePending = false
 local applyingConfig = false
 local autoSaveQueued = false
 local lastAutoSaveEnc = nil
@@ -11491,9 +11503,10 @@ end
 if FILE_OK then
     pcall(function()
         _cfgEnsureDir()
-        if not isfile(CFG_DIR .. "/_autoload.json") then
-            configLoadedSuccessfully = true
-        end
+        -- A missing or damaged autoload file must never disable future autosaves. The boot task
+        -- below gets one chance to restore it, then marks the config system ready either way.
+        bootRestorePending = isfile(CFG_DIR .. "/_autoload.json") == true
+        if not bootRestorePending then configLoadedSuccessfully = true end
     end)
 end
 
@@ -11503,9 +11516,12 @@ local function _cfgSanitize(name)
     return name
 end
 local function buildConfig()
-    local data = { S = {}, hud = {}, binds = {}, controls = {} }
+    local data = { S = {}, hud = {}, binds = {}, controls = {}, tables = {}, floatPos = {} }
     for k, v in pairs(S) do
-        if type(v) ~= "function" and type(v) ~= "table" and not k:find("^_") then
+        -- Only JSON scalar types belong in S. Runtime Instances (S.Gui, VoidPlatform), EnumItems,
+        -- Color3s and other userdata made HttpService:JSONEncode fail for the entire snapshot.
+        local valueType = type(v)
+        if (valueType == "boolean" or valueType == "number" or valueType == "string") and not k:find("^_") then
             data.S[k] = v
         end
     end
@@ -11527,7 +11543,24 @@ local function buildConfig()
         }
     end
     for _, b in ipairs(AllBinds) do
-        data.binds[b.id] = { state = b.state, key = b.key }
+        -- KeyCode/EnumItem values are not JSON values. Persist the stable name and rebuild the
+        -- Enum.KeyCode on restore; the old b.key field was never populated, so binds silently
+        -- disappeared from every autoload snapshot.
+        data.binds[b.id] = {
+            state = b.state,
+            key = b.bindKey and b.bindKey.Name or nil,
+        }
+    end
+    for name, enabled in pairs(S.Whitelist or {}) do
+        if type(name) == "string" and enabled == true then data.tables.Whitelist = data.tables.Whitelist or {}; data.tables.Whitelist[name] = true end
+    end
+    for name, enabled in pairs(S.ManualTargets or {}) do
+        if type(name) == "string" and enabled == true then data.tables.ManualTargets = data.tables.ManualTargets or {}; data.tables.ManualTargets[name] = true end
+    end
+    for id, pos in pairs(FloatPos or {}) do
+        if type(id) == "string" and type(pos) == "table" then
+            data.floatPos[id] = { x = tonumber(pos.x) or 0.08, y = tonumber(pos.y) or 0.3 }
+        end
     end
     return data
 end
@@ -11597,6 +11630,33 @@ local function loadConfig(name)
             end
         end
     end
+
+    -- Restore user-owned maps that cannot live in the scalar S snapshot. Keep the maps limited to
+    -- strings/booleans/numbers so malformed or legacy files cannot inject arbitrary values.
+    S.Whitelist = {}
+    local savedTables = type(dat.tables) == "table" and dat.tables or {}
+    if type(savedTables.Whitelist) == "table" then
+        for name, enabled in pairs(savedTables.Whitelist) do
+            if type(name) == "string" and enabled == true then S.Whitelist[name] = true end
+        end
+    end
+    S.ManualTargets = {}
+    if type(savedTables.ManualTargets) == "table" then
+        for name, enabled in pairs(savedTables.ManualTargets) do
+            if type(name) == "string" and enabled == true then S.ManualTargets[name] = true end
+        end
+    end
+    if type(dat.floatPos) == "table" then
+        if S._floatApplyMap then
+            pcall(S._floatApplyMap, dat.floatPos)
+        else
+            for id, pos in pairs(dat.floatPos) do
+                if type(id) == "string" and type(pos) == "table" then
+                    FloatPos[id] = { x = tonumber(pos.x) or 0.08, y = tonumber(pos.y) or 0.3 }
+                end
+            end
+        end
+    end
     
     -- Sync UI controls (sliders, toggles). New configs use data.controls; older autoload
     -- files only had data.S, so fall back to matching the control label against S. Without
@@ -11635,9 +11695,17 @@ local function loadConfig(name)
             if dat.binds[b.id] then
                 pcall(function()
                     b.state = dat.binds[b.id].state
-                    b.key = dat.binds[b.id].key
-                    b.btn.Text = b.key or "None"
-                    setVis(b.state, false)
+                    local keyName = dat.binds[b.id].key
+                    for key, bound in pairs(BindReg) do
+                        if bound == b then BindReg[key] = nil end
+                    end
+                    b.bindKey = nil
+                    if type(keyName) == "string" and Enum.KeyCode[keyName] then
+                        b.bindKey = Enum.KeyCode[keyName]
+                        BindReg[b.bindKey] = b
+                    end
+                    if b.btn then b.btn.Text = b.bindKey and b.bindKey.Name or "None" end
+                    if b.updateVisuals then b.updateVisuals() end
                 end)
             end
         end
@@ -11780,6 +11848,12 @@ if FILE_OK then
         S._cfgSkip = skip
         pcall(function() if S.LoadConfig then S.LoadConfig("_autoload") end end)
         S._cfgSkip = nil
+        -- A missing, malformed, or partially-written autoload must not permanently disable the
+        -- autosave loop. Defaults are a valid snapshot too, so the next state change is always
+        -- allowed to replace the broken file.
+        bootRestorePending = false
+        configLoadedSuccessfully = true
+        pcall(writeAutoConfig)
     end)
     -- Periodic fallback: immediate save requests handle normal changes, while this loop catches any
     -- state mutation that happened outside a UI callback. Unchanged configs are still a no-op.
