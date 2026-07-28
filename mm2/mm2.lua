@@ -1448,10 +1448,15 @@ local viewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSi
 -- relayout). They had drifted into three different formulas with contradicting comments -- one
 -- calling it a compact floating panel, another a full-screen sheet -- and whichever ran last won.
 S._MobilePanelSize = function(vpX, vpY)
-    local portrait = vpY >= vpX
-    local w = math.clamp(vpX * (portrait and 0.86 or 0.46), 300, 560)
-    local h = math.clamp(vpY * (portrait and 0.52 or 0.62), 240, portrait and 560 or 440)
-    return math.min(math.floor(w), math.floor(vpX) - 16), math.min(math.floor(h), math.floor(vpY) - 16)
+    -- Fill the phone screen minus a small margin, and never exceed it. Measured why: the window
+    -- chrome (title bar, icon rail, quick status, status bar) costs a fixed ~180px of height, so a
+    -- panel shrunk to 240px tall leaves only 60px of actual content area -- three quarters chrome.
+    -- Shrinking is therefore the wrong lever; the original bug was purely that the old
+    -- clamp(vp - margin, 420, ...) could not go BELOW 420 and so hung off a 384px-tall screen.
+    -- The upper caps only matter when the mobile build is run on a desktop-sized viewport.
+    local w = math.clamp(math.floor(vpX) - 12, 280, 1100)
+    local h = math.clamp(math.floor(vpY) - 12, 200, 700)
+    return math.min(w, math.floor(vpX) - 8), math.min(h, math.floor(vpY) - 8)
 end
 local WW, WH
 if MOBILE then
