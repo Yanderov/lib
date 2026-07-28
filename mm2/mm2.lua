@@ -4863,171 +4863,115 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S._UpdateAvatarMods()
 end, 6)
     do
-        local wingModel, wingConn
-        local colorMap = {
-            White = Color3.fromRGB(245, 245, 245),
-            Cyan = Color3.fromRGB(80, 230, 255),
-            Purple = Color3.fromRGB(185, 110, 255),
-            Pink = Color3.fromRGB(255, 120, 210),
-            Red = Color3.fromRGB(255, 75, 75),
-            Gold = Color3.fromRGB(255, 205, 90),
-            Void = Color3.fromRGB(95, 70, 150),
-        }
-        local function wingColor()
-            if S.VFXWingsRainbow then return Color3.fromHSV((tick() % 4) / 4, 0.85, 1) end
-            return colorMap[S.VFXWingsColor or "Cyan"] or colorMap.Cyan
-        end
+        local WING_ASSET_ID = "76200335500118"
+        local wingObjects, wingLoading = {}, false
         local function clearWings()
-            if wingConn then pcall(function() wingConn:Disconnect() end); wingConn = nil end
-            if wingModel then pcall(function() wingModel:Destroy() end); wingModel = nil end
+            for _, obj in ipairs(wingObjects) do
+                if obj and obj.Parent then pcall(function() obj:Destroy() end) end
+            end
+            table.clear(wingObjects)
+            local char = LP.Character
+            if char then
+                for _, child in ipairs(char:GetChildren()) do
+                    if child.Name == "InertiaArchdemonWings" or child.Name == "InertiaVFXWings" then
+                        pcall(function() child:Destroy() end)
+                    end
+                end
+            end
         end
-        local function mkWingPart(parent, root, name, size, cf, color, transparency)
-            local p = Instance.new("Part")
-            p.Name = name
-            p.Size = size
-            p.CFrame = cf
-            p.Anchored = false
-            p.CanCollide = false
-            p.CanTouch = false
-            p.CanQuery = false
-            p.Massless = true
-            p.Material = Enum.Material.Neon
-            p.Color = color
-            p.Transparency = transparency or 0.18
-            p.Parent = parent
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = root
-            weld.Part1 = p
-            weld.Parent = p
-            return p
+        local function prepPart(part)
+            part.Anchored = false
+            part.CanCollide = false
+            part.CanTouch = false
+            part.CanQuery = false
+            part.Massless = true
         end
-        local function addBeam(root, feather, rootPos, color)
-            local a0 = Instance.new("Attachment")
-            a0.Name = "WingRoot"
-            a0.Position = rootPos
-            a0.Parent = root
-            local a1 = Instance.new("Attachment")
-            a1.Name = "WingTip"
-            a1.Position = Vector3.new(0, feather.Size.Y * 0.42, 0)
-            a1.Parent = feather
-            local beam = Instance.new("Beam")
-            beam.Name = "WingBeam"
-            beam.Attachment0 = a0
-            beam.Attachment1 = a1
-            beam.FaceCamera = true
-            beam.Width0 = 0.10
-            beam.Width1 = 0.02
-            beam.LightEmission = 1
-            beam.LightInfluence = 0
-            beam.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.2), color)
-            beam.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.25),
-                NumberSequenceKeypoint.new(0.72, 0.05),
-                NumberSequenceKeypoint.new(1, 0.82),
-            })
-            beam.Parent = feather
-            return beam
+        local function weldModelToRoot(model, root)
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if not primary then return false end
+            model.PrimaryPart = primary
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    prepPart(part)
+                    if part ~= primary then
+                        local weld = Instance.new("WeldConstraint")
+                        weld.Part0 = primary
+                        weld.Part1 = part
+                        weld.Parent = part
+                    end
+                end
+            end
+            model:PivotTo(root.CFrame * CFrame.new(0, 0.15, 0.72))
+            local rootWeld = Instance.new("WeldConstraint")
+            rootWeld.Name = "InertiaArchdemonWeld"
+            rootWeld.Part0 = root
+            rootWeld.Part1 = primary
+            rootWeld.Parent = primary
+            return true
         end
-        local function addParticles(root, color, style, intensity)
-            local att = Instance.new("Attachment")
-            att.Name = "WingVFXCore"
-            att.Position = Vector3.new(0, 0.28, 0.64)
-            att.Parent = root
-            local pe = Instance.new("ParticleEmitter")
-            pe.Name = "WingDust"
-            pe.Texture = (style == "Flame") and "rbxasset://textures/particles/fire_main.dds" or "rbxasset://textures/particles/sparkles_main.dds"
-            pe.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.25), color)
-            pe.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.75),
-                NumberSequenceKeypoint.new(0.22, 0.2),
-                NumberSequenceKeypoint.new(1, 1),
-            })
-            pe.Size = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.12 + intensity * 0.01),
-                NumberSequenceKeypoint.new(0.55, 0.35 + intensity * 0.018),
-                NumberSequenceKeypoint.new(1, 0),
-            })
-            pe.Lifetime = NumberRange.new(0.55, 1.15)
-            pe.Rate = math.clamp(8 + intensity * 0.35, 8, 42)
-            pe.Speed = NumberRange.new(0.4, 1.7 + intensity * 0.025)
-            pe.SpreadAngle = Vector2.new(36, 60)
-            pe.Drag = 4
-            pe.LightEmission = 1
-            pe.LightInfluence = 0
-            pe.Rotation = NumberRange.new(0, 360)
-            pe.RotSpeed = NumberRange.new(-90, 90)
-            pe.Parent = att
-            local light = Instance.new("PointLight")
-            light.Name = "WingGlow"
-            light.Color = color
-            light.Brightness = math.clamp(0.7 + intensity / 65, 0.7, 2.2)
-            light.Range = math.clamp(5 + intensity / 10, 5, 14)
-            light.Parent = att
-            return pe, light
+        local function collectAssetAccessories(container, out)
+            if container:IsA("Accessory") then
+                table.insert(out, container)
+            end
+            for _, child in ipairs(container:GetChildren()) do
+                collectAssetAccessories(child, out)
+            end
         end
         local function rebuildWings()
             clearWings()
             if not S.VFXWings then return end
+            if wingLoading then return end
             local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
             local root = char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
-            if not root then return end
-            local color = wingColor()
-            local style = S.VFXWingsStyle or "Cyber"
-            local intensity = tonumber(S.VFXWingsIntensity) or 55
-            local model = Instance.new("Model")
-            model.Name = "InertiaVFXWings"
-            model.Parent = char
-            wingModel = model
-            local beams, feathers = {}, {}
-            local spread = (style == "Angel") and 1.08 or (style == "Void" and 1.22 or 1.15)
-            local back = (style == "Flame") and 0.72 or 0.62
-            for side = -1, 1, 2 do
-                for i = 1, 5 do
-                    local len = (1.75 - i * 0.17) * spread
-                    local y = 0.48 - i * 0.18
-                    local x = side * (0.52 + i * 0.18)
-                    local angle = math.rad(side * (24 + i * 9))
-                    local roll = math.rad(side * (22 + i * 5))
-                    local cf = root.CFrame
-                        * CFrame.new(x, y, back + i * 0.018)
-                        * CFrame.Angles(0, angle, roll)
-                    local feather = mkWingPart(model, root, "WingFeather", Vector3.new(0.10, len, 0.045), cf, color, style == "Angel" and 0.08 or 0.16)
-                    table.insert(feathers, feather)
-                    table.insert(beams, addBeam(root, feather, Vector3.new(side * 0.34, 0.28 - i * 0.04, 0.52), color))
+            if not (char and hum and root) then return end
+            wingLoading = true
+            task.spawn(function()
+                local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. WING_ASSET_ID) end)
+                wingLoading = false
+                if not (S.VFXWings and ok and type(loaded) == "table" and #loaded > 0) then
+                    Notify("Archdemon Wings", "Asset load failed: " .. WING_ASSET_ID, 3)
+                    return
                 end
-            end
-            local particles, light = addParticles(root, color, style, intensity)
-            wingConn = RunService.RenderStepped:Connect(function()
-                if not (S.VFXWings and wingModel and wingModel.Parent) then clearWings(); return end
-                local c = wingColor()
-                local pulse = 0.5 + 0.5 * math.sin(tick() * 3.1)
-                for _, p in ipairs(feathers) do
-                    if p.Parent then
-                        p.Color = c
-                        p.Transparency = math.clamp((style == "Angel" and 0.06 or 0.14) + pulse * 0.08, 0.04, 0.34)
+                clearWings()
+                char = LP.Character
+                hum = char and char:FindFirstChildOfClass("Humanoid")
+                root = char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
+                if not (S.VFXWings and char and hum and root) then return end
+                local accessories = {}
+                for _, obj in ipairs(loaded) do collectAssetAccessories(obj, accessories) end
+                if #accessories > 0 then
+                    for _, accessory in ipairs(accessories) do
+                        local clone = accessory:Clone()
+                        clone.Name = "InertiaArchdemonWings"
+                        for _, part in ipairs(clone:GetDescendants()) do
+                            if part:IsA("BasePart") then prepPart(part) end
+                        end
+                        local added = pcall(function() hum:AddAccessory(clone) end)
+                        if not added then clone.Parent = char end
+                        table.insert(wingObjects, clone)
                     end
+                    Notify("Archdemon Wings", "Loaded asset " .. WING_ASSET_ID, 2)
+                    return
                 end
-                for _, b in ipairs(beams) do
-                    if b.Parent then
-                        b.Color = ColorSequence.new(c:Lerp(Color3.new(1, 1, 1), 0.22), c)
-                        b.Width0 = 0.08 + pulse * 0.06
-                    end
+                local model = Instance.new("Model")
+                model.Name = "InertiaArchdemonWings"
+                for _, obj in ipairs(loaded) do obj:Clone().Parent = model end
+                model.Parent = char
+                if weldModelToRoot(model, root) then
+                    table.insert(wingObjects, model)
+                    Notify("Archdemon Wings", "Loaded asset " .. WING_ASSET_ID, 2)
+                else
+                    model:Destroy()
+                    Notify("Archdemon Wings", "Asset has no attachable parts.", 3)
                 end
-                if particles and particles.Parent then
-                    particles.Color = ColorSequence.new(c:Lerp(Color3.new(1, 1, 1), 0.25), c)
-                end
-                if light and light.Parent then light.Color = c end
             end)
         end
         S._RefreshVFXWings = rebuildWings
         tc(LP.CharacterAdded:Connect(function()
             task.delay(0.9, function() if S.VFXWings then rebuildWings() end end)
         end))
-        mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 7)
-        mkCycle(secCustoms, "VFX Wings Style", {"Cyber", "Angel", "Void", "Flame"}, "Cyber", function(v) S.VFXWingsStyle = v; rebuildWings() end, 8)
-        mkCycle(secCustoms, "VFX Wings Color", {"Cyan", "Purple", "Pink", "Red", "Gold", "White", "Void"}, "Cyan", function(v) S.VFXWingsColor = v; rebuildWings() end, 9)
-        mkToggle(secCustoms, "VFX Wings Rainbow", false, function(v) S.VFXWingsRainbow = v; rebuildWings() end, 10)
-        mkSlider(secCustoms, "VFX Wings Intensity", 0, 100, 55, function(v) S.VFXWingsIntensity = v; rebuildWings() end, 11)
+        mkToggle(secCustoms, "Archdemon Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 7)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
