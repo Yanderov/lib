@@ -1502,10 +1502,25 @@ TBar.Parent = Main
 -- setting — at 0% transparency that default grey went fully opaque and became the grey strip
 -- across the top of the window. Give it a themed colour so the theme system owns it.
 TBar.BackgroundColor3 = T.Card; pcall(function() TBar:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+-- UICorner does not clip children to the rounded shape and ClipsDescendants only clips to the
+-- rectangle, so once this bar had an opaque colour its square top corners sat on top of Main's
+-- rounded ones. Round the bar to match, then square off just its bottom edge with a filler strip
+-- so it still meets the content area in a straight line.
+Corner(TBar, 12)
 TBar.BackgroundTransparency = 1
 TBar.Size = UDim2.new(1, 0, 0, M.titleH - 1)
 TBar.Position = UDim2.new(0, 0, 0, 1)
 TBar.Active = true
+local TBarFoot = Instance.new("Frame")
+TBarFoot.Name = "TBarFoot"
+TBarFoot.Parent = TBar
+TBarFoot.AnchorPoint = Vector2.new(0, 1)
+TBarFoot.Position = UDim2.new(0, 0, 1, 0)
+TBarFoot.Size = UDim2.new(1, 0, 0, 12)
+TBarFoot.BackgroundColor3 = T.Card
+pcall(function() TBarFoot:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+TBarFoot.BorderSizePixel = 0
+TBarFoot.ZIndex = 0
 local TIcon = Instance.new("Frame")
 TIcon.Parent = TBar
 TIcon.BackgroundColor3 = T.Accent; pcall(function() TIcon:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
