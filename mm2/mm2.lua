@@ -5080,7 +5080,6 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end))
     end
 
-    end, 6)
 
     
     -- Mouse.Icon draws the image at its native resolution and offers no way to scale it, so the
@@ -5798,13 +5797,6 @@ do
     local sec1 = mkSection(Pages.Motion, "Speed & Jump", 1)
     
     local secChar = mkSection(Pages.Motion, "Character", 1.5)
-        S.InstantRespawn = v 
-        if v then
-            pcall(function() game:GetService("Players").RespawnTime = 0 end)
-        else
-            pcall(function() game:GetService("Players").RespawnTime = 5 end)
-        end
-    end, 1)
     
     task.spawn(function()
         local function onChar(char)
