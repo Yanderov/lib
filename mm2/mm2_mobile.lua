@@ -1614,6 +1614,50 @@ local CloseBtn = mkWinBtn("×", MOBILE and -16 or -10)
 local UIRegistry = {}
 -- ===== Config system: each toggle/slider/cycle registers a get/set here =====
 local ConfigControls = {}
+local TOGGLE_STATE_ALIASES = {
+    autosave = "AutoSaveCfg",
+    sheriff = "SheriffSilentAim",
+    gunchams = "GunChams",
+    gunchamsrainbow = "ItemChamsRainbow",
+    enablecustomcursorcrosshair = "CustomCrosshair",
+    enablehandshader = "HandShader",
+    unlockallknifeeffectsvisual = "UnlockAllKnifeEffects",
+    customtime = "CustomTime",
+    dynamicisland = "WatermarkEnabled",
+}
+local FULL_TOGGLE_STATE_ALIASES = {
+    combatsheriffaimwallcheck = "SheriffSilentAimWallCheck",
+    combatknifeaimwallcheck = "KnifeSilentAimWallCheck",
+    combatknifeaimprioritizesheriffhero = "KnifeSilentAimPrioritizeSheriff",
+    combatknifethrowfastthrow = "FastThrow",
+    combatknifethrownothrowanimation = "NoThrowAnim",
+    visualshandshadersselfrainbow = "HandRainbow",
+    miscaichatrespondtoallmessages = "AIChatRespondToAll",
+    miscaichatmaxhumanizer = "AIChatMaxHumanizer",
+}
+local function _toggleNorm(v)
+    return tostring(v or ""):lower():gsub("[^%w]", "")
+end
+local function _toggleStateFromS(controlId)
+    local fullKey = _toggleNorm(controlId)
+    local labelKey = _toggleNorm(tostring(controlId or ""):match("([^/]+)$") or controlId)
+    local fullAlias = FULL_TOGGLE_STATE_ALIASES[fullKey]
+    if fullAlias and type(S[fullAlias]) == "boolean" then return S[fullAlias] end
+    local alias = TOGGLE_STATE_ALIASES[labelKey]
+    if alias and type(S[alias]) == "boolean" then return S[alias] end
+    for k, v in pairs(S) do
+        if type(v) == "boolean" and _toggleNorm(k) == labelKey then return v end
+    end
+    for k, v in pairs(S) do
+        if type(v) == "boolean" then
+            local key = _toggleNorm(k)
+            if #key >= 5 and (string.find(fullKey, key, 1, true) or string.find(labelKey, key, 1, true)) then
+                return v
+            end
+        end
+    end
+    return nil
+end
 local function _cfgId(parent, label)
     local card = parent and parent.Parent or nil
     local page = card and card.Parent
@@ -3455,6 +3499,11 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     stateMark.BorderSizePixel = 0
     Corner(stateMark, 2)
     local entry = { label = label, cfgId = _cfgId(parent, type(configLabel) == "string" and configLabel or label), bindKey = nil, oldKey = nil, isToggle = true, state = default }
+    local function syncEntryState()
+        local actual = _toggleStateFromS(entry.cfgId)
+        if actual ~= nil and actual ~= entry.state then entry.state = actual end
+        return entry.state
+    end
     local function setVis(on, anim)
         local tCol = on and T.TgOn or T.TgOff
         pcall(function() track:SetAttribute("ThemeColorRole_BackgroundColor3", on and "TgOn" or "TgOff") end)
@@ -3511,6 +3560,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
             badge.Visible = false
         end
         syncLabelLane()
+        syncEntryState()
         setVis(entry.state, false)
     end
     function entry.playBindEffect(bound)
@@ -3530,9 +3580,12 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
         }):Play()
     end
     local function toggle()
+        syncEntryState()
         entry.state = not entry.state
         setVis(entry.state, true)
         pcall(callback, entry.state)
+        syncEntryState()
+        setVis(entry.state, true)
         pcall(function()
             if S._RequestAutoSave then S._RequestAutoSave() end
         end)
@@ -3542,6 +3595,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     function entry.trigger()
         toggle()
     end
+    syncEntryState()
     setVis(entry.state, false)
     entry.updateVisuals()
     track.MouseButton1Click:Connect(function()
@@ -3568,19 +3622,22 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
         end
     end)
     row.MouseEnter:Connect(function()
+        syncEntryState()
         TweenService.Create(TweenService, row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = entry.state and 0.58 or 0.68 }):Play()
     end)
     row.MouseLeave:Connect(function()
+        syncEntryState()
         TweenService.Create(TweenService, row, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = entry.state and 0.86 or 1 }):Play()
     end)
     S._ToggleVisualRefresh = S._ToggleVisualRefresh or {}
-    table.insert(S._ToggleVisualRefresh, function() setVis(entry.state, false) end)
+    table.insert(S._ToggleVisualRefresh, function() syncEntryState(); setVis(entry.state, false) end)
     table.insert(AllBinds, entry)
     table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
     table.insert(ConfigControls, {
         id = _cfgId(parent, type(configLabel) == "string" and configLabel or label),
-        get = function() return entry.state end,
-        set = function(v) entry.state = (v == true); setVis(entry.state, false); pcall(callback, entry.state) end,
+        kind = "toggle",
+        get = function() return syncEntryState() end,
+        set = function(v) entry.state = (v == true); setVis(entry.state, false); pcall(callback, entry.state); syncEntryState(); setVis(entry.state, false) end,
     })
     return entry
 end
@@ -11061,13 +11118,20 @@ end
 
 local CFG_CONTROL_KEY_ALIASES = {
     autosave = "AutoSaveCfg",
+    sheriff = "SheriffSilentAim",
     gunchamsmode = "ItemChamsMode",
     gunchamscolor = "ItemChamsColor",
     gunchamsrainbow = "ItemChamsRainbow",
+    gunchams = "GunChams",
+    enablecustomcursorcrosshair = "CustomCrosshair",
+    enablehandshader = "HandShader",
+    unlockallknifeeffectsvisual = "UnlockAllKnifeEffects",
+    dynamicisland = "WatermarkEnabled",
     vfxwingstyle = "VFXWingStyle",
     vfxaura = "VFXAura",
     aiprovider = "AIChatProvider",
     respondtoallmessages = "AIChatRespondToAll",
+    maxhumanizer = "AIChatMaxHumanizer",
 }
 
 local function _cfgValueFromState(controlId)
@@ -11207,10 +11271,13 @@ local function loadConfig(name)
     -- this, the feature state restored but the visible toggle stayed on its default state.
     for _, c in ipairs(ConfigControls) do
         local hasValue, value = false, nil
-        if type(dat.controls) == "table" and dat.controls[c.id] ~= nil then
+        local stateValue = dat.S and _cfgValueFromState(c.id)
+        if c.kind == "toggle" and type(stateValue) == "boolean" then
+            hasValue, value = true, stateValue
+        elseif type(dat.controls) == "table" and dat.controls[c.id] ~= nil then
             hasValue, value = true, dat.controls[c.id]
-        elseif dat.S then
-            value = _cfgValueFromState(c.id)
+        elseif stateValue ~= nil then
+            value = stateValue
             hasValue = value ~= nil
         end
         if hasValue and not (S._cfgSkip and S._cfgSkip[c.id]) then
