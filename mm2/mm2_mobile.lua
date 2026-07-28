@@ -63,6 +63,7 @@ local S = {
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
     FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig", VFXAura = "Off",
+    VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -5211,6 +5212,12 @@ end, 6)
             -- cap so a single oversized mesh cannot cover the whole character, especially on mobile.
             local target = tonumber(data.max) or (MOBILE and 2.15 or 2.45)
             target = math.clamp(target, MOBILE and 1.5 or 1.7, MOBILE and 2.35 or 2.55)
+            -- Wing Size slider. Applied after the safety clamp, not before, so the user can go past
+            -- the conservative built-in cap on purpose ("wings are too long" cuts both ways) while
+            -- an asset with no `max` of its own still starts from a sane default.
+            if not data.isAura then
+                target = target * (math.clamp(tonumber(S.VFXWingScale) or 100, 40, 200) / 100)
+            end
             pcall(function()
                 local _, size = model:GetBoundingBox()
                 local biggest = math.max(size.X, size.Y, size.Z)
@@ -5273,7 +5280,7 @@ end, 6)
             if mode == "Aura" then
                 -- Keep aura placement independent from the wing-specific bounds correction.
                 -- Aura assets are authored around different origins and should stay at the torso.
-                normalizeModel(model, { max = MOBILE and 2.6 or 3.0 })
+                normalizeModel(model, { max = MOBILE and 2.6 or 3.0, isAura = true })
                 model:PivotTo(root.CFrame * (offset or CFrame.new(0, 0, 0)))
             else
                 normalizeModel(model, data)
@@ -5282,10 +5289,13 @@ end, 6)
                 local authored = offset or CFrame.new(0, 0.12, 0.62)
                 local ox, oy, oz = authored:ToOrientation()
                 local op = authored.Position
+                -- The clamps keep an asset's own authored offset sane; the sliders are added on top
+                -- of the clamped value so the user can always pull the wings up/down or further off
+                -- the back than any preset allows. Hundredths of a stud per slider step.
                 local anchorOffset = CFrame.new(
                     0,
-                    math.clamp(op.Y, 0.12, 0.24),
-                    math.clamp(op.Z, 0.42, 0.62)
+                    math.clamp(op.Y, 0.12, 0.24) + (math.clamp(tonumber(S.VFXWingHeight) or 0, -60, 60) / 100),
+                    math.clamp(op.Z, 0.42, 0.62) + (math.clamp(tonumber(S.VFXWingBack) or 0, -40, 90) / 100)
                 ) * CFrame.Angles(ox, oy, oz)
                 local target = root.CFrame * anchorOffset
                 model:PivotTo(target)
@@ -5427,6 +5437,13 @@ end, 6)
         end))
         mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
         mkCycle(secCustoms, "VFX Wing Style", wingNames, "White 02 Angel Rig", function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        -- Wing placement is per-asset and the marketplace models disagree wildly about scale and
+        -- pivot, so the built-in numbers can only ever be an average. These three expose the same
+        -- knobs the code already used internally: the size cap, and the torso-relative Y and Z of
+        -- the anchor. Percent/hundredths because mkSlider is integer-only.
+        mkSlider(secCustoms, "Wing Size (%)", 40, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
+        mkSlider(secCustoms, "Wing Height", -60, 60, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
+        mkSlider(secCustoms, "Wing Back Offset", -40, 90, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
         mkCycle(secCustoms, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
@@ -11751,7 +11768,12 @@ local function loadConfig(name)
     if type(updateFullBright) == "function" then pcall(updateFullBright) end
     if type(applyTheme) == "function" then pcall(applyTheme) end
     if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
-    if type(S._ApplySelectedKnifeEffect) == "function" then pcall(S._ApplySelectedKnifeEffect, true) end
+    -- Spawned for the same reason as the catalog refresh: this walks Database.Sync, which means
+    -- requiring a game module, and doing that on the restore thread costs that thread its ability
+    -- to write to the hub's GUI for everything that follows.
+    if type(S._ApplySelectedKnifeEffect) == "function" then
+        task.spawn(function() pcall(S._ApplySelectedKnifeEffect, true) end)
+    end
     applyingConfig = false
     configLoadedSuccessfully = true
     if name ~= "_autoload" then pcall(writeAutoConfig) end
