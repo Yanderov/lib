@@ -58,7 +58,7 @@ local S = {
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Crystal Rig", VFXAura = "Off",
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 01 Angel Classic", VFXAura = "Off",
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -4866,21 +4866,93 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S._UpdateAvatarMods()
 end, 6)
     do
+        local WHITE_VFX = Color3.fromRGB(245, 248, 255)
+        local BLACK_VFX = Color3.fromRGB(18, 18, 22)
+        local RED_VFX = Color3.fromRGB(255, 48, 42)
+        local DARK_RED_VFX = Color3.fromRGB(145, 0, 18)
         local WINGS = {
-            ["Crystal Rig"] = { id = "120599009244025", rig = "Wings Rig Custom", offset = CFrame.new(0, 0.08, 0.82) },
-            ["Crystal Rig Alt"] = { id = "79327227228058", rig = "Wings Rig Custom", offset = CFrame.new(0, 0.08, 0.82) },
-            ["Blue Diamond"] = { id = "15156122128", offset = CFrame.new(0, 0.1, 0.78), whole = true },
-            ["Feather Dragon"] = { id = "90024680291226", offset = CFrame.new(0, 0.05, 0.72), whole = true },
+            ["White 01 Angel Classic"] = { id = "221993607", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = WHITE_VFX },
+            ["Black 01 Classic"] = { id = "225736624", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 02 Wide"] = { id = "643579878", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 03 Floating"] = { id = "14891552293", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 04 Feather A"] = { id = "3751499926", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 05 Feather B"] = { id = "3751500005", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 06 Dark Clean"] = { id = "15245418264", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 07 Mesh"] = { id = "107079834769886", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 08 Metallic"] = { id = "104041918545936", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 09 Bone"] = { id = "15748206290", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 10 Dark Angel"] = { id = "17322865031", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Red 01 Crimson"] = { id = "1190014189", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 02 Crimson Clean"] = { id = "758696741", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 03 Crimson Dark"] = { id = "8201815315", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
+            ["Red 04 Cartoon"] = { id = "117963462102223", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 05 Bat"] = { id = "59741192", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
+            ["Red 06 Galaxy"] = { id = "5606789346", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 07 Adurite"] = { id = "805964321", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 08 Adurite Alt"] = { id = "805985601", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 09 Spark Adurite"] = { id = "219863148", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 10 Dragon"] = { id = "12548664692", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
         }
         local AURAS = {
             ["Off"] = false,
-            ["Black Flame"] = { id = "89194108265492", cap = MOBILE and 14 or 24 },
-            ["Dark Aura"] = { id = "72031022600603", cap = MOBILE and 18 or 32 },
-            ["VFX Auras"] = { id = "14628750884", cap = MOBILE and 16 or 28 },
-            ["Axoie Aura"] = { id = "112065524377381", cap = MOBILE and 12 or 22 },
+            ["White 01 Angelic"] = { id = "2288612411", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 02 Angel Glow"] = { id = "13338204019", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 03 One Winged"] = { id = "8710799073", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 04 Divine Light"] = { id = "8667439615", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 05 Holy Light"] = { id = "8261640915", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 06 Holy Justice"] = { id = "8233834181", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 07 Holy Mind"] = { id = "9326853347", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 08 Holy Ground"] = { id = "6502475645", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 09 Divine Energy"] = { id = "10098833321", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["White 10 APG Aura"] = { id = "15170157085", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
+            ["Black 01 Shadow"] = { id = "11454285957", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 02 Dark Aura"] = { id = "14649778001", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 03 Pure Darkness"] = { id = "13528802597", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 04 Darkness Alt"] = { id = "13461340546", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 05 Dark Spell"] = { id = "8378637168", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 06 Dark Star"] = { id = "9458078272", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 07 Black White"] = { id = "15296578953", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 08 Evil Black"] = { id = "14596651226", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 09 Void Flame"] = { id = "89194108265492", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Black 10 Void Aura"] = { id = "13897315722", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
+            ["Red 01 Lightning"] = { id = "12276491211", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 02 God Ki"] = { id = "2941162138", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 03 Simple"] = { id = "14311905651", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 04 Classic"] = { id = "2111769371", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 05 Testing"] = { id = "5173264621", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 06 Electricity"] = { id = "3124152607", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 07 Electric"] = { id = "18202213689", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 08 Magic"] = { id = "136924291288253", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 09 Fission"] = { id = "8387525609", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 10 Crimson Electro"] = { id = "10322895157", cap = MOBILE and 12 or 22, tint = RED_VFX },
+            ["Red 11 Mega Pie"] = { id = "8991059421", cap = MOBILE and 12 or 22, tint = RED_VFX },
         }
-        local wingNames = {"Crystal Rig", "Crystal Rig Alt", "Blue Diamond", "Feather Dragon"}
-        local auraNames = {"Off", "Black Flame", "Dark Aura", "VFX Auras", "Axoie Aura"}
+        local wingNames = {
+            "White 01 Angel Classic", "White 02 Angel Rig", "White 03 Soft Angel", "White 04 Sparkling", "White 05 Flutter",
+            "White 06 Clean Angel", "White 07 Animated", "White 08 Small Wings", "White 09 Bright Wings", "White 10 Glowing",
+            "Black 01 Classic", "Black 02 Wide", "Black 03 Floating", "Black 04 Feather A", "Black 05 Feather B",
+            "Black 06 Dark Clean", "Black 07 Mesh", "Black 08 Metallic", "Black 09 Bone", "Black 10 Dark Angel",
+            "Red 01 Crimson", "Red 02 Crimson Clean", "Red 03 Crimson Dark", "Red 04 Cartoon", "Red 05 Bat",
+            "Red 06 Galaxy", "Red 07 Adurite", "Red 08 Adurite Alt", "Red 09 Spark Adurite", "Red 10 Dragon",
+        }
+        local auraNames = {
+            "Off",
+            "White 01 Angelic", "White 02 Angel Glow", "White 03 One Winged", "White 04 Divine Light", "White 05 Holy Light",
+            "White 06 Holy Justice", "White 07 Holy Mind", "White 08 Holy Ground", "White 09 Divine Energy", "White 10 APG Aura",
+            "Black 01 Shadow", "Black 02 Dark Aura", "Black 03 Pure Darkness", "Black 04 Darkness Alt", "Black 05 Dark Spell",
+            "Black 06 Dark Star", "Black 07 Black White", "Black 08 Evil Black", "Black 09 Void Flame", "Black 10 Void Aura",
+            "Red 01 Lightning", "Red 02 God Ki", "Red 03 Simple", "Red 04 Classic", "Red 05 Testing",
+            "Red 06 Electricity", "Red 07 Electric", "Red 08 Magic", "Red 09 Fission", "Red 10 Crimson Electro", "Red 11 Mega Pie",
+        }
         local fx = { objects = {}, conns = {}, busy = false, ticket = 0 }
 
         local function rootPart(char)
@@ -4917,7 +4989,10 @@ end, 6)
                 end
             end
         end
-        local function sanitize(container, aura)
+        local function sanitize(container, aura, data)
+            data = data or {}
+            local tint = data.tint
+            local seq = tint and ColorSequence.new(tint) or nil
             for _, obj in ipairs(container:GetDescendants()) do
                 if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
                     pcall(function() obj:Destroy() end)
@@ -4927,16 +5002,23 @@ end, 6)
                     prepPart(obj, true)
                 elseif obj:IsA("BasePart") then
                     prepPart(obj, false)
+                    if tint then pcall(function() obj.Color = tint end) end
                 elseif aura and obj:IsA("ParticleEmitter") then
                     pcall(function()
                         if obj.Rate <= 0 then obj.Rate = MOBILE and 6 or 10 end
-                        obj.Rate = math.min(obj.Rate, (AURAS[S.VFXAura] and AURAS[S.VFXAura].cap) or 20)
+                        obj.Rate = math.min(obj.Rate, data.cap or 20)
+                        if seq then obj.Color = seq end
                         obj.LightInfluence = 0
+                        obj.LightEmission = math.max(obj.LightEmission, 0.65)
                         obj.LockedToPart = true
                         obj.Enabled = true
                     end)
                 elseif aura and (obj:IsA("Beam") or obj:IsA("Trail")) then
-                    pcall(function() obj.Enabled = true end)
+                    pcall(function()
+                        if seq then obj.Color = seq end
+                        obj.LightEmission = math.max(obj.LightEmission, 0.55)
+                        obj.Enabled = true
+                    end)
                 end
             end
         end
@@ -4996,6 +5078,17 @@ end, 6)
                 end
             end))
         end
+        local function animateAura(model, weld)
+            local base = weld.C0
+            table.insert(fx.conns, RunService.RenderStepped:Connect(function()
+                if not (S.VFXAura and S.VFXAura ~= "Off" and model and model.Parent and weld and weld.Parent) then
+                    clean()
+                    return
+                end
+                local t = tick()
+                weld.C0 = base * CFrame.Angles(0, t * 0.28 % (math.pi * 2), 0) * CFrame.new(0, math.sin(t * 1.8) * 0.025, 0)
+            end))
+        end
         local function attachAura(root, data, ticket)
             local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. data.id) end)
             if not (ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket) then
@@ -5004,11 +5097,12 @@ end, 6)
             end
             local model = makeModel(loaded, "InertiaToolboxAura")
             if not model then return end
-            sanitize(model, true)
+            sanitize(model, true, data)
             model.Parent = LP.Character
             local weld = weldModel(model, root, CFrame.new(0, -0.15, 0))
             if weld then
                 own(model)
+                animateAura(model, weld)
             else
                 model:Destroy()
             end
@@ -5017,7 +5111,7 @@ end, 6)
             clean()
             local char, root = LP.Character, rootPart(LP.Character)
             if not (char and root) then return end
-            local wingData, auraData = WINGS[S.VFXWingStyle or "Crystal Rig"], AURAS[S.VFXAura or "Off"]
+            local wingData, auraData = WINGS[S.VFXWingStyle] or WINGS["White 01 Angel Classic"], AURAS[S.VFXAura or "Off"]
             if not (S.VFXWings or auraData) then return end
             local ticket = fx.ticket
             fx.busy = true
@@ -5028,7 +5122,7 @@ end, 6)
                     if ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket and char and root then
                         local model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
                         if model then
-                            sanitize(model, false)
+                            sanitize(model, false, wingData)
                             model.Parent = char
                             local weld = weldModel(model, root, wingData.offset)
                             if weld then
@@ -5055,7 +5149,7 @@ end, 6)
             end)
         end))
         mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
-        mkCycle(secCustoms, "VFX Wing Style", wingNames, "Crystal Rig", function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        mkCycle(secCustoms, "VFX Wing Style", wingNames, "White 01 Angel Classic", function(v) S.VFXWingStyle = v; rebuild() end, 8)
         mkCycle(secCustoms, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
