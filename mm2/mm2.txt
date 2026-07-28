@@ -62,7 +62,7 @@ local S = {
     VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
-    BoomboxVolume = 50, BoomboxLoop = false,
+    MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -4438,7 +4438,14 @@ do
                 end
                 local x = fit(so.X + d.X, host.X, size.X)
                 local y = fit(so.Y + d.Y, host.Y, size.Y)
-                OptionPickerModal.Position = UDim2.fromScale(x / host.X, y / host.Y)
+                -- x,y are a TOP-LEFT corner (that is what AbsolutePosition gives), but this modal
+                -- has AnchorPoint 0.5,0.5, so a position is read as its CENTRE. Assigning the
+                -- corner directly threw the window half its own size (180x220) on the first drag
+                -- and left every later drag offset by the same amount -- the "it jumps the moment
+                -- I grab it" report. Convert back to a centre before assigning.
+                OptionPickerModal.Position = UDim2.fromScale(
+                    (x + size.X / 2) / host.X,
+                    (y + size.Y / 2) / host.Y)
             end
         end
     end))
@@ -5565,14 +5572,30 @@ end, 6)
             ["Red 10 Crimson Electro"] = { id = "10322895157", cap = MOBILE and 12 or 22, tint = RED_VFX },
             ["Red 11 Mega Pie"] = { id = "8991059421", cap = MOBILE and 12 or 22, tint = RED_VFX },
         }
-        local wingNames = {
-            "White 02 Angel Rig", "White 03 Soft Angel", "White 04 Sparkling", "White 05 Flutter",
-            "White 06 Clean Angel", "White 07 Animated", "White 08 Small Wings", "White 09 Bright Wings", "White 10 Glowing",
-            "Black 01 Classic", "Black 03 Floating", "Black 04 Feather A", "Black 05 Feather B",
-            "Black 06 Dark Clean", "Black 07 Mesh", "Black 08 Metallic", "Black 09 Bone",
-            "Red 01 Crimson", "Red 02 Crimson Clean", "Red 03 Crimson Dark", "Red 04 Cartoon", "Red 05 Bat",
-            "Red 06 Galaxy", "Red 07 Adurite", "Red 08 Adurite Alt", "Red 09 Spark Adurite",
-        }
+        -- One list, but grouped under readable section names instead of raw colour prefixes.
+        -- The old "White/Black/Red NN ..." keys stay in WINGS as aliases, so a config saved before
+        -- this rename still resolves and nobody loses their selected pair of wings.
+        local WING_SECTIONS = { White = "Angel", Black = "Demon", Red = "Blood" }
+        local wingNames = {}
+        do
+            local order = {
+                "White 02 Angel Rig", "White 03 Soft Angel", "White 04 Sparkling", "White 05 Flutter",
+                "White 06 Clean Angel", "White 07 Animated", "White 08 Small Wings",
+                "White 09 Bright Wings", "White 10 Glowing",
+                "Black 01 Classic", "Black 03 Floating", "Black 04 Feather A", "Black 05 Feather B",
+                "Black 06 Dark Clean", "Black 07 Mesh", "Black 08 Metallic", "Black 09 Bone",
+                "Red 01 Crimson", "Red 02 Crimson Clean", "Red 03 Crimson Dark", "Red 04 Cartoon",
+                "Red 05 Bat", "Red 06 Galaxy", "Red 07 Adurite", "Red 08 Adurite Alt",
+                "Red 09 Spark Adurite",
+            }
+            for _, key in ipairs(order) do
+                local colour, rest = key:match("^(%a+)%s+%d+%s+(.+)$")
+                local section = colour and WING_SECTIONS[colour]
+                local display = section and (section .. " - " .. rest) or key
+                if WINGS[key] and display ~= key then WINGS[display] = WINGS[key] end
+                table.insert(wingNames, display)
+            end
+        end
         local auraNames = {
             "Off",
             "White 01 Angelic", "White 02 Angel Glow", "White 03 One Winged", "White 04 Divine Light", "White 05 Holy Light",
@@ -5947,7 +5970,7 @@ end, 6)
             end)
         end))
         mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
-        mkCycle(secCustoms, "VFX Wing Style", wingNames, "White 02 Angel Rig", function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        mkCycle(secCustoms, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
         -- Wing placement is per-asset and the marketplace models disagree wildly about scale and
         -- pivot, so the built-in numbers can only ever be an average. These three expose the same
         -- knobs the code already used internally: the size cap, and the torso-relative Y and Z of
@@ -7115,10 +7138,13 @@ do
     miscSubTabList.Parent = miscSubTabBar
 
     local protectionBtn, utilityBtn = Instance.new("TextButton"), Instance.new("TextButton")
-    local protectionStroke = mkSubTabBtn(miscSubTabBar, protectionBtn, "Protection", 1, 1/2, -4)
-    local utilityStroke = mkSubTabBtn(miscSubTabBar, utilityBtn, "Utility", 2, 1/2, -4)
+    local musicBtn = Instance.new("TextButton")
+    -- Three subtabs now, so each takes a third of the bar.
+    local protectionStroke = mkSubTabBtn(miscSubTabBar, protectionBtn, "Protection", 1, 1/3, -6)
+    local utilityStroke = mkSubTabBtn(miscSubTabBar, utilityBtn, "Utility", 2, 1/3, -6)
+    local musicStroke = mkSubTabBtn(miscSubTabBar, musicBtn, "Music", 3, 1/3, -6)
 
-    local miscGroups = { Protection = {}, Utility = {} }
+    local miscGroups = { Protection = {}, Utility = {}, Music = {} }
     local activeMiscSubTab = "Protection"
     S._RegisterMiscSection = function(sec, group)
         table.insert(miscGroups[group], sec)
@@ -7127,6 +7153,7 @@ do
     local function updateMiscSubTabs()
         styleSubTabActive(protectionBtn, protectionStroke, activeMiscSubTab == "Protection")
         styleSubTabActive(utilityBtn, utilityStroke, activeMiscSubTab == "Utility")
+        styleSubTabActive(musicBtn, musicStroke, activeMiscSubTab == "Music")
         for group, secs in pairs(miscGroups) do
             for _, sec in ipairs(secs) do
                 if sec and sec.Parent then sec.Parent.Visible = (activeMiscSubTab == group) end
@@ -7136,6 +7163,7 @@ do
     S._UpdateMiscSubtabs = updateMiscSubTabs
     protectionBtn.MouseButton1Click:Connect(function() SFX.Click(); activeMiscSubTab = "Protection"; updateMiscSubTabs() end)
     utilityBtn.MouseButton1Click:Connect(function() SFX.Click(); activeMiscSubTab = "Utility"; updateMiscSubTabs() end)
+    musicBtn.MouseButton1Click:Connect(function() SFX.Click(); activeMiscSubTab = "Music"; updateMiscSubTabs() end)
     -- Apply the initial tab state immediately; otherwise Roblox's default TextButton
     -- background remains gray until the first click.
     updateMiscSubTabs()
@@ -8162,88 +8190,6 @@ do
         S._RegisterMiscSection(secKE, "Utility")
         mkToggle(secKE, "Hide Kill Effects", false, function(v) S.HideKillFX = v end, 1)
 
-        local secBoombox = mkSection(Pages.Misc, "Boombox Lib", 10.5)
-        S._RegisterMiscSection(secBoombox, "Utility")
-        local bbxId = ""
-        local makeIdBox = S._mkIdBox
-        if type(makeIdBox) == "function" then
-            makeIdBox(secBoombox, "Song ID", 1, "Roblox Audio ID",
-                function() return bbxId end,
-                function(v) bbxId = v end
-            )
-        end
-        local btnPlay = Instance.new("TextButton")
-        btnPlay.Parent = secBoombox
-        btnPlay.LayoutOrder = 2
-        btnPlay.Size = UDim2.new(1, 0, 0, 28)
-        btnPlay.BackgroundColor3 = T.Elev; pcall(function() btnPlay:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-        btnPlay.BorderSizePixel = 0
-        btnPlay.Font = F
-        btnPlay.TextSize = 13
-        btnPlay.TextColor3 = T.Tx; pcall(function() btnPlay:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
-        btnPlay.Text = "Play Song"
-        Corner(btnPlay, 6)
-        Stroke(btnPlay, T.Bd, 1, 0.4)
-        -- Played through our own Sound rather than Remotes.Inventory.PlaySong. That remote is
-        -- server -> CLIENT: AudioService connects OnClientEvent and is handed (soundObject, soundId),
-        -- so firing it at the server with a bare id never matched the contract and did nothing.
-        -- A local Sound also keeps this inside the hub's own rule that nothing here replicates.
-        local bbxSound
-        local function stopSong()
-            if bbxSound then pcall(function() bbxSound:Stop() end) end
-        end
-        local function playId(id)
-            id = tonumber(tostring(id):match("%d+"))
-            if not id then Notify("Boombox", "Enter an audio ID", 2) return end
-            if not bbxSound or not bbxSound.Parent then
-                bbxSound = Instance.new("Sound")
-                bbxSound.Name = "InertiaBoombox"
-                bbxSound.Parent = SG
-            end
-            bbxSound:Stop()
-            bbxSound.SoundId = "rbxassetid://" .. id
-            bbxSound.Volume = math.clamp((tonumber(S.BoomboxVolume) or 50) / 100, 0, 1)
-            bbxSound.Looped = S.BoomboxLoop == true
-            bbxSound:Play()
-            Notify("Boombox", "Playing " .. id, 2)
-        end
-        S._BoomboxPlay = playId
-        btnPlay.MouseButton1Click:Connect(function()
-            SFX.Click()
-            playId(bbxId)
-        end)
-        mkSlider(secBoombox, "Volume", 0, 100, 50, function(v)
-            S.BoomboxVolume = v
-            if bbxSound then bbxSound.Volume = math.clamp(v / 100, 0, 1) end
-        end, 3)
-        mkToggle(secBoombox, "Loop", false, function(v)
-            S.BoomboxLoop = v
-            if bbxSound then bbxSound.Looped = v end
-        end, 4)
-        mkAction(secBoombox, "Stop", function() stopSong() end, 5)
-        -- The "library" in MM2 terms is the account's own saved list: profile.RadioSongs, managed by
-        -- the Inventory SaveSong / RemoveSong remotes. There is no way to search Roblox's audio
-        -- catalog from here -- HttpGet to catalog.roblox.com and the toolbox API both come back
-        -- empty on this client -- so this lists what the account actually has.
-        mkAction(secBoombox, "List My Saved Songs", function()
-            task.spawn(function()
-                local ok, prof = pcall(function()
-                    return game:GetService("ReplicatedStorage").Remotes.Inventory.GetProfileData:InvokeServer()
-                end)
-                if not ok or type(prof) ~= "table" then Notify("Boombox", "Could not read profile", 3) return end
-                local list, n = {}, 0
-                for k, v in pairs(prof.RadioSongs or {}) do
-                    n = n + 1
-                    local id = type(v) == "table" and (v.Id or v.SoundId or v.id) or v
-                    if n <= 12 then list[#list + 1] = tostring(id or k) end
-                end
-                if n == 0 then
-                    Notify("Boombox", "No saved songs on this account", 4)
-                else
-                    Notify("Boombox", n .. " saved: " .. table.concat(list, ", "), 6)
-                end
-            end)
-        end, 6)
     end
 end
 do
@@ -17895,4 +17841,616 @@ do
             for _, p in ipairs(spawned) do pcall(function() p:Destroy() end) end
         end)
     end
+end
+
+-- ============ MISC > MUSIC ============
+-- Replaces the old "Boombox Lib" section. Everything plays through the hub's own Sound: the game's
+-- Remotes.Inventory.PlaySong is server -> CLIENT and takes (Sound, id), so it was never usable from
+-- here, and a local Sound also keeps this inside the rule that nothing the hub does replicates.
+--
+-- Track labels come from community code dumps. Entries whose only label was a slur or a hateful
+-- phrase are omitted rather than relabelled -- there is no way to tell what those tracks are, and
+-- the label was not going in either way.
+do
+    local MUSIC = {
+    ["Meme & Classic"] = {
+        { 6834218705, "Unknown 1" },
+        { 6911766512, "Phonk" },
+        { 6813220211, "Glock" },
+        { 6896306675, "Meow" },
+        { 6819593773, "Cowbell" },
+        { 6868493025, "Bubbles" },
+        { 6896624865, "Taka ti Taka" },
+        { 6923867528, "Yee" },
+        { 6970996018, "Epic Rap" },
+        { 6846153394, "Loud Phonk" },
+        { 6950593634, "Arabic Rap" },
+        { 6868100434, "Loud Rap" },
+        { 6696294740, "LowBass" },
+        { 6674211522, "Mafia Rap" },
+        { 5410086218, "Crab Dance" },
+        { 6481556076, "Fast Phonk" },
+        { 7029092469, "Chill" },
+        { 7029011778, "Chill 2" },
+        { 6823597327, "Unknown 2" },
+        { 6847929757, "Unknown 3" },
+        { 7014573768, "Unknown 4" },
+        { 1846612949, "Metal" },
+        { 6942391979, "Unknown 5" },
+        { 6753817247, "Chill Rap" },
+        { 6805032026, "Prikol" },
+        { 6841685130, "Smeshno" },
+        { 1020967257, "Anime" },
+        { 6562534895, "Kazakhstan" },
+        { 8997664593, "Sudno (Molchat Doma)" },
+        { 5208471506, "STALKER warning" },
+        { 1836362602, "Ragdoll music" },
+        { 1836009208, "Grow A Garden" },
+        { 99114988815714, "Brawl Stars" },
+        { 1835893953, "Blox Fruits" },
+        { 130710794819556, "Sans" },
+        { 117064854285259, "Undertale Finale" },
+        { 105023046224969, "Angry Birds (bossfight remix)" },
+        { 129026092671116, "Geometrical Dominator" },
+        { 95608981665777, "Back On Track" },
+        { 82149511707056, "Backrooms phonk" },
+        { 79399386956664, "Backrooms sounds" },
+        { 120817494107898, "Backrooms 2" },
+        { 109337680029292, "GTA 6" },
+        { 123994197918972, "Roblox udalila mama" },
+        { 117088145279665, "Interny" },
+        { 107820249146754, "Glent - Roblox Anthem" },
+    },
+    ["Phonk"] = {
+        { 98571919704200, "Phonk" },
+        { 77412132660886, "Loud phonk" },
+        { 17422074849, "Phonk 1" },
+        { 79961836650028, "Phonk 2" },
+        { 126964211373669, "Phonk 3" },
+        { 119020235792430, "Phonk 4" },
+        { 138968496511779, "Phonk" },
+        { 124383118098366, "Phonk" },
+        { 130020237868405, "Phonk" },
+        { 76886858127417, "Popular phonk" },
+        { 83721829201604, "Brazil phonk" },
+        { 117562011395992, "Brazil phonk" },
+        { 107424491541808, "Brazil phonk (popular)" },
+        { 132995031285162, "Brazil phonk (slow to load)" },
+        { 106431836746309, "TikTok phonk" },
+        { 73966367524216, "Montagem Luta Epica" },
+        { 106711954990826, "Last Chance Funk" },
+        { 16190760005, "Cowbell God" },
+        { 131695135737032, "Yok Nai Map" },
+        { 140704128008979, "GOTH FUNK" },
+        { 103445348511856, "CRYSTAL FUNK" },
+        { 112903678064836, "MONTAGEM DANCE RAT" },
+        { 118606765652831, "VOIS FUNK" },
+        { 121330021284263, "MaxDuJota3 2" },
+        { 137385991798643, "This House Is Dead" },
+        { 71155117988517, "Automotiva 2020" },
+        { 104880194210827, "BAILE FUNK" },
+        { 139105356757739, "WingedCat" },
+        { 120138115344262, "MONTAGEM BANDIDO 2.0" },
+        { 86545615838028, "RITMO HALLOWEEN" },
+        { 112616554326917, "INFERNAL WORLD 2" },
+        { 122709835629172, "GTR PHONK" },
+        { 77428091165211, "Brazilian Phonk Party" },
+        { 100064822066230, "Killer Phonk Flow" },
+        { 97231051040304, "TOMA FUNK PHONK" },
+        { 83081904363818, "Odio nel Sangue" },
+        { 107923689617410, "Mad Phonk Addict" },
+        { 71718873161287, "Demonic Phonk Drift" },
+        { 107650199947846, "Ato Malefico DEVIL Phonk" },
+        { 93627775492676, "MTG DO VIBRACAO (8D)" },
+        { 98387577045573, "LOST CONTROL SLOWED" },
+        { 80756640219716, "DARK PULSE SLOWED" },
+        { 106354339081280, "After Hours Phonk" },
+        { 95307587881792, "Phonk Outlaw" },
+        { 88641227039807, "MELODIA MISTERIOSA" },
+        { 112043715643271, "Tomagi (anime ver)" },
+        { 74817280893051, "UH!" },
+        { 94370779408997, "Jumpstyle" },
+        { 129033905026715, "Cute Jumpstyle" },
+        { 94074154650048, "Breakcore" },
+        { 71686764622899, "Hardtek" },
+        { 122119139526390, "Hardtek 2" },
+    },
+    ["Russian"] = {
+        { 102599194659863, "SHAMAN - Ya Russkiy" },
+        { 15516161799, "Tsoy - Zakroy za mnoy dver" },
+        { 111473215196479, "USSR anthem" },
+        { 18960042245, "Rap pro spetsnaz" },
+        { 130382555073139, "Sirena" },
+        { 130663095278374, "Voennaya muzyka" },
+        { 85840281350248, "Tetya khochet dyadyu" },
+        { 107893715678550, "Amelie" },
+        { 81192960506296, "DEAD BLONDE" },
+        { 103945820060209, "Turbo Majestic" },
+        { 140068586325726, "Tsvet nastroeniya chyornyy" },
+        { 100015299729323, "Rap pro Prioru" },
+        { 102172300933284, "Madk1d - Moriarty" },
+        { 86842716006745, "Novyy merin" },
+        { 84930628550499, "Oranzhevoe solntse" },
+        { 136848406459211, "Makan - Podo mnoy M5" },
+        { 97541212300517, "Prosypayus, vsyo eshchyo favorit" },
+        { 115141480584153, "Tyomnyy prints" },
+        { 133157548437690, "Range" },
+        { 120602174892756, "Batareyki" },
+        { 98474931756416, "Gunvest" },
+        { 86813053409672, "Landyshi" },
+        { 81792789652555, "Baradulka" },
+        { 126547659617288, "Filantrop / biznesmen" },
+        { 100786381313332, "Kontrakt" },
+        { 74990988212536, "Psy popadut v ray" },
+        { 77733928223961, "Eduard Kichigin" },
+        { 78072893253435, "Skuratov - Kianu Flow" },
+        { 105518065620867, "Nol muzhskogo" },
+        { 100778458909029, "Ty ne moy" },
+        { 136654382339893, "Virus - Poproshu tebya" },
+        { 132973772452511, "Moskva ne spit po nocham" },
+        { 110919391228823, "Low Cortisol" },
+        { 95145186950897, "Diskoteka v garazhe" },
+        { 93602974995833, "Zabiray menya skorey" },
+        { 93306733946215, "Ves etot mir" },
+        { 75485931767123, "Svyashchennaya voyna" },
+        { 139217596062629, "Eksponat" },
+        { 129776065331064, "Fortuna 812 - Paris Love" },
+        { 70938461413342, "Alaska" },
+        { 74965517648860, "Myasosibirsk" },
+        { 81477881808390, "Raspyat" },
+        { 7690902780, "Ya kak budto San Andreas" },
+        { 119966190943650, "Bolnogo golova" },
+        { 9038794401, "Rock" },
+        { 7028913008, "Elektronika (bez vokala)" },
+        { 18841888868, "Elektronika (vokal)" },
+        { 15233688809, "I'm Strong" },
+        { 88011825786653, "Ladoni polny krovi" },
+        { 129007389933701, "Origami / Ona ne khodit v shkolu" },
+        { 125332244898885, "Bogatyy Roblox" },
+        { 94267017452148, "GAZAN - Ya khochu byt kak Gazan" },
+        { 98478274854651, "GAZAN - 6 7" },
+        { 94877155235214, "GAZAN - Oboyudno" },
+        { 76776089178278, "GAZAN - Tyagi" },
+        { 103403387529847, "Biswidi - Barabulka cover" },
+        { 110580705427259, "Polish track" },
+        { 71173561946979, "Kolodets" },
+        { 112378730814006, "Ty koroleva" },
+        { 103997808691986, "2009 Ashy Fumiko" },
+        { 122047801154955, "Kartel" },
+        { 103957347039381, "P4rkr - Drama" },
+        { 139957878565852, "Hunter Eyes" },
+        { 82944401312241, "Fashion Center" },
+        { 132391305999721, "Gucci Flip Flops" },
+        { 107645369813207, "Zanovo Backwood" },
+        { 113046329605558, "Ty lyubish tantsevat" },
+        { 72968738061901, "Ne plach" },
+        { 85587964736751, "DJ ZUP RALII - Izmuchennoe telo" },
+        { 95504533309589, "Virtualnaya lyubov" },
+        { 122302389413890, "Tyomnyy prints - Gnoy" },
+        { 71528627029716, "cupsize - Detskaya travma" },
+        { 103806075951295, "HOFMANNITA - Pechen i serdtse" },
+        { 125590632532382, "Andy Rey & DJ 911 - Tantsuy" },
+        { 88661020611281, "SadSvit - Proshchavay" },
+        { 81331022327382, "ehct - Ya lyublyu tebya XD" },
+        { 111452785905061, "Lambada" },
+        { 98721047139851, "J1nar - Akvakey" },
+        { 135056205495054, "Madk1d - Piter Parker" },
+        { 95632852758777, "Dve tysyachi yardov - Vernite v modu lyubov" },
+        { 104009312561952, "angeldustt - Poka" },
+        { 106619031644220, "4ortake & Proz - Bad Girl" },
+        { 98562734934611, "Doradura" },
+        { 122545502097471, "Maybe Baby - Askorbinka 2.0" },
+        { 78144217660916, "gothviolence - RIP" },
+        { 131368788505485, "whyalive - Kod" },
+        { 94594926874219, "Rizza - Kholodnoe oruzhie" },
+        { 117253191722458, "Koch koch bratan" },
+        { 82746224492420, "Janina - Terranova" },
+    },
+    ["Popular"] = {
+        { 80442979651569, "Glory" },
+        { 81693779846601, "Fever" },
+        { 91007045451630, "Under Spell" },
+        { 100472207006460, "Matadora" },
+        { 105848553383746, "Untitled" },
+        { 114714620814172, "On The Floor" },
+        { 125309696724310, "Hunter Eyes" },
+        { 125636136707501, "Still D.R.E" },
+        { 125938670191268, "Blinding Lights (instrumental)" },
+        { 135018311294635, "Cinnamon Girl" },
+        { 137851435435348, "Duvet" },
+        { 139780631670217, "Six Seven" },
+        { 137329447492960, "Mimosa 2000" },
+        { 129898761032889, "Rozovoe vino (remix)" },
+        { 104846670980072, "Aloboi" },
+        { 132312076199223, "Podium" },
+        { 98375361514175, "Ne pora" },
+        { 101974874883467, "TikTok popular" },
+        { 16831108704, "Popular (slow to load)" },
+        { 5410085763, "Popular" },
+    },
+    ["Anime"] = {
+        { 566507830, "Attack on Titan OP1 - Guren no Yumiya" },
+        { 733982763, "Attack on Titan OP3 - Shinzou wo Sasageyo" },
+        { 1124698182, "Attack on Titan OP3 (alt)" },
+        { 5682636501, "Demon Slayer - Gurenge" },
+        { 4745104327, "Demon Slayer OP1 - Gurenge (alt)" },
+        { 2425229764, "My Hero Academia OP1 - The Day" },
+        { 3819075297, "My Hero Academia OP2 - Peace Sign" },
+        { 2959655001, "Naruto Shippuden OP3 - Blue Bird (remix)" },
+        { 187429124, "Naruto Shippuden OP3 - Blue Bird" },
+        { 211334235, "Naruto Shippuden OP16 - Silhouette" },
+        { 158779833, "Death Note - The World" },
+        { 5779530195, "Tokyo Ghoul - Unravel" },
+        { 218247588, "Tokyo Ghoul OP1 - Unravel" },
+        { 5950949521, "Jujutsu Kaisen OP1 - Kaikai Kitan" },
+        { 4330021440, "MafuMafu - Roki" },
+        { 357357714, "Hatsune Miku - Corpse Dance" },
+        { 5689675302, "Poi Poi Poi" },
+        { 17496442955, "Milidos - humxr (Sukuna)" },
+        { 18725552812, "Sukuna track 2" },
+        { 121456758155935, "Sukuna track 3" },
+        { 98960308425459, "Japanese track" },
+        { 124739301619320, "Anime / Japanese" },
+    },
+    ["Western"] = {
+        { 4584552904, "ABBA - Dancing Queen" },
+        { 2776084245, "Ariana Grande - 7 Rings" },
+        { 5321298199, "Ashnikko - Daisy" },
+        { 2529951321, "Ava Max - Sweet But Psycho" },
+        { 6362270861, "Bebe Rexha - Meant To Be" },
+        { 3091509952, "Billie Eilish - Bad Guy" },
+        { 3094082959, "Billie Eilish - Bad Guy (alt)" },
+        { 5472816560, "Billie Eilish - My Future" },
+        { 5192165104, "Borns - Electric Love" },
+        { 331083678, "BTS - Baepsae" },
+        { 6257627378, "BTS - Dynamite" },
+        { 4955658801, "BTS - Dynamite (alt)" },
+        { 3025124675, "Cardi B - I Like It" },
+        { 2510604458, "Cardi B - Money" },
+        { 6349635515, "Cardi B - Up" },
+        { 996149327, "Doja Cat - Candy" },
+        { 4700827910, "Doja Cat - Cyber Sex" },
+        { 4900674369, "Doja Cat - Like That" },
+        { 4675621837, "Doja Cat - Say So" },
+        { 4350444723, "Doja Cat - Say So (alt)" },
+        { 4282589796, "Dua Lipa - Don't Start Now" },
+        { 3770370479, "Dua Lipa - Don't Start Now (alt)" },
+        { 5065936056, "Dua Lipa - Break My Heart" },
+        { 189825748, "FNAF 2 - Survive The Night" },
+        { 1725273277, "Frank Ocean - Chanel" },
+        { 189105508, "Frozen - Let It Go" },
+        { 1587091889, "Imagine Dragons - Believer" },
+        { 411822373, "Imagine Dragons - Believer (alt)" },
+        { 2813063360, "Imagine Dragons - Natural" },
+        { 526161259, "Imagine Dragons - Radioactive" },
+        { 3106151105, "Spider-Verse - What's Up Danger" },
+        { 140295950, "Katy Perry - Firework" },
+        { 224715582, "Katy Perry - Firework (alt)" },
+        { 130964099, "Lady Gaga - Applause" },
+        { 235848410, "Lady Gaga - Bad Romance" },
+        { 263305167, "Lana Del Rey - Summertime Sadness" },
+        { 7081437616, "Lil Nas X - Industry Baby" },
+        { 2862170886, "Lil Nas X - Old Town Road" },
+        { 2395288451, "Lil Nas X - Old Town Road (alt)" },
+        { 3018974408, "Linkin Park - In The End" },
+        { 184457101, "Linkin Park - In The End (alt)" },
+        { 7447389409, "LISA - Money" },
+        { 673605737, "Luis Fonsi - Despacito" },
+        { 413514503, "Marshmello - Alone" },
+        { 7058209455, "Maneskin - Beggin'" },
+        { 2110517514, "Miley Cyrus - See You Again" },
+        { 2742361448, "Muse - Supermassive Black Hole" },
+        { 174584892, "Nicki Minaj - Anaconda" },
+        { 6853070044, "Playboi Carti - Athena" },
+        { 6681840651, "Playboi Carti - New Tank" },
+        { 3019715455, "Rammstein - Deutschland" },
+        { 2662044177, "Rammstein - Du Hast" },
+        { 2880139152, "Rammstein - Engel" },
+        { 2771696472, "Rammstein - Mein Herz Brennt" },
+        { 6901063458, "Rihanna - SOS" },
+        { 6833920398, "Olivia Rodrigo - good 4 u" },
+        { 5927805567, "Olivia Rodrigo - good 4 u (alt)" },
+        { 4649906337, "Spooky Scary Skeletons" },
+        { 2393703839, "Twenty One Pilots - Heathens" },
+        { 2360074469, "Twenty One Pilots - Stressed Out" },
+        { 393898374, "Twenty One Pilots - Stressed Out (alt)" },
+        { 6695430066, "Yvngxchris - Dip" },
+        { 903457790, "The Fat Rat - Unity" },
+        { 3301670790, "Shawn Mendes & Camila Cabello - Senorita" },
+        { 339860656, "Alan Walker - Faded" },
+        { 154643818, "Metallica - Enter Sandman" },
+        { 224711908, "Queen - Bohemian Rhapsody" },
+        { 187302099, "Gorillaz - Feel Good Inc" },
+        { 154642208, "Eminem - Lose Yourself" },
+        { 100781736, "Avicii - Wake Me Up" },
+        { 320092817, "Coldplay - Viva La Vida" },
+        { 957232882, "Hans Zimmer - Time" },
+        { 184463217, "The Rolling Stones - Paint It Black" },
+        { 2132634679, "Maroon 5 - Girls Like You" },
+        { 1440833746, "Post Malone - Rockstar" },
+        { 4482119849, "The Weeknd - Blinding Lights" },
+        { 235852484, "Taylor Swift - Blank Space" },
+        { 713538901, "Ed Sheeran - Shape of You" },
+        { 1982350439, "Drake - God's Plan" },
+        { 217825948, "Michael Jackson - Thriller" },
+        { 184456651, "Nirvana - Smells Like Teen Spirit" },
+        { 204853144, "System Of A Down - Chop Suey!" },
+        { 3543148259, "NF - The Search" },
+        { 5928786505, "Joji - Glimpse of Us" },
+        { 3461330138, "Tones and I - Dance Monkey" },
+        { 5454426197, "Glass Animals - Heat Waves" },
+        { 3082480734, "Lewis Capaldi - Someone You Loved" },
+        { 1392696622, "Lil Uzi Vert - XO Tour Llif3" },
+        { 1987944362, "XXXTENTACION - SAD!" },
+        { 1900728362, "Juice WRLD - Lucid Dreams" },
+        { 6170087431, "Never Fade Away" },
+        { 6076705064, "Never Fade Away (alt)" },
+        { 8885000981, "Never Fade Away (cover)" },
+    },
+    ["Geometry Dash"] = {
+        { 111893825079698, "Orbit" },
+        { 5409360995, "Tsunami" },
+        { 110620587612976, "Grief" },
+        { 133494371109366, "Amethyst" },
+        { 103960764434290, "Skeletal" },
+        { 78145548988120, "Every End" },
+        { 109490964146938, "Bloodbath" },
+        { 76960898921594, "Nullscapes" },
+        { 72041502156353, "Ashley" },
+        { 114045138355371, "Change Scene" },
+        { 90876419172142, "Sunshine" },
+        { 75072183411557, "Thinking II" },
+        { 78013508267977, "Deadlocked" },
+        { 127635921273625, "Tidal Wave" },
+        { 131850125838295, "Flamewall" },
+        { 116072294638509, "Heliopolis" },
+        { 81171808928626, "Acheron" },
+        { 130436111618513, "Limbo" },
+        { 99208996475812, "Acu" },
+        { 120475041191271, "Death Moon" },
+        { 99145854958095, "Firework" },
+        { 74234060626903, "Black Blizzard" },
+        { 82822203654574, "Duel Maestro" },
+    },
+    ["6maskmode"] = {
+        { 7133721020, "ma sight" },
+        { 7133730104, "Exhale Side A" },
+        { 7133735641, "Chaos" },
+        { 7133752023, "Pantomime" },
+        { 7133853102, "uueueueueue" },
+        { 7133872859, "Sharp Volume" },
+        { 7133886716, "Fire Vortex" },
+        { 7133910987, "Ostrokonechen" },
+        { 7133932984, "Plague 1346" },
+        { 7133945958, "Face Guide" },
+    },
+}
+
+    local secMusic = mkSection(Pages.Misc, "Music", 10.5)
+    S._RegisterMiscSection(secMusic, "Music")
+
+    local CATS = { "All", "Favourites" }
+    for cat in pairs(MUSIC) do table.insert(CATS, cat) end
+    table.sort(CATS, function(a, b)
+        local ra = (a == "All" and 0) or (a == "Favourites" and 1) or 2
+        local rb = (b == "All" and 0) or (b == "Favourites" and 1) or 2
+        if ra ~= rb then return ra < rb end
+        return a < b
+    end)
+
+    local sound
+    local function ensureSound()
+        if not sound or not sound.Parent then
+            sound = Instance.new("Sound")
+            sound.Name = "InertiaMusic"
+            sound.Parent = SG
+        end
+        return sound
+    end
+    local function playId(id, label)
+        id = tonumber(tostring(id):match("%d+"))
+        if not id then Notify("Music", "Enter an audio ID", 2) return end
+        local s = ensureSound()
+        s:Stop()
+        s.SoundId = "rbxassetid://" .. id
+        s.Volume = math.clamp((tonumber(S.MusicVolume) or 50) / 100, 0, 1)
+        s.Looped = S.MusicLoop == true
+        s:Play()
+        Notify("Music", "Playing " .. tostring(label or id), 2)
+    end
+    S._MusicPlay = playId
+
+    local function isFav(id)
+        S.MusicFavs = S.MusicFavs or {}
+        return S.MusicFavs[tostring(id)] == true
+    end
+    local function toggleFav(id)
+        S.MusicFavs = S.MusicFavs or {}
+        local key = tostring(id)
+        S.MusicFavs[key] = (not S.MusicFavs[key]) or nil
+        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+        return S.MusicFavs[key] == true
+    end
+
+    -- Flattened once; rows are filtered out of this instead of being rebuilt per category.
+    local ALL = {}
+    for cat, list in pairs(MUSIC) do
+        for _, entry in ipairs(list) do
+            table.insert(ALL, { id = entry[1], name = entry[2], cat = cat })
+        end
+    end
+    table.sort(ALL, function(a, b) return string.lower(a.name) < string.lower(b.name) end)
+
+    local query = ""
+    local matches = {}
+    local rowPool = {}
+    local ROW_H = 30
+
+    local scroll = S._mkListScroll(secMusic, 5, MOBILE and 300 or 260)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+
+    local function rebuildMatches()
+        table.clear(matches)
+        local cat = S.MusicCategory or "All"
+        local q = string.lower(query)
+        for _, e in ipairs(ALL) do
+            local catOk = (cat == "All") or (cat == "Favourites" and isFav(e.id)) or (e.cat == cat)
+            if catOk and (q == "" or string.find(string.lower(e.name), q, 1, true)
+                or string.find(tostring(e.id), q, 1, true)) then
+                matches[#matches + 1] = e
+            end
+        end
+    end
+
+    -- Windowed like the emote list: only rows inside the viewport exist, and rows that stay in it
+    -- are reused. Rebuilding all 355 rows on every scroll tick is what made the emote list stutter.
+    local function render()
+        local total = #matches
+        scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(0, total * ROW_H + 8))
+        local viewH = math.clamp(scroll.AbsoluteWindowSize.Y > 0 and scroll.AbsoluteWindowSize.Y
+            or scroll.AbsoluteSize.Y, 100, 900)
+        local first = math.max(1, math.floor(scroll.CanvasPosition.Y / ROW_H) + 1)
+        local last = math.min(total, first + math.ceil(viewH / ROW_H) + 4)
+        for i, row in pairs(rowPool) do
+            if i < first or i > last then row:Destroy(); rowPool[i] = nil end
+        end
+        for i = first, last do
+            local e = matches[i]
+            if e and not rowPool[i] then
+                local row = Instance.new("Frame")
+                row.Name = "Row"
+                row.Parent = scroll
+                row.BackgroundTransparency = 1
+                row.Position = UDim2.fromOffset(0, (i - 1) * ROW_H)
+                row.Size = UDim2.new(1, -10, 0, ROW_H - 4)
+
+                local play = Instance.new("TextButton")
+                play.Parent = row
+                play.Size = UDim2.new(1, -108, 1, 0)
+                play.BackgroundColor3 = T.Elev
+                pcall(function() play:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+                play.BorderSizePixel = 0
+                play.AutoButtonColor = false
+                play.Font = F
+                play.TextSize = 12
+                play.TextXAlignment = Enum.TextXAlignment.Left
+                play.TextTruncate = Enum.TextTruncate.AtEnd
+                play.TextColor3 = T.Tx
+                pcall(function() play:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+                play.Text = "  " .. e.name
+                Corner(play, 6)
+                play.MouseButton1Click:Connect(function() SFX.Click(); playId(e.id, e.name) end)
+
+                local fav = Instance.new("TextButton")
+                fav.Parent = row
+                fav.AnchorPoint = Vector2.new(1, 0)
+                fav.Position = UDim2.new(1, -54, 0, 0)
+                fav.Size = UDim2.fromOffset(48, ROW_H - 4)
+                fav.BackgroundColor3 = T.Elev
+                pcall(function() fav:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+                fav.BorderSizePixel = 0
+                fav.AutoButtonColor = false
+                fav.Font = FB
+                fav.TextSize = 12
+                fav.TextColor3 = isFav(e.id) and T.Accent or T.Tx3
+                fav.Text = isFav(e.id) and "FAV" or "+"
+                Corner(fav, 6)
+                fav.MouseButton1Click:Connect(function()
+                    SFX.Click()
+                    local on = toggleFav(e.id)
+                    fav.Text = on and "FAV" or "+"
+                    fav.TextColor3 = on and T.Accent or T.Tx3
+                    if S.MusicCategory == "Favourites" and S._MusicRefresh then S._MusicRefresh() end
+                end)
+
+                local copy = Instance.new("TextButton")
+                copy.Parent = row
+                copy.AnchorPoint = Vector2.new(1, 0)
+                copy.Position = UDim2.new(1, 0, 0, 0)
+                copy.Size = UDim2.fromOffset(50, ROW_H - 4)
+                copy.BackgroundColor3 = T.Elev
+                pcall(function() copy:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+                copy.BorderSizePixel = 0
+                copy.AutoButtonColor = false
+                copy.Font = F
+                copy.TextSize = 11
+                copy.TextColor3 = T.Tx3
+                copy.Text = "COPY"
+                Corner(copy, 6)
+                copy.MouseButton1Click:Connect(function()
+                    SFX.Click()
+                    local clip = setclipboard or toclipboard or writeclipboard or (syn and syn.write_clipboard)
+                    if clip then
+                        pcall(clip, tostring(e.id))
+                        Notify("Music", "Copied " .. tostring(e.id), 2)
+                    else
+                        Notify("Music", "ID: " .. tostring(e.id), 4)
+                    end
+                end)
+
+                rowPool[i] = row
+            end
+        end
+    end
+
+    local function refresh()
+        rebuildMatches()
+        for k, r in pairs(rowPool) do r:Destroy(); rowPool[k] = nil end
+        scroll.CanvasPosition = Vector2.zero
+        render()
+    end
+    S._MusicRefresh = refresh
+
+    S._mkCycle(secMusic, "Category", CATS, "All", function(v)
+        S.MusicCategory = v
+        refresh()
+    end, 1)
+
+    local function mkBox(name, order, placeholder)
+        local box = Instance.new("TextBox")
+        box.Name = name
+        box.Parent = secMusic
+        box.LayoutOrder = order
+        box.Size = UDim2.new(1, 0, 0, MOBILE and 34 or 28)
+        box.BackgroundColor3 = T.Elev
+        pcall(function() box:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        box.BorderSizePixel = 0
+        box.Font = F
+        box.TextSize = 13
+        box.TextColor3 = T.Tx
+        pcall(function() box:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        box.PlaceholderText = placeholder
+        box.Text = ""
+        box.ClearTextOnFocus = false
+        Corner(box, 6)
+        Stroke(box, T.Bd, 1, 0.4)
+        return box
+    end
+
+    local searchBox = mkBox("MusicSearch", 2, "Search by name or ID...")
+    searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        query = searchBox.Text or ""
+        refresh()
+    end)
+
+    local idBox = mkBox("MusicIdBox", 3, "Paste any audio ID, press Enter")
+    idBox.FocusLost:Connect(function(enter)
+        if enter and idBox.Text ~= "" then playId(idBox.Text) end
+    end)
+
+    S._mkAction(secMusic, "Stop", function()
+        if sound then pcall(function() sound:Stop() end) end
+    end, 6)
+    mkSlider(secMusic, "Volume", 0, 100, 50, function(v)
+        S.MusicVolume = v
+        if sound then sound.Volume = math.clamp(v / 100, 0, 1) end
+    end, 7)
+    mkToggle(secMusic, "Loop", false, function(v)
+        S.MusicLoop = v
+        if sound then sound.Looped = v end
+    end, 8)
+
+    scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(render)
+    scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(render)
+    refresh()
 end
