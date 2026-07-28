@@ -1718,6 +1718,13 @@ local function applySearch()
     if #tokens == 0 then
         -- Not searching: restore the normal single active page, hide the search headers, bring the
         -- subtab bars back, and let each page's own subtab system re-show only the selected subtab.
+        -- Search temporarily hides whole cards. Pages such as Config do not have a subtab callback,
+        -- so leaving card.Visible untouched here made them stay blank forever after a search was
+        -- cleared. Restore every registered card first; the page-specific callbacks below then hide
+        -- only the inactive subtab sections again.
+        for _, e in ipairs(UIRegistry) do
+            if e.card and e.card.Parent then e.card.Visible = true end
+        end
         for _, pg in pairs(Pages) do
             pg.Visible = (pg == activePage)
             local h = pg:FindFirstChild("SearchHdr"); if h then h.Visible = false end
@@ -2778,6 +2785,13 @@ S._RefreshPageLayout = function(searching)
     pageLayoutSearchMode = searching == true
     ContentArea.CanvasPosition = Vector2.zero
     queuePageLayout()
+    -- AutomaticSize resolves after Roblox's next UI layout step. A second queued pass prevents a
+    -- page from keeping the zero-height measurements from the first pass, especially Config and
+    -- other cards that are created late in the build.
+    task.defer(function()
+        task.wait()
+        if ContentArea and ContentArea.Parent and not pageLayoutQueued then queuePageLayout() end
+    end)
 end
 queuePageLayout()
 end
@@ -16646,10 +16660,13 @@ if MOBILE then
             bar:SetAttribute("LayoutHeight", height)
         end
     end
-    if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
 end
 
 -- Initial controls were sized by the final bulk pass; future descendants can now update individually.
+-- Run the same final render pass on desktop and mobile. Config, Servers, and late-built catalog
+-- sections are appended well after the first page queue is scheduled; without this pass they could
+-- retain the initial collapsed size until a resize or tab click happened to wake the layout.
+if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
 S._UIBuildReady = true
 
 
