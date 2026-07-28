@@ -1809,9 +1809,11 @@ SearchBox.Parent = TBar
 -- Mobile: its own full-width row under the title. A 190px box wedged between a
 -- title and two buttons is unusable with a thumb, and a phone header has the
 -- vertical room a 40px desktop bar does not.
-SearchBox.AnchorPoint = MOBILE and Vector2.new(0, 0) or Vector2.new(1, 0.5)
-SearchBox.Position = MOBILE and UDim2.new(0, 14, 0, 48) or UDim2.new(1, -76, 0.5, 0)
-SearchBox.Size = MOBILE and UDim2.new(1, -28, 0, 38) or UDim2.new(0, 190, 0, 24)
+-- Mobile keeps the search on its own row but yields the left half of it to the back arrow and the
+-- current page name (see the drill-down nav block after the tab buttons).
+SearchBox.AnchorPoint = MOBILE and Vector2.new(1, 0) or Vector2.new(1, 0.5)
+SearchBox.Position = MOBILE and UDim2.new(1, -14, 0, 48) or UDim2.new(1, -76, 0.5, 0)
+SearchBox.Size = MOBILE and UDim2.new(0.52, -20, 0, 38) or UDim2.new(0, 190, 0, 24)
 SearchBox.BackgroundColor3 = T.Elev; pcall(function() SearchBox:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
 SearchBox.BorderSizePixel = 0
 SearchBox.Font = F
@@ -2546,7 +2548,10 @@ ContentArea.BorderSizePixel = 0
 -- Mobile takes the full width (no sidebar to clear) and reserves the bottom tab
 -- bar instead of the desktop status strip.
 ContentArea.Position = MOBILE and UDim2.new(0, 8, 0, M.titleH) or UDim2.new(0, 146, 0, 41)
-ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + M.navH + 18)) or UDim2.new(1, -152, 1, -67)
+-- Mobile no longer reserves M.navH for a bottom tab dock: tabs are their own screen now, reached
+-- with the back arrow, so that height goes back to the content. On a 372px-tall phone panel this
+-- is the difference between a 192px and a ~278px content area.
+ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + 12)) or UDim2.new(1, -152, 1, -67)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ContentArea.ScrollBarThickness = 0
@@ -3002,6 +3007,126 @@ mkSBItem("Teleport", "teleport", Pages.Teleport, 6)
 mkSBItem("Servers", "servers", Pages.Servers, 7)
 mkSBItem("Config", "misc", Pages.Config, 8)
 if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9) end
+
+-- ===== MOBILE DRILL-DOWN NAVIGATION =====
+-- A phone has no room for a permanent tab dock: the header, the dock and the status bar together
+-- cost ~180px, which on a 372px-tall panel left 192px of actual content. So mobile drops the dock
+-- and treats tabs as a screen of their own -- pick a tab, the page opens full height with a back
+-- arrow and its name in the header; back returns to the tab list. Desktop keeps its sidebar
+-- untouched. Wrapped in do...end so none of this reaches the main chunk's register budget.
+if MOBILE then
+do
+    SB.Visible = false
+
+    local backBtn = Instance.new("TextButton")
+    backBtn.Name = "MobileBack"
+    backBtn.Parent = TBar
+    backBtn.Position = UDim2.new(0, 14, 0, 48)
+    backBtn.Size = UDim2.fromOffset(38, 38)
+    backBtn.BackgroundColor3 = T.Elev
+    pcall(function() backBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    backBtn.BorderSizePixel = 0
+    backBtn.AutoButtonColor = false
+    backBtn.Font = FB
+    backBtn.TextSize = 20
+    backBtn.Text = "<"
+    backBtn.TextColor3 = T.Tx
+    pcall(function() backBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+    backBtn.Visible = false
+    Corner(backBtn, 12)
+    Stroke(backBtn, T.Bd2, 1, 0.4)
+
+    local crumb = Instance.new("TextLabel")
+    crumb.Name = "MobileCrumb"
+    crumb.Parent = TBar
+    crumb.BackgroundTransparency = 1
+    crumb.Position = UDim2.new(0, 60, 0, 48)
+    crumb.Size = UDim2.new(0.48, -74, 0, 38)
+    crumb.Font = FB
+    crumb.TextSize = 17
+    crumb.TextXAlignment = Enum.TextXAlignment.Left
+    crumb.TextTruncate = Enum.TextTruncate.AtEnd
+    crumb.TextColor3 = T.Tx
+    pcall(function() crumb:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+    crumb.Text = "Menu"
+
+    -- The tab list lives inside the content area so it inherits its size and scrolling.
+    local menu = Instance.new("ScrollingFrame")
+    menu.Name = "MobileTabMenu"
+    menu.Parent = ContentArea
+    menu.BackgroundTransparency = 1
+    menu.BorderSizePixel = 0
+    menu.Position = UDim2.fromScale(0, 0)
+    menu.Size = UDim2.fromScale(1, 1)
+    menu.CanvasSize = UDim2.new()
+    menu.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    menu.ScrollBarThickness = 0
+    menu.ZIndex = 5
+    local grid = Instance.new("UIGridLayout")
+    grid.Parent = menu
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.CellPadding = UDim2.fromOffset(10, 10)
+    grid.CellSize = UDim2.new(0.5, -5, 0, 62)
+
+    local function showMenu()
+        for _, pg in pairs(Pages) do pg.Visible = false end
+        menu.Visible = true
+        backBtn.Visible = false
+        crumb.Text = "Menu"
+        if SearchBox and SearchBox.Text ~= "" then SearchBox.Text = "" end
+    end
+    local function showPage(item)
+        menu.Visible = false
+        backBtn.Visible = true
+        crumb.Text = item.name
+        for _, pg in pairs(Pages) do pg.Visible = (pg == item.page) end
+        activePage = item.page
+        ContentArea.CanvasPosition = Vector2.zero
+        if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+    end
+    S._MobileShowTabMenu = showMenu
+
+    backBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        showMenu()
+    end)
+
+    for _, item in ipairs(SBItems) do
+        local card = Instance.new("TextButton")
+        card.Name = item.name
+        card.Parent = menu
+        card.LayoutOrder = item.order
+        card.AutoButtonColor = false
+        card.BackgroundColor3 = T.Elev
+        pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        card.BorderSizePixel = 0
+        card.Font = FB
+        card.TextSize = 16
+        card.Text = item.name
+        card.TextColor3 = T.Tx
+        pcall(function() card:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        Corner(card, 14)
+        Stroke(card, T.Bd2, 1, 0.4)
+        card.MouseButton1Click:Connect(function()
+            SFX.Click()
+            showPage(item)
+        end)
+        -- The dock buttons still exist (hidden) and other code fires them, so keep them in sync.
+        item.btn.MouseButton1Click:Connect(function() showPage(item) end)
+    end
+
+    -- Searching spans every tab, so it needs the combined results view, not the tab list.
+    SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        if SearchBox.Text ~= "" and menu.Visible then
+            menu.Visible = false
+            backBtn.Visible = true
+            crumb.Text = "Search"
+        end
+    end)
+
+    showMenu()
+end
+end
 refreshSB()
 local BindReg = {}
 local PendingBind = nil
