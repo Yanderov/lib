@@ -4929,18 +4929,16 @@ end, 6)
         local RED_VFX = Color3.fromRGB(255, 48, 42)
         local DARK_RED_VFX = Color3.fromRGB(145, 0, 18)
         local WINGS = {
-            ["White 01 Angel Classic"] = { id = "221993607", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.2 },
-            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.2 },
-            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
-            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
-            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
-            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
-            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.1 },
-            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.0 },
-            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.0 },
-            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.18, 0.96), whole = true, tint = WHITE_VFX, max = 4.0 },
+            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.25 },
+            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
+            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
+            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
             ["Black 01 Classic"] = { id = "225736624", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 02 Wide"] = { id = "643579878", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 03 Floating"] = { id = "14891552293", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 04 Feather A"] = { id = "3751499926", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 05 Feather B"] = { id = "3751500005", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
@@ -4948,7 +4946,6 @@ end, 6)
             ["Black 07 Mesh"] = { id = "107079834769886", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 08 Metallic"] = { id = "104041918545936", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Black 09 Bone"] = { id = "15748206290", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 10 Dark Angel"] = { id = "17322865031", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
             ["Red 01 Crimson"] = { id = "1190014189", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
             ["Red 02 Crimson Clean"] = { id = "758696741", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
             ["Red 03 Crimson Dark"] = { id = "8201815315", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
@@ -4958,7 +4955,6 @@ end, 6)
             ["Red 07 Adurite"] = { id = "805964321", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
             ["Red 08 Adurite Alt"] = { id = "805985601", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
             ["Red 09 Spark Adurite"] = { id = "219863148", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 10 Dragon"] = { id = "12548664692", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
         }
         local AURAS = {
             ["Off"] = false,
@@ -4995,12 +4991,12 @@ end, 6)
             ["Red 11 Mega Pie"] = { id = "8991059421", cap = MOBILE and 12 or 22, tint = RED_VFX },
         }
         local wingNames = {
-            "White 01 Angel Classic", "White 02 Angel Rig", "White 03 Soft Angel", "White 04 Sparkling", "White 05 Flutter",
+            "White 02 Angel Rig", "White 03 Soft Angel", "White 04 Sparkling", "White 05 Flutter",
             "White 06 Clean Angel", "White 07 Animated", "White 08 Small Wings", "White 09 Bright Wings", "White 10 Glowing",
-            "Black 01 Classic", "Black 02 Wide", "Black 03 Floating", "Black 04 Feather A", "Black 05 Feather B",
-            "Black 06 Dark Clean", "Black 07 Mesh", "Black 08 Metallic", "Black 09 Bone", "Black 10 Dark Angel",
+            "Black 01 Classic", "Black 03 Floating", "Black 04 Feather A", "Black 05 Feather B",
+            "Black 06 Dark Clean", "Black 07 Mesh", "Black 08 Metallic", "Black 09 Bone",
             "Red 01 Crimson", "Red 02 Crimson Clean", "Red 03 Crimson Dark", "Red 04 Cartoon", "Red 05 Bat",
-            "Red 06 Galaxy", "Red 07 Adurite", "Red 08 Adurite Alt", "Red 09 Spark Adurite", "Red 10 Dragon",
+            "Red 06 Galaxy", "Red 07 Adurite", "Red 08 Adurite Alt", "Red 09 Spark Adurite",
         }
         local auraNames = {
             "Off",
@@ -5112,7 +5108,8 @@ end, 6)
         end
         local function normalizeModel(model, data)
             data = data or {}
-            local target = tonumber(data.max) or 4.4
+            local target = tonumber(data.max) or 3.25
+            target = math.clamp(target, 2.4, 3.25)
             pcall(function()
                 local _, size = model:GetBoundingBox()
                 local biggest = math.max(size.X, size.Y, size.Z)
