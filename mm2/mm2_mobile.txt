@@ -66,6 +66,7 @@ local S = {
     VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
+    BoomboxVolume = 50, BoomboxLoop = false,
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -8187,13 +8188,66 @@ do
         btnPlay.Text = "Play Song"
         Corner(btnPlay, 6)
         Stroke(btnPlay, T.Bd, 1, 0.4)
+        -- Played through our own Sound rather than Remotes.Inventory.PlaySong. That remote is
+        -- server -> CLIENT: AudioService connects OnClientEvent and is handed (soundObject, soundId),
+        -- so firing it at the server with a bare id never matched the contract and did nothing.
+        -- A local Sound also keeps this inside the hub's own rule that nothing here replicates.
+        local bbxSound
+        local function stopSong()
+            if bbxSound then pcall(function() bbxSound:Stop() end) end
+        end
+        local function playId(id)
+            id = tonumber(tostring(id):match("%d+"))
+            if not id then Notify("Boombox", "Enter an audio ID", 2) return end
+            if not bbxSound or not bbxSound.Parent then
+                bbxSound = Instance.new("Sound")
+                bbxSound.Name = "InertiaBoombox"
+                bbxSound.Parent = SG
+            end
+            bbxSound:Stop()
+            bbxSound.SoundId = "rbxassetid://" .. id
+            bbxSound.Volume = math.clamp((tonumber(S.BoomboxVolume) or 50) / 100, 0, 1)
+            bbxSound.Looped = S.BoomboxLoop == true
+            bbxSound:Play()
+            Notify("Boombox", "Playing " .. id, 2)
+        end
+        S._BoomboxPlay = playId
         btnPlay.MouseButton1Click:Connect(function()
             SFX.Click()
-            local id = tonumber(bbxId:match("%d+"))
-            if id then
-                pcall(function() game:GetService("ReplicatedStorage").Remotes.Inventory.PlaySong:FireServer(id) end)
-            end
+            playId(bbxId)
         end)
+        mkSlider(secBoombox, "Volume", 0, 100, 50, function(v)
+            S.BoomboxVolume = v
+            if bbxSound then bbxSound.Volume = math.clamp(v / 100, 0, 1) end
+        end, 3)
+        mkToggle(secBoombox, "Loop", false, function(v)
+            S.BoomboxLoop = v
+            if bbxSound then bbxSound.Looped = v end
+        end, 4)
+        mkAction(secBoombox, "Stop", function() stopSong() end, 5)
+        -- The "library" in MM2 terms is the account's own saved list: profile.RadioSongs, managed by
+        -- the Inventory SaveSong / RemoveSong remotes. There is no way to search Roblox's audio
+        -- catalog from here -- HttpGet to catalog.roblox.com and the toolbox API both come back
+        -- empty on this client -- so this lists what the account actually has.
+        mkAction(secBoombox, "List My Saved Songs", function()
+            task.spawn(function()
+                local ok, prof = pcall(function()
+                    return game:GetService("ReplicatedStorage").Remotes.Inventory.GetProfileData:InvokeServer()
+                end)
+                if not ok or type(prof) ~= "table" then Notify("Boombox", "Could not read profile", 3) return end
+                local list, n = {}, 0
+                for k, v in pairs(prof.RadioSongs or {}) do
+                    n = n + 1
+                    local id = type(v) == "table" and (v.Id or v.SoundId or v.id) or v
+                    if n <= 12 then list[#list + 1] = tostring(id or k) end
+                end
+                if n == 0 then
+                    Notify("Boombox", "No saved songs on this account", 4)
+                else
+                    Notify("Boombox", n .. " saved: " .. table.concat(list, ", "), 6)
+                end
+            end)
+        end, 6)
     end
 end
 do
