@@ -5535,8 +5535,6 @@ do
     mkToggle(secMurder, "Auto Kill Nearest", false, function(v) S.AutoKillNearest = v end, 2)
     mkToggle(secMurder, "Kill Aura", false, function(v) S.KillAura = v end, 3)
     mkSlider(secMurder, "Kill Aura Range", 5, 60, 18, function(v) S.KillAuraRange = v end, 4)
-    mkToggle(secMurder, "Throw Aura", false, function(v) S.ThrowAura = v end, 4.1)
-    mkSlider(secMurder, "Throw Aura Range", 20, 200, 80, function(v) S.ThrowAuraRange = v end, 4.2)
     mkToggle(secMurder, "Click to Kill", false, function(v) S.ClickKill = v end, 5)
     mkAction(secMurder, "Kill Nearest", function()
         local n = S._MurdererNearest and S._MurdererNearest()
@@ -11287,9 +11285,11 @@ local function loadConfig(name)
         "FOVEnabled", "ShowFOV", "RainbowFOV", "AutoSprint", "InfiniteJump", "Freeze",
         "InstantRespawn", "AutoRespawn", "MoonGravity", "SkyEnabled", "SkyRainbow",
         "FogEnabled", "FogRainbow", "NoFog", "FlyAnim", "FxAura", "FxAuraRainbow",
+        "ThrowAura",
     }) do
         S[key] = false
     end
+    S.ThrowAuraRange = nil
     S.CamFOV = 70
 
     if dat.CustomTheme then
@@ -16003,21 +16003,13 @@ do
         return knife
     end
 
-    local lastNear, lastSheriff, lastAura, lastThrowAura = 0, 0, 0, 0
-    local function getKnifeThrowEvent()
-        local c = LP.Character
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        local knife = (c and (c:FindFirstChild("Knife") or c:FindFirstChild("KnifeServer")))
-            or (bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("KnifeServer")))
-        if not knife then return nil end
-        return knife:FindFirstChild("KnifeThrown", true)
-    end
+    local lastNear, lastSheriff, lastAura = 0, 0, 0
     tc(RunService.Heartbeat:Connect(function()
         -- Check the toggles BEFORE the lookup: all three are off by default, and
         -- getKnifeEvents() walks Character/Backpack with several FindFirstChild
         -- calls — that was running every single frame for every player, forever,
         -- just to discover there was nothing to do.
-        if not (S.AutoKillSheriff or S.AutoKillNearest or S.KillAura or S.ThrowAura) then return end
+        if not (S.AutoKillSheriff or S.AutoKillNearest or S.KillAura) then return end
         local stab = getKnifeEvents()
         if not stab then return end  -- not holding the Knife (not the Murderer): nothing to do
         local now = tick()
@@ -16046,26 +16038,6 @@ do
                     if p ~= LP and p.Character then
                         local r = p.Character:FindFirstChild("HumanoidRootPart")
                         if r and (r.Position - myRoot.Position).Magnitude <= range then pcall(killInstant, p) end
-                    end
-                end
-            end
-        end
-        if S.ThrowAura and (now - lastThrowAura) >= 1.5 then
-            lastThrowAura = now
-            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-            local range = S.ThrowAuraRange or 80
-            if myRoot then
-                local thrownEvent = getKnifeThrowEvent()
-                if thrownEvent then
-                    for _, p in ipairs(Players:GetPlayers()) do
-                        if p ~= LP and p.Character then
-                            local r = p.Character:FindFirstChild("HumanoidRootPart")
-                            if r and (r.Position - myRoot.Position).Magnitude <= range and not isWhitelisted(p) then
-                                local targetPos = getPredictedPosition(p.Character, "HumanoidRootPart", S.KnifeSilentAimPredictMode or "Perfect", S.KnifeSilentAimPrediction or 25, 0, tonumber(S.KnifeFlightSpeed) or 120)
-                                pcall(function() thrownEvent:FireServer(myRoot.CFrame, CFrame.new(targetPos)) end)
-                                break
-                            end
-                        end
                     end
                 end
             end
