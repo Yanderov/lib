@@ -1,11 +1,11 @@
-# Rebuild every <game>_mobile.txt from its desktop source.
+# Rebuild every <game>_mobile.lua from its desktop source.
 #
 # There is no separate mobile UI codebase to keep in sync: a mobile build is the
 # SAME script with _G.INERTIA_MOBILE forced on, which each hub reads to pick its
 # layout, its control sizes and whether keybinds or floating buttons exist.
-# These files exist only because the repo serves a standalone <game>_mobile.lua
-# that loaders can fetch directly; the launcher sets the flag itself and can run
-# the desktop file as-is.
+# These files exist only because the repo serves standalone mobile payloads that
+# loaders can fetch directly; the launcher sets the flag itself and can run the
+# desktop file as-is. MM2 also publishes .txt aliases for older raw loadstrings.
 #
 # Run from this folder:   .\build_mobile.ps1
 
@@ -13,9 +13,15 @@ $ErrorActionPreference = 'Stop'
 Set-Location -Path $PSScriptRoot
 
 $builds = @(
-    @{ Source = 'pressure/pressure.lua';               Target = 'pressure/pressure_mobile.lua';       Name = 'PRESSURE HUB' },
+    @{ Source = 'pressure/pressure.lua';        Target = 'pressure/pressure_mobile.lua';       Name = 'PRESSURE HUB' },
     @{ Source = 'demonology/demonology.lua';    Target = 'demonology/demonology_mobile.lua';   Name = 'DEMONOLOGY' },
-    @{ Source = 'mm2/mm2.lua';                  Target = 'mm2/mm2_mobile.lua';                 Name = 'MURDER MYSTERY 2' }
+    @{
+        Source = 'mm2/mm2.lua'
+        Target = 'mm2/mm2_mobile.lua'
+        SourceText = 'mm2/mm2.txt'
+        TargetText = 'mm2/mm2_mobile.txt'
+        Name = 'MURDER MYSTERY 2'
+    }
 )
 
 foreach ($build in $builds) {
@@ -38,4 +44,14 @@ foreach ($build in $builds) {
 
     Set-Content -LiteralPath $build.Target -Value ($header + $lines) -Encoding utf8NoBOM
     Write-Host ("{0,-34} -> {1} ({2} lines)" -f $build.Source, $build.Target, ($header.Count + $lines.Count))
+
+    if ($build.SourceText) {
+        Copy-Item -LiteralPath $build.Source -Destination $build.SourceText -Force
+        Write-Host ("{0,-34} -> {1} (alias)" -f $build.Source, $build.SourceText)
+    }
+
+    if ($build.TargetText) {
+        Copy-Item -LiteralPath $build.Target -Destination $build.TargetText -Force
+        Write-Host ("{0,-34} -> {1} (alias)" -f $build.Target, $build.TargetText)
+    }
 }

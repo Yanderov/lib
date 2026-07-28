@@ -224,8 +224,13 @@ local function launch(entry)
 			if extracted then sha = extracted end
 		end
 		
-		local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. entry.file .. (MOBILE and "_mobile" or "") .. ".lua"
+		local payloadPath = entry.file .. (MOBILE and "_mobile" or "")
+		local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".lua"
 		local ok, source = pcall(function() return game:HttpGet(url) end)
+		if not ok or type(source) ~= "string" or #source == 0 then
+			url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".txt"
+			ok, source = pcall(function() return game:HttpGet(url) end)
+		end
 		if not ok or type(source) ~= "string" or #source == 0 then
 			busy = false
 			setLoading(entry, "download failed", true)
