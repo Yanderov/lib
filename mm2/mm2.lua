@@ -5561,6 +5561,18 @@ end, 6)
 
         mkSlider(secCustoms, "Crosshair Size", 8, 128, 32, function(v) S.CrosshairSize = v end, 2.5)
 
+        -- The crosshair used to be placed at mouse.Y + 36, a guess at the topbar height. The real
+        -- inset is not always 36 — it differs by platform and Roblox has changed it — so the
+        -- crosshair sat slightly off the true cursor. Ask the engine for the actual inset instead,
+        -- and take the mouse position from UserInputService, which is measured from the very top of
+        -- the screen and so lines up once the inset is subtracted.
+        local GuiSvc = game:GetService("GuiService")
+        local function cursorSpot()
+            local loc = UIS:GetMouseLocation()
+            local inset = GuiSvc:GetGuiInset()
+            return loc.X - inset.X, loc.Y - inset.Y
+        end
+
         RunService.RenderStepped:Connect(function()
             local mouse = Players.LocalPlayer:GetMouse()
             if not S.CustomCrosshair then
@@ -5593,7 +5605,8 @@ end, 6)
                     buildVectorCursor(entry.Style, size)
                     lastVectorKey = key
                 end
-                vectorCursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                local cx, cy = cursorSpot()
+                vectorCursorGui.Position = UDim2.fromOffset(cx, cy)
                 vectorCursorGui.Visible = not menuOpen
             else
                 vectorCursorGui.Visible = false
@@ -5602,7 +5615,8 @@ end, 6)
                 if not img or img == "" then return end
                 cursorGui.Image = img
                 cursorGui.Size = UDim2.fromOffset(size, size)
-                cursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                local cx, cy = cursorSpot()
+                cursorGui.Position = UDim2.fromOffset(cx, cy)
                 cursorGui.Visible = not menuOpen
             end
             UIS.MouseIconEnabled = menuOpen
