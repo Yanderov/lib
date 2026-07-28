@@ -4569,9 +4569,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     local skyNames = { "None" }
     local skyPreviews = {}
     for i, sky in ipairs(skyPaths) do
-        skyNames[i + 1] = sky.Name
-        skyPreviews[i + 1] = function() return fetchCustomAsset(sky.Files.ro, "skyboxes") end
+        -- Slot 1 is None and slot 2 is the built-in seamless sky, so the GitHub list starts at 3.
+        skyNames[i + 2] = sky.Name
+        skyPreviews[i + 2] = function() return fetchCustomAsset(sky.Files.ro, "skyboxes") end
     end
+    -- 18 of the 20 GitHub skyboxes are a single image pasted onto every face, so they render as a
+    -- literal box with seams — that is the source assets, not the loader. This entry is Roblox's
+    -- own shipped cubemap: six genuinely different faces, and being a client texture it can never
+    -- fail to load or be moderated away.
+    skyNames[2] = "Roblox Classic (seamless)"
     mkAction(secCustoms, "Choose Skybox", function()
         S._OpenOptionPicker("Skybox", skyNames, (S.SkyboxIndex or 0) + 1, function(pick)
             local lighting = game:GetService("Lighting")
@@ -4581,9 +4587,23 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 if old then old:Destroy() end
                 return
             end
-            S.SkyboxIndex = pick - 1
+            if pick == 2 then
+                S.SkyboxIndex = 1
+                local sky = lighting:FindFirstChild("CustomSkyboxUI")
+                if not sky then
+                    sky = Instance.new("Sky")
+                    sky.Name = "CustomSkyboxUI"
+                    sky.Parent = lighting
+                end
+                for face, suffix in pairs({ SkyboxBk = "bk", SkyboxDn = "dn", SkyboxFt = "ft",
+                                            SkyboxLf = "lf", SkyboxRt = "rt", SkyboxUp = "up" }) do
+                    sky[face] = "rbxasset://textures/sky/sky512_" .. suffix .. ".tex"
+                end
+                return
+            end
+            S.SkyboxIndex = pick - 2
             task.spawn(function()
-                local sky = skyPaths[pick - 1]
+                local sky = skyPaths[pick - 2]
                 local bk = fetchCustomAsset(sky.Files.Bk, "skyboxes")
                 local dn = fetchCustomAsset(sky.Files.Dn, "skyboxes")
                 local ft = fetchCustomAsset(sky.Files.Ft, "skyboxes")
@@ -4729,25 +4749,54 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end, 6)
 
     
-    RunService.RenderStepped:Connect(function()
-        local mouse = Players.LocalPlayer:GetMouse()
-        if S.CustomCrosshair then
-            local idx = ((tonumber(S.CrosshairIndex) or 1) - 1) % #CustomCrosshairs + 1
-            local currentCustom = S.CrosshairAssetId or CustomCrosshairs[idx] or CustomCrosshairs[1]
-            if currentCustom and currentCustom ~= "" then
-                mouse.Icon = currentCustom
-            end
-        else
-            for _, id in pairs(CustomCrosshairs) do
-                if mouse.Icon == id then
-                    mouse.Icon = ""
+    -- Mouse.Icon draws the image at its native resolution and offers no way to scale it, so the
+    -- full-size photos in the cursor library covered half the screen. The crosshair is drawn as
+    -- our own ImageLabel instead, which is the only way to control its size.
+    do
+        local cursorGui = Instance.new("ImageLabel")
+        cursorGui.Name = "MM2_Crosshair"
+        cursorGui.Parent = SG
+        cursorGui.AnchorPoint = Vector2.new(0.5, 0.5)
+        cursorGui.BackgroundTransparency = 1
+        cursorGui.Visible = false
+        cursorGui.ZIndex = 4000
+        cursorGui.ScaleType = Enum.ScaleType.Fit
+
+        mkSlider(secCustoms, "Crosshair Size", 8, 128, 32, function(v) S.CrosshairSize = v end, 2.5)
+
+        RunService.RenderStepped:Connect(function()
+            local mouse = Players.LocalPlayer:GetMouse()
+            if not S.CustomCrosshair then
+                if cursorGui.Visible then
+                    cursorGui.Visible = false
+                    UIS.MouseIconEnabled = true
                 end
+                -- Undo any icon a previous build left behind.
+                for _, id in pairs(CustomCrosshairs) do
+                    if mouse.Icon == id then mouse.Icon = "" end
+                end
+                if S.CrosshairAssetId and mouse.Icon == S.CrosshairAssetId then mouse.Icon = "" end
+                return
             end
-            if S.CrosshairAssetId and mouse.Icon == S.CrosshairAssetId then
-                mouse.Icon = ""
-            end
-        end
-    end)
+
+            local idx = ((tonumber(S.CrosshairIndex) or 1) - 1) % #CustomCrosshairs + 1
+            local img = S.CrosshairAssetId or CustomCrosshairs[idx] or CustomCrosshairs[1]
+            if not img or img == "" then return end
+
+            -- Keep the real pointer while the menu is up, or the hub becomes unusable.
+            local menuOpen = Main and Main.Visible
+            local size = math.clamp(tonumber(S.CrosshairSize) or 32, 8, 128)
+            cursorGui.Image = img
+            cursorGui.Size = UDim2.fromOffset(size, size)
+            cursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+            cursorGui.Visible = not menuOpen
+            UIS.MouseIconEnabled = menuOpen
+        end)
+
+        SG.Destroying:Connect(function()
+            pcall(function() UIS.MouseIconEnabled = true end)
+        end)
+    end
 
     local sec1 = mkSection(Pages.Visuals, "Chams", 1)
     mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 2)
