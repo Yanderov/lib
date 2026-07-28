@@ -2553,6 +2553,7 @@ mkPage("Visuals")
 mkPage("Combat")
 mkPage("Motion")
 mkPage("Player")
+mkPage("Animations")
 mkPage("Misc")
 mkPage("Teleport")
 mkPage("Servers")
@@ -2876,11 +2877,12 @@ mkSBItem("Visuals", "eye", Pages.Visuals, 1)
 mkSBItem("Combat", "combat", Pages.Combat, 2)
 mkSBItem("Motion", "motion", Pages.Motion, 3)
 mkSBItem("Player", "player", Pages.Player, 4)
-mkSBItem("Misc", "misc", Pages.Misc, 5)
-mkSBItem("Teleport", "teleport", Pages.Teleport, 6)
-mkSBItem("Servers", "servers", Pages.Servers, 7)
-mkSBItem("Config", "misc", Pages.Config, 8)
-if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9) end
+mkSBItem("Animations", "motion", Pages.Animations, 5)
+mkSBItem("Misc", "misc", Pages.Misc, 6)
+mkSBItem("Teleport", "teleport", Pages.Teleport, 7)
+mkSBItem("Servers", "servers", Pages.Servers, 8)
+mkSBItem("Config", "misc", Pages.Config, 9)
+if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 10) end
 refreshSB()
 local BindReg = {}
 local PendingBind = nil
@@ -3796,7 +3798,7 @@ end
 -- Luau's 200-register ceiling for the top-level function, and the executor enforces it even
 -- though a newer standalone luau-compile accepts the file. Only S._OpenOptionPicker escapes.
 do
-local OptionPickerModal = Instance.new("Frame")
+local OptionPickerModal = Instance.new("CanvasGroup")
 OptionPickerModal.Name = "OptionPicker"
 OptionPickerModal.Parent = SG
 OptionPickerModal.Active = true
@@ -3807,6 +3809,7 @@ OptionPickerModal.BackgroundColor3 = T.Card; pcall(function() OptionPickerModal:
 OptionPickerModal.BorderSizePixel = 0
 OptionPickerModal.ZIndex = 2000
 OptionPickerModal.Visible = false
+OptionPickerModal.ClipsDescendants = true
 Corner(OptionPickerModal, 12)
 Stroke(OptionPickerModal, T.Bd2, 1.2, 0.4)
 
@@ -4664,7 +4667,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     for i, sky in ipairs(skyPaths) do
         -- Slot 1 is None and slot 2 is the built-in seamless sky, so the GitHub list starts at 3.
         skyNames[i + 2] = sky.Name
-        skyPreviews[i + 2] = function() return fetchCustomAsset(sky.Files.ro, "skyboxes") end
+        skyPreviews[i + 2] = function() return fetchCustomAsset(sky.Files.Ft or sky.Files.Bk or sky.Files.ro, "skyboxes") end
     end
     -- 18 of the 20 GitHub skyboxes are a single image pasted onto every face, so they render as a
     -- literal box with seams — that is the source assets, not the loader. This entry is Roblox's
@@ -4854,213 +4857,8 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
 end, 6)
-    do
-        local fxAuraTgt = nil
-        local activeMeshes = {}
-        local wingMap = {
-            ["Angel Wings"] = 192557913,
-            ["Dracula Wings"] = 4323204938,
-            ["Demon Wings"] = 5040228389,
-            ["Butterfly"] = 4441916307,
-            ["Void"] = 6415779083,
-            ["Galaxy"] = 8408101486,
-        }
-        
-        local function refreshAura()
-            if fxAuraTgt then fxAuraTgt:Destroy() fxAuraTgt = nil end
-            table.clear(activeMeshes)
-            if not S.FxAura or not LP.Character or not LP.Character:FindFirstChild("UpperTorso") then return end
-            
-            fxAuraTgt = Instance.new("Attachment")
-            fxAuraTgt.Name = "InertiaFxAura"
-            fxAuraTgt.Parent = LP.Character.UpperTorso
-            
-            local style = S.FxAuraStyle or "Angel Wings"
-            local colorName = S.FxAuraColor or "White"
-            local colorMap = {
-                White=Color3.new(1,1,1), Red=Color3.new(1,0,0), Green=Color3.new(0,1,0),
-                Blue=Color3.new(0,0,1), Yellow=Color3.new(1,1,0), Cyan=Color3.new(0,1,1),
-                Purple=Color3.new(0.5,0,0.5), Orange=Color3.new(1,0.5,0), Pink=Color3.new(1,0.5,1),
-                Black=Color3.new(0,0,0)
-            }
-            local color = colorMap[colorName] or Color3.new(1,1,1)
-            local intensity = (S.FxAuraIntensity or 50) / 100
-            
-            local assetId = wingMap[style]
-            local hasMesh = false
-            if assetId then
-                local desc = Instance.new("HumanoidDescription")
-                desc.BackAccessory = tostring(assetId)
-                local s, model = pcall(function() return game:GetService("Players"):CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15) end)
-                if s and model then
-                    for _, child in ipairs(model:GetChildren()) do
-                        if child:IsA("Accessory") and child:FindFirstChild("Handle") then
-                            local handle = child.Handle:Clone()
-                            handle.Parent = LP.Character
-                            handle.CFrame = LP.Character.UpperTorso.CFrame * CFrame.new(0, 0, 0.5)
-                            local weld = Instance.new("WeldConstraint")
-                            weld.Part0 = LP.Character.UpperTorso
-                            weld.Part1 = handle
-                            weld.Parent = handle
-                            if handle:IsA("MeshPart") then
-                                handle.Color = color
-                            else
-                                local mesh = handle:FindFirstChildWhichIsA("SpecialMesh")
-                                if mesh then mesh.VertexColor = Vector3.new(color.R, color.G, color.B) end
-                            end
-                            hasMesh = true
-                            table.insert(activeMeshes, {handle = handle, weld = weld, baseC0 = handle.CFrame:Inverse() * LP.Character.UpperTorso.CFrame})
-                        end
-                    end
-                    model:Destroy()
-                end
-            end
-            
-            if not hasMesh then
-                local pe = Instance.new("ParticleEmitter")
-                pe.Color = ColorSequence.new(color)
-                pe.Rate = 50 * intensity
-                pe.Speed = NumberRange.new(5 * intensity)
-                pe.SpreadAngle = Vector2.new(180, 180)
-                pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(0.5, 2 * intensity), NumberSequenceKeypoint.new(1,0)})
-                pe.Parent = fxAuraTgt
-                
-                local pl = Instance.new("PointLight")
-                pl.Color = color
-                pl.Range = 10 * intensity
-                pl.Brightness = 2 * intensity
-                pl.Parent = fxAuraTgt
-                table.insert(activeMeshes, {pe = pe, pl = pl, baseColor = color})
-            end
-        end
-        
-        tc(RunService.RenderStepped:Connect(function(dt)
-            if not S.FxAura or #activeMeshes == 0 then return end
-            
-            local color = nil
-            if S.FxAuraRainbow then
-                local hue = (tick() % 3) / 3
-                color = Color3.fromHSV(hue, 1, 1)
-            end
-            
-            for _, item in ipairs(activeMeshes) do
-                if color then
-                    if item.handle then
-                        if item.handle:IsA("MeshPart") then
-                            item.handle.Color = color
-                        else
-                            local mesh = item.handle:FindFirstChildWhichIsA("SpecialMesh")
-                            if mesh then mesh.VertexColor = Vector3.new(color.R, color.G, color.B) end
-                        end
-                    elseif item.pe then
-                        item.pe.Color = ColorSequence.new(color)
-                        item.pl.Color = color
-                    end
-                end
-            end
-        end))
-        
-        tc(LP.CharacterAdded:Connect(function()
-            task.delay(1, refreshAura)
-        end))
-        
-        mkToggle(secCustoms, "Enable FX Aura", false, function(v) S.FxAura = v; refreshAura() end, 7)
-        mkCycle(secCustoms, "FX Aura Style", {"Angel Wings", "Dracula Wings", "Frozen Bloom", "Water Vortex", "Pink Thunder", "Magic", "Demon Wings", "Butterfly", "Galaxy", "Phoenix Fire", "Void", "Sakura"}, "Angel Wings", function(v) S.FxAuraStyle = v; refreshAura() end, 8)
-        mkCycle(secCustoms, "FX Aura Color", {"White", "Red", "Green", "Blue", "Yellow", "Cyan", "Purple", "Orange", "Pink", "Black"}, "White", function(v) S.FxAuraColor = v; refreshAura() end, 9)
-        mkToggle(secCustoms, "FX Aura Rainbow", false, function(v) S.FxAuraRainbow = v end, 10)
-        mkSlider(secCustoms, "FX Aura Intensity", 0, 100, 50, function(v) S.FxAuraIntensity = v; refreshAura() end, 11)
-    end
-
-    do
-        local secWiwi = mkSection(Pages.Visuals, "Wiwi Custom", 11.5)
-        local wiwiActive = false
-        local wiwiModel = nil
-        
-        local function spawnWiwi()
-            if wiwiModel then pcall(function() wiwiModel:Destroy() end) wiwiModel = nil end
-            if not wiwiActive or not LP.Character or not LP.Character:FindFirstChild("LowerTorso") then return end
-            
-            wiwiModel = Instance.new("Model")
-            wiwiModel.Name = "Wiwi"
-            
-            local shaft = Instance.new("Part")
-            shaft.Name = "Shaft"
-            shaft.Size = Vector3.new(0.5, S.WiwiSize or 2, 0.5)
-            shaft.Shape = Enum.PartType.Cylinder
-            shaft.Material = Enum.Material.SmoothPlastic
-            shaft.Color = Color3.fromRGB(255, 200, 200)
-            shaft.CanCollide = false
-            shaft.Parent = wiwiModel
-            
-            local ball1 = Instance.new("Part")
-            ball1.Name = "Ball1"
-            ball1.Size = Vector3.new(0.6, 0.6, 0.6)
-            ball1.Shape = Enum.PartType.Ball
-            ball1.Material = Enum.Material.SmoothPlastic
-            ball1.Color = Color3.fromRGB(255, 200, 200)
-            ball1.CanCollide = false
-            ball1.Parent = wiwiModel
-            
-            local ball2 = ball1:Clone()
-            ball2.Name = "Ball2"
-            ball2.Parent = wiwiModel
-            
-            local head = Instance.new("Part")
-            head.Name = "Head"
-            head.Size = Vector3.new(0.6, 0.6, 0.6)
-            head.Shape = Enum.PartType.Ball
-            head.Material = Enum.Material.SmoothPlastic
-            head.Color = Color3.fromRGB(255, 150, 150)
-            head.CanCollide = false
-            head.Parent = wiwiModel
-            
-            local w1 = Instance.new("WeldConstraint")
-            w1.Part0 = shaft
-            w1.Part1 = ball1
-            ball1.CFrame = shaft.CFrame * CFrame.new(0, -((S.WiwiSize or 2)/2), -0.3)
-            w1.Parent = shaft
-            
-            local w2 = Instance.new("WeldConstraint")
-            w2.Part0 = shaft
-            w2.Part1 = ball2
-            ball2.CFrame = shaft.CFrame * CFrame.new(0, -((S.WiwiSize or 2)/2), 0.3)
-            w2.Parent = shaft
-            
-            local w3 = Instance.new("WeldConstraint")
-            w3.Part0 = shaft
-            w3.Part1 = head
-            head.CFrame = shaft.CFrame * CFrame.new(0, ((S.WiwiSize or 2)/2), 0)
-            w3.Parent = shaft
-            
-            wiwiModel.PrimaryPart = shaft
-            wiwiModel.Parent = LP.Character
-            
-            local mainWeld = Instance.new("WeldConstraint")
-            mainWeld.Part0 = LP.Character.LowerTorso
-            mainWeld.Part1 = shaft
-            -- Adjust angle so it points out
-            shaft.CFrame = LP.Character.LowerTorso.CFrame * CFrame.new(0, -0.2, -0.5) * CFrame.Angles(math.pi/2, 0, 0)
-            mainWeld.Parent = wiwiModel
-        end
-        
-        mkToggle(secWiwi, "Enable Wiwi", false, function(v)
-            wiwiActive = v
-            if v then
-                spawnWiwi()
-            else
-                if wiwiModel then pcall(function() wiwiModel:Destroy() end) wiwiModel = nil end
-            end
-        end, 1)
-        
-        mkSlider(secWiwi, "Wiwi Size", 1, 10, 2, function(v) S.WiwiSize = v; if wiwiActive then spawnWiwi() end end, 2)
-        
-        tc(LP.CharacterAdded:Connect(function()
-            if wiwiActive then
-                task.wait(1)
-                spawnWiwi()
-            end
-        end))
-    end
+    -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
+    -- avatar cosmetics, assets, crosshair, and knife-effect visuals.
 
 
     
@@ -5154,20 +4952,19 @@ end, 6)
 
     local sec4 = mkSection(Pages.Visuals, "World", 6)
     mkToggle(sec4, "Fullbright", false, function(v) S.FullBright = v end, 1)
-    mkToggle(sec4, "No Fog", false, function(v) S.NoFog = v end, 2)
     mkToggle(sec4, "Force Day", false, function(v)
         S.ForceDay = v; if v then S.ForceNight = false end
-    end, 3)
+    end, 2)
     mkToggle(sec4, "Force Night", false, function(v)
         S.ForceNight = v; if v then S.ForceDay = false end
-    end, 4)
-    mkToggle(sec4, "No Shadows", false, function(v) S.NoShadows = v end, 5)
-    mkSlider(sec4, "Brightness", 1, 5, 2, function(v) S.Brightness = v end, 6)
+    end, 3)
+    mkToggle(sec4, "No Shadows", false, function(v) S.NoShadows = v end, 4)
+    mkSlider(sec4, "Brightness", 1, 5, 2, function(v) S.Brightness = v end, 5)
 
     local secFx = mkSection(Pages.Visuals, "Effects", 7)
     mkSlider(secFx, "Saturation", -100, 100, 0, function(v) S.Saturation = v end, 1)
     mkSlider(secFx, "Contrast", -100, 100, 0, function(v) S.Contrast = v end, 2)
-    mkSlider(secFx, "Camera FOV", 40, 120, 70, function(v) S.CamFOV = v end, 3)
+    -- Camera FOV control removed.
 
     -- Custom Crosshair: removed
 
@@ -5238,10 +5035,10 @@ end, 6)
         styleSubTabActive(shaderBtn, shaderStroke, isShaders)
         styleSubTabActive(customBtn, customStroke, isCustoms)
 
-        for _, section in ipairs({sec1, sec2, sec5, secFov}) do
+        for _, section in ipairs({sec1, sec2, sec5}) do
             if section and section.Parent then section.Parent.Visible = isESP end
         end
-        for _, section in ipairs({secCam, sec4, secFx, secSky, secFog}) do
+        for _, section in ipairs({secCam, sec4, secFx}) do
             if section and section.Parent then section.Parent.Visible = isEnvironment end
         end
         for _, section in ipairs({secShaders, secHandShaders}) do
@@ -5778,25 +5575,6 @@ do
 
     local sec1 = mkSection(Pages.Motion, "Speed & Jump", 1)
     
-    local secChar = mkSection(Pages.Motion, "Character", 1.5)
-    
-    task.spawn(function()
-        local function onChar(char)
-            local hum = char:WaitForChild("Humanoid", 3)
-            if hum then
-                hum.Died:Connect(function()
-                    if S.InstantRespawn then
-                        task.wait(0.1)
-                        pcall(function() char:Destroy() end)
-                        pcall(function() LP.Character = nil end)
-                    end
-                end)
-            end
-        end
-        if LP.Character then onChar(LP.Character) end
-        LP.CharacterAdded:Connect(onChar)
-    end)
-
     mkSlider(sec1, "WalkSpeed", 16, 100, 16, function(v) S.CustomWalkSpeed = v end, 1)
     mkSlider(sec1, "JumpPower", 50, 150, 50, function(v) S.CustomJumpPower = v end, 2)
     local sec2 = mkSection(Pages.Motion, "Movement", 2)
@@ -5810,9 +5588,6 @@ do
         end end
     end, 2)
     mkSlider(sec2, "Fly Speed", 10, 200, 50, function(v) S.FlySpeed = v end, 3)
-    mkCycle(sec2, "Fly Anim Style", {"Superman", "Superhero", "Iron Man", "Swim"}, "Superman", function(v)
-        S.FlyAnimStyle = v
-    end, 3.2)
     -- Walk On Water: removed
 
     local secMomentum = mkSection(Pages.Motion, "Momentum", 2.5)
@@ -6063,13 +5838,12 @@ do
     mkToggle(sec4, "Anti-Fling", false, function(v) S.AntiFling = v end, 1)
     mkToggle(sec4, "Anti-Void", false, function(v) S.AntiVoid = v end, 2)
     mkToggle(sec4, "Anti-AFK", false, function(v) S.AntiAFK = v end, 3)
-    mkToggle(sec4, "Auto Respawn", false, function(v) S.AutoRespawn = v end, 4)
-    mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 5)
+    mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 4)
     local sec6 = mkSection(Pages.Misc, "Performance", 5)
     S._RegisterMiscSection(sec6, "Protection")
     mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
 
-    local sec5 = mkSection(Pages.Teleport, "Utility", 4)
+    local sec5 = mkSection(Pages.Teleport, "Actions", 4)
     mkAction(sec5, "Reset Character", function() respawnChar() end, 1)
     mkAction(sec5, "Ceiling Teleport", function() ceilingTP() end, 2)
     mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 3)
@@ -10094,7 +9868,7 @@ do
     mkSlider(sec2, "Time of Day", 0, 24, 14, function(v) S.TimeOfDay = v end, 2)
     mkSlider(sec2, "Gravity", 10, 200, 196, function(v)
         S.Gravity = v
-        if not S.MoonGravity then pcall(function() workspace.Gravity = v end) end
+        pcall(function() workspace.Gravity = v end)
     end, 3)
     mkToggle(sec2, "Disable Blur", false, function(v) S.DisableBlur = v end, 5)
 
@@ -10714,6 +10488,14 @@ local function loadConfig(name)
         if dat.TextSizeScale then S.TextSizeScale = dat.TextSizeScale end
         if dat.ActiveVisualEffect then S.ActiveVisualEffect = dat.ActiveVisualEffect end
     end
+    for _, key in ipairs({
+        "FOVEnabled", "ShowFOV", "RainbowFOV", "AutoSprint", "InfiniteJump", "Freeze",
+        "InstantRespawn", "AutoRespawn", "MoonGravity", "SkyEnabled", "SkyRainbow",
+        "FogEnabled", "FogRainbow", "NoFog", "FlyAnim", "FxAura", "FxAuraRainbow",
+    }) do
+        S[key] = false
+    end
+    S.CamFOV = 70
 
     if dat.CustomTheme then
         for k, v in pairs(dat.CustomTheme) do
@@ -10725,7 +10507,7 @@ local function loadConfig(name)
     
     -- Sync UI controls (sliders, toggles)
     for _, c in ipairs(ConfigControls) do
-        if dat.controls and dat.controls[c.id] ~= nil then
+        if dat.controls and dat.controls[c.id] ~= nil and not (S._cfgSkip and S._cfgSkip[c.id]) then
             pcall(c.set, dat.controls[c.id])
         end
     end
@@ -12384,7 +12166,6 @@ tc(RunService.RenderStepped:Connect(function()
         if mc then local h = mc:FindFirstChildOfClass("Humanoid")
             if h then
                 local ws = S.CustomWalkSpeed or 16
-                if S.AutoSprint and ws < 24 then ws = 24 end
                 if h.WalkSpeed ~= ws then h.WalkSpeed = ws end
                 if S.CustomJumpPower and h.JumpPower ~= S.CustomJumpPower then h.UseJumpPower = true; h.JumpPower = S.CustomJumpPower end
             end
@@ -12495,25 +12276,8 @@ tc(RunService.RenderStepped:Connect(function()
             if UIS:IsKeyDown(Enum.KeyCode.Space) then md = md + Vector3.new(0,1,0) end
             if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then md = md - Vector3.new(0,1,0) end
             if md.Magnitude > 0 then md = md.Unit end
-            bv.Velocity = md * spd; bg.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
-            -- Fly Animation: tilt the whole body instead of posing limbs. This rig's joints are
-            -- AnimationConstraints whose Transform is animator output — writes to it do not hold,
-            -- verified on a live client even with the Animate script disabled and every track
-            -- stopped — so per-limb superhero posing is not reachable from the client here.
-            -- Pitching the BodyGyro is, and it is the part that actually reads as flight.
-            if S.FlyAnim then
-                local style = S.FlyAnimStyle or "Superman"
-                local pitch, roll = -72, 0
-                if style == "Superhero" then
-                    pitch = -46
-                elseif style == "Iron Man" then
-                    pitch = 14
-                elseif style == "Swim" then
-                    pitch = -84
-                    roll = math.sin(os.clock() * 3) * 16
-                end
-                tC = tC * CFrame.Angles(math.rad(pitch), 0, math.rad(roll))
-            end
+            local tV = md * spd
+            local tC = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
             bv.Velocity = bv.Velocity:Lerp(tV, 0.15)
             bg.CFrame = bg.CFrame:Lerp(tC, 0.15)
             if h then h.PlatformStand = true end
@@ -13190,29 +12954,13 @@ task.spawn(function()
 end)
 tc(RunService.RenderStepped:Connect(function()
     local cam = workspace.CurrentCamera
-    if cam and S.CamFOV and math.abs(cam.FieldOfView - S.CamFOV) > 0.4 then
-        pcall(function() cam.FieldOfView = S.CamFOV end)
-    end
     if S.Crosshair then
         local m = UIS:GetMouseLocation()
         local inset = game:GetService("GuiService"):GetGuiInset()
         Crosshair.Position = UDim2.fromOffset(m.X - inset.X, m.Y - inset.Y)
     end
 end))
--- ============ AUTO RESPAWN ============
-local function hookRespawn(ch)
-    local hum = ch:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.Died:Connect(function()
-            if S.AutoRespawn then
-                task.wait(0.4)
-                S._resetMyCharacter()
-            end
-        end)
-    end
-end
-if LP.Character then hookRespawn(LP.Character) end
-tc(LP.CharacterAdded:Connect(function(ch) task.wait(0.3); hookRespawn(ch) end))
+-- Auto Respawn removed.
 -- ============ WALK ON WATER ============
 task.spawn(function()
     local plat
@@ -13385,16 +13133,9 @@ do
         end
     end)
 end
--- ============ MISC (infinite jump / spinbot / freeze / anti-afk / click TP) ============
-tc(UIS.JumpRequest:Connect(function()
-    if S.InfiniteJump then
-        local c = LP.Character
-        local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end) end
-    end
-end))
+-- ============ MISC (spinbot / anti-afk / click TP) ============
 task.spawn(function()
-    local spinY, wasFrozen, spinAutoRotateOff = 0, false, false
+    local spinY, spinAutoRotateOff = 0, false
     while S.Gui and S.Gui.Parent do
         local c = LP.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -13418,11 +13159,6 @@ task.spawn(function()
             elseif spinAutoRotateOff then
                 if hum then pcall(function() hum.AutoRotate = true end) end
                 spinAutoRotateOff = false
-            end
-            if S.Freeze then
-                if not wasFrozen then pcall(function() hrp.Anchored = true end); wasFrozen = true end
-            elseif wasFrozen then
-                pcall(function() hrp.Anchored = false end); wasFrozen = false
             end
         end
         RunService.Heartbeat:Wait()
@@ -14701,17 +14437,55 @@ do
     end
 
 
-local secEmotes = mkSection(Pages.Player, "7yd7 Emotes", 1)
+do
+local secEmotes = mkSection(Pages.Player, "Emotes", 1)
+local emotesLaunching = false
 mkAction(secEmotes, "Open Emotes GUI", function()
-    local s, content = pcall(function() return readfile("7yd7_emotes.lua") end)
-    if s and content then
-        local f = loadstring(content)
-        if f then pcall(f) else Notify("Emotes", "Failed to compile emotes script.", 3) end
-    else
-        Notify("Emotes", "Could not read 7yd7_emotes.lua. Make sure it is in workspace.", 3)
+    if _G.EmotesGUIRunning then
+        Notify("Emotes", "Already open.", 2)
+        return
     end
+    if emotesLaunching then
+        Notify("Emotes", "Launching...", 2)
+        return
+    end
+    emotesLaunching = true
+    Notify("Emotes", "Opening 7yd7...", 2)
+    task.spawn(function()
+        local content = nil
+        if readfile then
+            for _, path in ipairs({
+                "7yd7_emotes.lua",
+                "mm2/7yd7_emotes.lua",
+                "C:\\Users\\sadhasdkfj\\Desktop\\script\\mm2\\7yd7_emotes.lua",
+            }) do
+                local ok, data = pcall(function() return readfile(path) end)
+                if ok and type(data) == "string" and data ~= "" then content = data break end
+            end
+        end
+        if not content then
+            local ok, data = pcall(function()
+                return game:HttpGet("https://raw.githubusercontent.com/Yanderov/lib/main/mm2/7yd7_emotes.lua")
+            end)
+            if ok and type(data) == "string" and data ~= "" then content = data end
+        end
+        if not content then
+            emotesLaunching = false
+            Notify("Emotes", "Emotes source unavailable.", 3)
+            return
+        end
+        local f, err = loadstring(content)
+        if f then
+            local ok, runErr = pcall(f)
+            if not ok then Notify("Emotes", tostring(runErr), 3) end
+        else
+            Notify("Emotes", tostring(err or "compile failed"), 3)
+        end
+        emotesLaunching = false
+    end)
 end, 1)
-    local secPacks = mkSection(Pages.Player, "Animation Pack", 2)
+end
+    local secPacks = mkSection(Pages.Animations or Pages.Player, "Animation Pack", 1)
     local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
     local packScroll = S._mkListScroll(secPacks, 2, 320)
     local function refreshPacks()
