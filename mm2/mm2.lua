@@ -2608,9 +2608,11 @@ local function relayoutPage(page)
     end
 
     local cards = {}
+    local forceSingleColumn = false
     for _, child in ipairs(page:GetChildren()) do
         if child:IsA("Frame") and child.Visible and child ~= subBar and child:FindFirstChild("Inner") then
             table.insert(cards, child)
+            if child:GetAttribute("ForceFullWidth") then forceSingleColumn = true end
         end
     end
     table.sort(cards, function(a, b)
@@ -2620,10 +2622,10 @@ local function relayoutPage(page)
 
     local isServerPage = Pages and page == Pages.Servers
     local columns = 1
-    if #cards >= 2 and pageWidth >= 560 then columns = 2 end
+    if not forceSingleColumn and #cards >= 2 and pageWidth >= 560 then columns = 2 end
     -- Server management needs readable Job IDs and action labels. Keep it in a deliberate
     -- two-column grid instead of letting the generic masonry layout squeeze it into three columns.
-    if not isServerPage and #cards >= 4 and pageWidth >= 760 then columns = 3 end
+    if not forceSingleColumn and not isServerPage and #cards >= 4 and pageWidth >= 760 then columns = 3 end
     columns = math.max(1, math.min(columns, #cards))
     local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
     local columnWidth = math.floor(usableWidth / columns)
@@ -14338,7 +14340,7 @@ end
 
 -- ============ PLAYER TAB (Emotes + Animations, thumbnails + search) ============
 do
-    local PlayerTabs = { active = "Animations", animSections = {}, emoteSections = {} }
+    local PlayerTabs = { active = "Emotes", animSections = {}, emoteSections = {} }
     do
         local bar = Instance.new("Frame")
         bar.Name = "SubTabBar"
@@ -14354,10 +14356,10 @@ do
         layout.Padding = UDim.new(0, 8)
         layout.Parent = bar
 
-        PlayerTabs.animBtn = Instance.new("TextButton")
         PlayerTabs.emotesBtn = Instance.new("TextButton")
-        PlayerTabs.animStroke = mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 1, 1 / 2, -4)
-        PlayerTabs.emotesStroke = mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 2, 1 / 2, -4)
+        PlayerTabs.animBtn = Instance.new("TextButton")
+        PlayerTabs.emotesStroke = mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 1, 1 / 2, -4)
+        PlayerTabs.animStroke = mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 2, 1 / 2, -4)
     end
 
     local function registerPlayerSubTabSection(section, tabName)
@@ -14367,6 +14369,7 @@ do
             table.insert(PlayerTabs.emoteSections, section)
         end
         section:SetAttribute("PlayerSubTab", tabName)
+        section:SetAttribute("ForceFullWidth", true)
         return section
     end
 
@@ -14473,7 +14476,10 @@ do
         scroll.BorderSizePixel = 0
         scroll.Size = UDim2.new(1, 0, 0, height)
         scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-        scroll.ScrollBarThickness = 0
+        scroll.Active = true
+        scroll.ScrollingEnabled = true
+        scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+        scroll.ScrollBarThickness = MOBILE and 6 or 4
         scroll.ScrollBarImageColor3 = T.Tx3; pcall(function() scroll:SetAttribute("ThemeColorRole_ScrollBarImageColor3", "Tx3") end)
         scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
         Corner(scroll, 8)
@@ -14949,6 +14955,12 @@ do
 local function buildEmotesTab()
 local secEmotes = registerPlayerSubTabSection(mkSection(Pages.Player, "Emotes", 1), "Emotes")
 local EmoteHttpService = game:GetService("HttpService")
+local EMOTES_BLOCKED_CACHE = "MM2_Configs/_blocked_emotes_v1.json"
+local blockedEmoteIds = {}
+if readfile and isfile and isfile(EMOTES_BLOCKED_CACHE) then
+    local ok, data = pcall(function() return EmoteHttpService:JSONDecode(readfile(EMOTES_BLOCKED_CACHE)) end)
+    if ok and type(data) == "table" then blockedEmoteIds = data end
+end
 local emoteCatalog = {
     { name = "Wave", id = 507770239 },
     { name = "Point", id = 507770453 },
@@ -14968,6 +14980,14 @@ local emoteCatalog = {
     { name = "Dolphin Dance", id = 5918726674 },
     { name = "Applaud", id = 5911729486 },
 }
+local emoteIdSet = {}
+local function rebuildEmoteIdSet()
+    table.clear(emoteIdSet)
+    for _, item in ipairs(emoteCatalog) do
+        if item and item.id then emoteIdSet[tostring(item.id)] = true end
+    end
+end
+rebuildEmoteIdSet()
 local currentEmoteTrack, currentEmoteAnim
 local emoteStatus = Instance.new("TextLabel")
 emoteStatus.Name = "EmoteStatus"
@@ -14982,13 +15002,36 @@ emoteStatus.TextXAlignment = Enum.TextXAlignment.Left
 emoteStatus.TextWrapped = true
 emoteStatus.Text = "Built-in emotes are ready. Tap Load All Emotes to load the full catalog inside Inertia."
 local emoteSearch = S._mkSearchBox(secEmotes, 2, "Search emotes...")
-local emoteScroll = S._mkListScroll(secEmotes, 3, MOBILE and 360 or 320)
+local emoteScroll = S._mkListScroll(secEmotes, 3, MOBILE and 440 or 420)
 for _, child in ipairs(emoteScroll:GetChildren()) do
     if child:IsA("UIListLayout") then child:Destroy() end
 end
 emoteScroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 local emoteMatches, emoteRenderQueued, emoteRefreshRequest = {}, false, 0
 local EMOTE_ROW_H = 60
+local refreshEmbeddedEmotes
+local function saveBlockedEmotes()
+    if not (writefile and makefolder and isfolder) then return end
+    pcall(function()
+        if not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
+        writefile(EMOTES_BLOCKED_CACHE, EmoteHttpService:JSONEncode(blockedEmoteIds))
+    end)
+end
+local function markBlockedEmote(id)
+    id = tostring(id or "")
+    if id == "" or blockedEmoteIds[id] then return end
+    blockedEmoteIds[id] = true
+    saveBlockedEmotes()
+    if refreshEmbeddedEmotes then refreshEmbeddedEmotes() end
+end
+tc(game:GetService("LogService").MessageOut:Connect(function(msg, msgType)
+    if msgType ~= Enum.MessageType.MessageError then return end
+    local id = tostring(msg):match("Failed to load animation with sanitized ID rbxassetid://(%d+)")
+    if id and emoteIdSet[id] then
+        markBlockedEmote(id)
+        emoteStatus.Text = "Blocked emote hidden: " .. id
+    end
+end))
 mkToggle(secEmotes, "Loop Emote", false, function(v)
     S.LoopEmote = v
     if currentEmoteTrack then
@@ -15022,6 +15065,7 @@ local function playEmbeddedEmote(item)
     local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
     if not (ok and track) then
         pcall(function() anim:Destroy() end)
+        markBlockedEmote(id)
         emoteStatus.Text = "This emote is blocked in this place."
         return
     end
@@ -15031,6 +15075,14 @@ local function playEmbeddedEmote(item)
     pcall(function() track.Looped = S.LoopEmote == true end)
     local played = pcall(function() track:Play(0.12, 1, tonumber(S.EmoteSpeed) or 1) end)
     emoteStatus.Text = played and ("Playing: " .. tostring(item.name or id)) or "Failed to play emote."
+    task.delay(1.2, function()
+        local failedAt = PackState and PackState.recentlyFailedIds and PackState.recentlyFailedIds[tostring(id)]
+        if failedAt and tick() - failedAt < 3 then
+            markBlockedEmote(id)
+            if currentEmoteTrack == track then stopEmbeddedEmote() end
+            emoteStatus.Text = "Blocked emote hidden: " .. tostring(item.name or id)
+        end
+    end)
 end
 local function clearRenderedEmotes()
     for _, ch in ipairs(emoteScroll:GetChildren()) do
@@ -15075,7 +15127,7 @@ local function queueRenderEmbeddedEmotes()
         if emoteScroll and emoteScroll.Parent then renderEmbeddedEmoteWindow() end
     end)
 end
-local function refreshEmbeddedEmotes()
+refreshEmbeddedEmotes = function()
     emoteRefreshRequest += 1
     local request = emoteRefreshRequest
     local q = string.lower(emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -15090,7 +15142,9 @@ local function refreshEmbeddedEmotes()
             if request ~= emoteRefreshRequest then return end
             local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
             local hay = string.lower(name .. " " .. tostring(item.id or ""))
-            if q == "" or string.find(hay, q, 1, true) then
+            local idText = tostring(item.id or "")
+            local failed = blockedEmoteIds[idText] or (PackState and PackState.recentlyFailedIds and PackState.recentlyFailedIds[idText])
+            if not failed and (q == "" or string.find(hay, q, 1, true)) then
                 found += 1
                 emoteMatches[found] = item
             end
@@ -15136,6 +15190,7 @@ local function loadRemoteEmoteCatalog()
     end
     if #nextCatalog > 0 then
         emoteCatalog = nextCatalog
+        rebuildEmoteIdSet()
     end
     refreshEmbeddedEmotes()
 end
@@ -15151,7 +15206,7 @@ buildEmotesTab()
 end
     local secPacks = registerPlayerSubTabSection(mkSection(Pages.Player, "Animations", 1), "Animations")
     local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
-    local packScroll = S._mkListScroll(secPacks, 2, 320)
+    local packScroll = S._mkListScroll(secPacks, 2, MOBILE and 440 or 420)
     local function refreshPacks()
         for _, ch in ipairs(packScroll:GetChildren()) do
             if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
