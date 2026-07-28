@@ -4697,7 +4697,9 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 S.SkyboxIndex = 0
                 local old = lighting:FindFirstChild("CustomSkyboxUI")
                 if old then old:Destroy() end
-                local oldAtmo = lighting:FindFirstChild("CustomSkyboxAtmo")\n                if oldAtmo then oldAtmo:Destroy() end\n                return
+                local oldAtmo = lighting:FindFirstChild("CustomSkyboxAtmo")
+                if oldAtmo then oldAtmo:Destroy() end
+                return
             end
             if pick == 2 then
                 S.SkyboxIndex = 1
@@ -5077,7 +5079,8 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             end
         end))
     end
-\n    end, 6)
+
+    end, 6)
 
     
     -- Mouse.Icon draws the image at its native resolution and offers no way to scale it, so the
