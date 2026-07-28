@@ -10111,9 +10111,6 @@ do
         S.Gravity = v
         if not S.MoonGravity then pcall(function() workspace.Gravity = v end) end
     end, 3)
-        S.MoonGravity = v
-        pcall(function() workspace.Gravity = v and 25 or (S.Gravity or 196) end)
-    end, 4)
     mkToggle(sec2, "Disable Blur", false, function(v) S.DisableBlur = v end, 5)
 
     -- Custom time-of-day + blur removal.
