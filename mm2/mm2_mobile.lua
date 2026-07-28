@@ -16231,16 +16231,25 @@ local function playEmbeddedEmote(item)
         end
     end)
 end
+-- index -> row, for the rows currently on screen. The window was previously torn down and rebuilt
+-- from scratch on every CanvasPosition change, so scrolling one pixel destroyed ~20 rows and built
+-- 20 new ones, each re-fetching its thumbnail. That is the scroll stutter. Now only rows that
+-- actually left the window are destroyed and only genuinely new indices are built.
+local emoteRows = {}
 local function clearRenderedEmotes()
     for _, ch in ipairs(emoteScroll:GetChildren()) do
         if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
     end
+    table.clear(emoteRows)
 end
 local function renderEmbeddedEmoteWindow()
-    clearRenderedEmotes()
+    for _, ch in ipairs(emoteScroll:GetChildren()) do
+        if ch.Name == "Status" then ch:Destroy() end
+    end
     local total = #emoteMatches
     emoteScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(0, total * EMOTE_ROW_H + 12))
     if total == 0 then
+        clearRenderedEmotes()
         local empty = Instance.new("TextLabel")
         empty.Name = "Status"
         empty.Parent = emoteScroll
@@ -16256,14 +16265,23 @@ local function renderEmbeddedEmoteWindow()
     local viewportH = math.clamp(emoteScroll.AbsoluteWindowSize.Y > 0 and emoteScroll.AbsoluteWindowSize.Y or emoteScroll.AbsoluteSize.Y, 120, 640)
     local first = math.max(1, math.floor(emoteScroll.CanvasPosition.Y / EMOTE_ROW_H) + 1)
     local last = math.min(total, first + math.ceil(viewportH / EMOTE_ROW_H) + 8)
+    for i, row in pairs(emoteRows) do
+        if i < first or i > last then
+            if row and row.Parent then row:Destroy() end
+            emoteRows[i] = nil
+        end
+    end
     for i = first, last do
-        local item = emoteMatches[i]
-        local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
-        local row = S._mkThumbRow(emoteScroll, i, tostring(item.id), name, function()
-            playEmbeddedEmote(item)
-        end)
-        row.Position = UDim2.fromOffset(0, (i - 1) * EMOTE_ROW_H)
-        row.Size = UDim2.new(1, -12, 0, 56)
+        if not emoteRows[i] then
+            local item = emoteMatches[i]
+            local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
+            local row = S._mkThumbRow(emoteScroll, i, tostring(item.id), name, function()
+                playEmbeddedEmote(item)
+            end)
+            row.Position = UDim2.fromOffset(0, (i - 1) * EMOTE_ROW_H)
+            row.Size = UDim2.new(1, -12, 0, 56)
+            emoteRows[i] = row
+        end
     end
 end
 local function queueRenderEmbeddedEmotes()
@@ -16279,6 +16297,9 @@ refreshEmbeddedEmotes = function()
     local request = emoteRefreshRequest
     local q = string.lower(emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
     emoteMatches = {}
+    -- A new search remaps index -> emote, so every cached row is stale. Rows are only reused while
+    -- the match list is being APPENDED to during the scan below, which leaves earlier indices alone.
+    clearRenderedEmotes()
     emoteScroll.CanvasPosition = Vector2.zero
     renderEmbeddedEmoteWindow()
     emoteStatus.Text = "Scanning emotes: 0 / " .. tostring(#emoteCatalog)
