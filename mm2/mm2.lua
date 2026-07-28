@@ -14539,13 +14539,19 @@ do
     end
 
     local function registerPlayerSubTabSection(section, tabName)
+        local card = section and section.Parent or section
+        local entry = { section = section, card = card }
         if tabName == "Animations" then
-            table.insert(PlayerTabs.animSections, section)
+            table.insert(PlayerTabs.animSections, entry)
         elseif tabName == "Emotes" then
-            table.insert(PlayerTabs.emoteSections, section)
+            table.insert(PlayerTabs.emoteSections, entry)
         end
         section:SetAttribute("PlayerSubTab", tabName)
         section:SetAttribute("ForceFullWidth", true)
+        if card and card ~= section then
+            card:SetAttribute("PlayerSubTab", tabName)
+            card:SetAttribute("ForceFullWidth", true)
+        end
         return section
     end
 
@@ -14553,13 +14559,22 @@ do
         local isAnim = PlayerTabs.active == "Animations"
         styleSubTabActive(PlayerTabs.animBtn, PlayerTabs.animStroke, isAnim)
         styleSubTabActive(PlayerTabs.emotesBtn, PlayerTabs.emotesStroke, not isAnim)
-        for _, sec in ipairs(PlayerTabs.animSections) do
-            if sec and sec.Parent then sec.Visible = isAnim end
+        for _, entry in ipairs(PlayerTabs.animSections) do
+            local sec = entry.section
+            local card = entry.card or (sec and sec.Parent)
+            if card then card.Visible = isAnim end
+            if sec then sec.Visible = isAnim end
         end
-        for _, sec in ipairs(PlayerTabs.emoteSections) do
-            if sec and sec.Parent then sec.Visible = not isAnim end
+        for _, entry in ipairs(PlayerTabs.emoteSections) do
+            local sec = entry.section
+            local card = entry.card or (sec and sec.Parent)
+            if card then card.Visible = not isAnim end
+            if sec then sec.Visible = not isAnim end
         end
         if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+        task.defer(function()
+            if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+        end)
     end
 
     S._UpdatePlayerSubtabs = updatePlayerSubTabs
