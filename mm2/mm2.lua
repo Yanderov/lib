@@ -11747,7 +11747,12 @@ local function loadConfig(name)
     if type(updateFullBright) == "function" then pcall(updateFullBright) end
     if type(applyTheme) == "function" then pcall(applyTheme) end
     if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
-    if type(S._ApplySelectedKnifeEffect) == "function" then pcall(S._ApplySelectedKnifeEffect, true) end
+    -- Spawned for the same reason as the catalog refresh: this walks Database.Sync, which means
+    -- requiring a game module, and doing that on the restore thread costs that thread its ability
+    -- to write to the hub's GUI for everything that follows.
+    if type(S._ApplySelectedKnifeEffect) == "function" then
+        task.spawn(function() pcall(S._ApplySelectedKnifeEffect, true) end)
+    end
     applyingConfig = false
     configLoadedSuccessfully = true
     if name ~= "_autoload" then pcall(writeAutoConfig) end
