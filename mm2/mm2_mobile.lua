@@ -1409,13 +1409,13 @@ local FOV_COLORS = {
 -- lives here, so layout code stays ONE path instead of two parallel UIs. Touch
 -- targets follow the 44px minimum.
 local M = MOBILE and {
-    rowH = 38, rowFont = 13, trackW = 46, trackH = 26, knobShell = 22, knob = 16,
-    sliderH = 54, barH = 8, grab = 17, actionH = 38,
-    cycleW = 118, cycleH = 28, titleH = 78, navH = 54, navItemW = 76,
-    -- Mobile navigation is a LEFT ICON RAIL, not a bottom strip: the compact
-    -- panel is short, so vertical space is the scarce axis and a bottom bar
-    -- would eat it.  railItemH keeps each target above the 44px touch minimum.
-    railW = 62, railItemH = 48,
+    rowH = 42, rowFont = 13, trackW = 50, trackH = 28, knobShell = 24, knob = 18,
+    sliderH = 60, barH = 9, grab = 18, actionH = 42,
+    cycleW = 132, cycleH = 32, titleH = 94, navH = 68, navItemW = 74,
+    -- Mobile navigation is now a bottom icon dock. Full-height content gets the
+    -- whole width, while the dock stays thumb-friendly and horizontally scrolls
+    -- when every tab is present.
+    railW = 0, railItemH = 56,
     badgeGap = 64, cycleLabelGap = 134,
 } or {
     -- These are the exact numbers the desktop build has always used; changing
@@ -1432,8 +1432,8 @@ local viewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSi
 -- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
 -- stay visible and playable around it.  relayout() re-proportions this per
 -- orientation immediately; these are just the first-frame values.
-local WW = MOBILE and math.floor(math.clamp(viewport.X * 0.86, 300, 540)) or math.max(560, math.min(980, math.floor(viewport.X - 36)))
-local WH = MOBILE and math.floor(math.clamp(viewport.Y * 0.56, 260, 430)) or math.max(430, math.min(640, math.floor(viewport.Y - 56)))
+local WW = MOBILE and math.floor(math.clamp(viewport.X - 12, 320, 760)) or math.max(560, math.min(980, math.floor(viewport.X - 36)))
+local WH = MOBILE and math.floor(math.clamp(viewport.Y - 18, 420, 860)) or math.max(430, math.min(640, math.floor(viewport.Y - 56)))
 local expandedSize = UDim2.fromOffset(WW, WH)
 Main = Instance.new("ImageLabel")
 Main.ScaleType = Enum.ScaleType.Crop
@@ -1443,13 +1443,13 @@ Main.Visible = true
 Main.Parent = SG
 Main.Active = true
 Main.BackgroundColor3 = T.BG; pcall(function() Main:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
-Main.BackgroundTransparency = math.clamp(tonumber(S.GuiTransparency) or 0.15, 0, 0.85)
+Main.BackgroundTransparency = MOBILE and math.clamp(tonumber(S.GuiTransparency) or 0.08, 0, 0.85) or math.clamp(tonumber(S.GuiTransparency) or 0.15, 0, 0.85)
 Main.BorderSizePixel = 0
 Main.Position = UDim2.new(0.5, -WW/2, 0.5, -WH/2)
 Main.Size = expandedSize
 Main.ClipsDescendants = true
-Corner(Main, 12)
-Stroke(Main, T.Bd2, 1, 0.15)
+Corner(Main, MOBILE and 18 or 12)
+Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
 -- Mobile shows/hides the window as a droplet that is swallowed by the Dynamic
 -- Island and spat back out of it; desktop keeps the plain instant toggle.
 -- Everything that opens or closes the menu goes through here so the animation
@@ -1486,6 +1486,25 @@ local function setMenuVisible(v)
     end
 end
 S._SetMenuVisible = setMenuVisible
+
+if MOBILE then
+    local function applyMobileViewport()
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize
+        if not vp or vp.X <= 0 or vp.Y <= 0 then return end
+        local w = math.floor(math.clamp(vp.X - 12, 320, 760))
+        local h = math.floor(math.clamp(vp.Y - 18, 420, 860))
+        expandedSize = UDim2.fromOffset(w, h)
+        Main.Size = expandedSize
+        if not Main.Visible or not S._menuHome then
+            Main.Position = UDim2.new(0.5, -w / 2, 0.5, -h / 2)
+        end
+        if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+    end
+    local mobileCamera = workspace.CurrentCamera
+    if mobileCamera then tc(mobileCamera:GetPropertyChangedSignal("ViewportSize"):Connect(applyMobileViewport)) end
+    task.defer(applyMobileViewport)
+end
 
 -- Connect the menu key as soon as the root window exists.  Later feature setup
 -- must not be able to leave an already-created GUI without a working toggle.
@@ -1552,8 +1571,8 @@ Corner(TIcon, 4)
 local TTitle = Instance.new("TextLabel")
 TTitle.Parent = TBar
 TTitle.BackgroundTransparency = 1
-TTitle.Position = MOBILE and UDim2.new(0, 30, 0, 12) or UDim2.new(0, 30, 0, 0)
-TTitle.Size = MOBILE and UDim2.new(0, 120, 0, 28) or UDim2.new(0, 80, 1, 0)
+TTitle.Position = MOBILE and UDim2.new(0, 30, 0, 10) or UDim2.new(0, 30, 0, 0)
+TTitle.Size = MOBILE and UDim2.new(0, 150, 0, 30) or UDim2.new(0, 80, 1, 0)
 TTitle.Font = FB
 TTitle.Text = "Inertia"
 TTitle.TextColor3 = T.White; pcall(function() TTitle:SetAttribute("ThemeColorRole_TextColor3", "White") end)
@@ -1563,8 +1582,8 @@ local function mkWinBtn(txt, xOff)
     local b = Instance.new("TextButton")
     b.Parent = TBar
     b.AnchorPoint = Vector2.new(1, 0.5)
-    b.Position = MOBILE and UDim2.new(1, xOff, 0, 26) or UDim2.new(1, xOff, 0.5, 0)
-    b.Size = MOBILE and UDim2.new(0, 34, 0, 34) or UDim2.new(0, 26, 0, 22)
+    b.Position = MOBILE and UDim2.new(1, xOff, 0, 27) or UDim2.new(1, xOff, 0.5, 0)
+    b.Size = MOBILE and UDim2.new(0, 38, 0, 38) or UDim2.new(0, 26, 0, 22)
     b.BackgroundColor3 = T.Elev; pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
     b.BorderSizePixel = 0
     b.Font = FB
@@ -1707,19 +1726,19 @@ SearchBox.Parent = TBar
 -- title and two buttons is unusable with a thumb, and a phone header has the
 -- vertical room a 40px desktop bar does not.
 SearchBox.AnchorPoint = MOBILE and Vector2.new(0, 0) or Vector2.new(1, 0.5)
-SearchBox.Position = MOBILE and UDim2.new(0, 16, 0, 46) or UDim2.new(1, -76, 0.5, 0)
-SearchBox.Size = MOBILE and UDim2.new(1, -32, 0, 28) or UDim2.new(0, 190, 0, 24)
+SearchBox.Position = MOBILE and UDim2.new(0, 14, 0, 48) or UDim2.new(1, -76, 0.5, 0)
+SearchBox.Size = MOBILE and UDim2.new(1, -28, 0, 38) or UDim2.new(0, 190, 0, 24)
 SearchBox.BackgroundColor3 = T.Elev; pcall(function() SearchBox:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
 SearchBox.BorderSizePixel = 0
 SearchBox.Font = F
-SearchBox.TextSize = 13
+SearchBox.TextSize = MOBILE and 14 or 13
 SearchBox.TextColor3 = T.Tx; pcall(function() SearchBox:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
-SearchBox.PlaceholderText = "Search"
+SearchBox.PlaceholderText = MOBILE and "Search every function..." or "Search"
 SearchBox.PlaceholderColor3 = T.Tx4
 SearchBox.Text = ""
 SearchBox.ClearTextOnFocus = false
 SearchBox.TextXAlignment = Enum.TextXAlignment.Left
-Corner(SearchBox, 6)
+Corner(SearchBox, MOBILE and 12 or 6)
 do
     -- Search field polish: the stroke lights up while the box is focused (so it reads as an active
     -- input), the text is padded away from the clear button, and a small × appears only while a
@@ -1739,8 +1758,8 @@ do
     clearBtn.Name = "SearchClear"
     clearBtn.Parent = TBar
     clearBtn.AnchorPoint = MOBILE and Vector2.new(1, 0) or Vector2.new(1, 0.5)
-    clearBtn.Position = MOBILE and UDim2.new(1, -24, 0, 50) or UDim2.new(1, -79, 0.5, 0)
-    clearBtn.Size = MOBILE and UDim2.new(0, 20, 0, 20) or UDim2.new(0, 18, 0, 18)
+    clearBtn.Position = MOBILE and UDim2.new(1, -24, 0, 57) or UDim2.new(1, -79, 0.5, 0)
+    clearBtn.Size = MOBILE and UDim2.new(0, 24, 0, 24) or UDim2.new(0, 18, 0, 18)
     clearBtn.BackgroundTransparency = 1
     clearBtn.BorderSizePixel = 0
     clearBtn.AutoButtonColor = false
@@ -1833,11 +1852,11 @@ SB.Parent = Main
 SB.BackgroundColor3 = T.Sidebar; pcall(function() SB:SetAttribute("ThemeColorRole_BackgroundColor3", "Sidebar") end)
 SB.BorderSizePixel = 0
 if MOBILE then
-    SB.Position = UDim2.new(0, 6, 0, M.titleH)
-    SB.Size = UDim2.new(0, M.railW, 1, -(M.titleH + 8))
+    SB.Position = UDim2.new(0, 8, 1, -(M.navH + 8))
+    SB.Size = UDim2.new(1, -16, 0, M.navH)
     SB.CanvasSize = UDim2.new()
-    SB.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    SB.ScrollingDirection = Enum.ScrollingDirection.Y
+    SB.AutomaticCanvasSize = Enum.AutomaticSize.X
+    SB.ScrollingDirection = Enum.ScrollingDirection.X
     SB.ScrollBarThickness = 0
 else
     SB.Position = UDim2.new(0, 8, 0, 110)
@@ -1859,10 +1878,10 @@ SBLine.Visible = not MOBILE
 local SBLayout = Instance.new("UIListLayout")
 SBLayout.Parent = SB
 SBLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SBLayout.FillDirection = Enum.FillDirection.Vertical
+SBLayout.FillDirection = MOBILE and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 SBLayout.HorizontalAlignment = MOBILE and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Left
 -- Centering is for the mobile strip only; the desktop list must stay top-aligned.
-SBLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+SBLayout.VerticalAlignment = MOBILE and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top
 SBLayout.Padding = UDim.new(0, MOBILE and 6 or 3)
 Pad(SB, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
 
@@ -2438,8 +2457,8 @@ ContentArea.BackgroundTransparency = 1
 ContentArea.BorderSizePixel = 0
 -- Mobile takes the full width (no sidebar to clear) and reserves the bottom tab
 -- bar instead of the desktop status strip.
-ContentArea.Position = MOBILE and UDim2.new(0, M.railW + 12, 0, M.titleH) or UDim2.new(0, 146, 0, 41)
-ContentArea.Size = MOBILE and UDim2.new(1, -(M.railW + 18), 1, -(M.titleH + 8)) or UDim2.new(1, -152, 1, -67)
+ContentArea.Position = MOBILE and UDim2.new(0, 8, 0, M.titleH) or UDim2.new(0, 146, 0, 41)
+ContentArea.Size = MOBILE and UDim2.new(1, -16, 1, -(M.titleH + M.navH + 18)) or UDim2.new(1, -152, 1, -67)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 ContentArea.ScrollBarThickness = 0
@@ -2761,7 +2780,7 @@ local function mkSBItem(name, iconKind, page, order)
     -- Offset height, not Scale: inside a ScrollingFrame a Scale height measures
     -- the frame, not the padded content box, so a Scale=1 pill would overflow
     -- the tab bar by exactly the padding and drag the canvas with it.
-    btn.Size = MOBILE and UDim2.new(0, M.railW - 12, 0, M.railItemH) or UDim2.new(1, 0, 0, 32)
+    btn.Size = MOBILE and UDim2.new(0, M.navItemW, 0, M.railItemH) or UDim2.new(1, 0, 0, 32)
     btn.AutoButtonColor = false
     btn.BackgroundTransparency = 1
     btn.BorderSizePixel = 0
@@ -2788,11 +2807,11 @@ local function mkSBItem(name, iconKind, page, order)
     local navIcons = S._MakeNavIcon ~= nil
     local icon = S._MakeNavIcon and S._MakeNavIcon(btn, iconKind) or nil
     if icon and MOBILE then
-        -- Rail item: glyph centred near the top, caption underneath it.
+        -- Dock item: glyph centred near the top, caption underneath it.
         icon.slot.AnchorPoint = Vector2.new(0.5, 0)
-        icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
-        icon.slot.Size = UDim2.fromOffset(24, 24)
-        icon.image.Size = UDim2.fromOffset(18, 18)
+        icon.slot.Position = UDim2.new(0.5, 0, 0, 6)
+        icon.slot.Size = UDim2.fromOffset(26, 26)
+        icon.image.Size = UDim2.fromOffset(19, 19)
     end
     local label = Instance.new("TextLabel")
     label.Parent = btn
@@ -2800,9 +2819,9 @@ local function mkSBItem(name, iconKind, page, order)
     if MOBILE then
         -- getcustomasset is missing on some executors, so the icon can be nil; the
         -- caption then owns the whole pill instead of leaving a gap.
-        label.Position = navIcons and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
-        label.Size = navIcons and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
-        label.TextSize = navIcons and 9 or 11
+        label.Position = navIcons and UDim2.new(0, 2, 0, 34) or UDim2.new(0, 2, 0, 0)
+        label.Size = navIcons and UDim2.new(1, -4, 0, 17) or UDim2.new(1, -4, 1, 0)
+        label.TextSize = navIcons and 10 or 11
     else
         label.Position = UDim2.new(0, navIcons and 36 or 14, 0, 0)
         -- Reserve only what the corner markers need. At -54 the caption ended exactly
@@ -3035,7 +3054,8 @@ do
         frame.Name = "Float"
         frame.Parent = FloatHost
         frame.AnchorPoint = Vector2.new(0.5, 0.5)
-        frame.Position = UDim2.fromScale(math.clamp(saved.x, 0.03, 0.97), math.clamp(saved.y, 0.05, 0.95))
+        frame.Position = MOBILE and UDim2.fromScale(saved.x, saved.y)
+            or UDim2.fromScale(math.clamp(saved.x, 0.03, 0.97), math.clamp(saved.y, 0.05, 0.95))
         frame.Size = UDim2.fromOffset(size, size)
         frame.BackgroundColor3 = T.Card
         frame.BackgroundTransparency = 0.08
@@ -3113,8 +3133,8 @@ do
                 if vp and vp.X > 0 and vp.Y > 0 then
                     local centre = frame.AbsolutePosition + frame.AbsoluteSize / 2
                     FloatPos[id] = {
-                        x = math.clamp(centre.X / vp.X, 0.03, 0.97),
-                        y = math.clamp(centre.Y / vp.Y, 0.05, 0.95),
+                        x = MOBILE and (centre.X / vp.X) or math.clamp(centre.X / vp.X, 0.03, 0.97),
+                        y = MOBILE and (centre.Y / vp.Y) or math.clamp(centre.Y / vp.Y, 0.05, 0.95),
                     }
                     pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
                 end
@@ -3142,10 +3162,10 @@ do
                     local camera = workspace.CurrentCamera
                     local vp = camera and camera.ViewportSize
                     if not vp or vp.X <= 0 or vp.Y <= 0 then return end
-                    frame.Position = UDim2.fromScale(
-                        math.clamp((startCentre.X + delta.X) / vp.X, 0.03, 0.97),
-                        math.clamp((startCentre.Y + delta.Y) / vp.Y, 0.05, 0.95)
-                    )
+                    local nx = (startCentre.X + delta.X) / vp.X
+                    local ny = (startCentre.Y + delta.Y) / vp.Y
+                    frame.Position = MOBILE and UDim2.fromScale(nx, ny)
+                        or UDim2.fromScale(math.clamp(nx, 0.03, 0.97), math.clamp(ny, 0.05, 0.95))
                 end
             end)
             endConn = input.Changed:Connect(function()
@@ -8493,7 +8513,7 @@ local function mkWatermark()
             return UDim2.new(0.5, 0, 0, 34)
         end
         local centre = f.AbsolutePosition + f.AbsoluteSize / 2
-        return UDim2.fromScale(math.clamp(centre.X / vp.X, 0, 1), math.clamp(centre.Y / vp.Y, 0, 1))
+        return UDim2.fromScale(centre.X / vp.X, centre.Y / vp.Y)
     end
     -- Keep the island inside a narrow (portrait) phone screen: MobileFit is
     -- read by _SetHUDVisible and the gulp below every time they animate it.
@@ -11213,12 +11233,11 @@ do
         if not vp or vp.X < 1 or vp.Y < 1 then return end
         local portrait = vp.Y >= vp.X
         if MOBILE then
-            -- Compact floating panel.  Landscape (how most phones are held in
-            -- Roblox) stays deliberately narrow so the play area beside it is
-            -- usable; portrait can afford more width.  The pixel clamps are what
-            -- stop a tablet from getting a panel that covers the whole screen.
-            WW = math.floor(math.clamp(vp.X * (portrait and 0.86 or 0.54), 300, 540))
-            WH = math.floor(math.clamp(vp.Y * (portrait and 0.56 or 0.78), 260, 430))
+            -- Full mobile sheet: every tab/subtab/function must be reachable on
+            -- touch, so the phone build uses nearly the whole safe viewport and
+            -- leaves gameplay access to the floating buttons/dynamic island.
+            WW = math.floor(math.clamp(vp.X - 12, 320, portrait and 760 or 900))
+            WH = math.floor(math.clamp(vp.Y - 18, 420, portrait and 860 or 620))
         else
             WW = math.max(560, math.min(980, math.floor(vp.X - 36)))
             WH = math.max(430, math.min(640, math.floor(vp.Y - 56)))
@@ -11227,8 +11246,8 @@ do
         if Main.Visible and not minimized then Main.Size = expandedSize end
         if MOBILE and S._SettingsModal then
             S._SettingsModal.Size = UDim2.fromOffset(
-                math.floor(math.min(WW - 24, 380)),
-                math.floor(math.min(WH - 40, 520))
+                math.floor(math.min(WW - 20, 440)),
+                math.floor(math.min(WH - 28, 640))
             )
         end
     end
@@ -15190,12 +15209,12 @@ if MOBILE and Pages.Buttons then
     -- The menu button drives the window itself rather than a game feature, and
     -- it is the one button that cannot be removed: deleting it on a device with
     -- no keyboard would leave no way to reopen the menu at all.
-    -- S._floatRegisterEntry({
---         cfgId = "ui:menu",
---         label = "Menu",
---         isToggle = true,
---         trigger = function() S._SetMenuVisible(not Main.Visible) end,
---     })
+    S._floatRegisterEntry({
+        cfgId = "ui:menu",
+        label = "Menu",
+        isToggle = true,
+        trigger = function() S._SetMenuVisible(not Main.Visible) end,
+    })
 
     local secFloat = mkSection(Pages.Buttons, "Floating Buttons", 1)
 
@@ -15211,8 +15230,28 @@ if MOBILE and Pages.Buttons then
     note.TextWrapped = true
     note.Text = "Вынеси функцию на экран — кнопку можно перетащить пальцем, позиция сохраняется."
 
+    local filterBox = Instance.new("TextBox")
+    filterBox.Name = "FloatingButtonSearch"
+    filterBox.Parent = secFloat
+    filterBox.LayoutOrder = 2
+    filterBox.Size = UDim2.new(1, 0, 0, 38)
+    filterBox.BackgroundColor3 = T.Elev; pcall(function() filterBox:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    filterBox.BorderSizePixel = 0
+    filterBox.Font = F
+    filterBox.TextSize = 14
+    filterBox.TextColor3 = T.Tx; pcall(function() filterBox:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+    filterBox.PlaceholderText = "Search buttons..."
+    filterBox.PlaceholderColor3 = T.Tx4
+    filterBox.Text = ""
+    filterBox.ClearTextOnFocus = false
+    filterBox.TextXAlignment = Enum.TextXAlignment.Left
+    Corner(filterBox, 11)
+    Stroke(filterBox, T.Bd2, 1, 0.38)
+    Pad(filterBox, 0, 0, 12, 12)
+
     local paints = {}
     local order = {}
+    local floatRows = {}
     for _, entry in ipairs(AllBinds) do
         if type(entry.cfgId) == "string" then
             table.insert(order, { id = entry.cfgId, label = tostring(entry.label or entry.cfgId), entry = entry })
@@ -15248,7 +15287,7 @@ if MOBILE and Pages.Buttons then
         local row = Instance.new("Frame")
         row.Name = "Float_" .. tostring(index)
         row.Parent = secFloat
-        row.LayoutOrder = index + 1
+        row.LayoutOrder = index + 2
         row.Size = UDim2.new(1, 0, 0, M.rowH)
         row.BackgroundTransparency = 1
 
@@ -15287,12 +15326,21 @@ if MOBILE and Pages.Buttons then
         end)
         paint()
         table.insert(UIRegistry, { label = string.lower(item.label), row = row, card = secFloat.Parent })
+        table.insert(floatRows, { row = row, label = string.lower(item.label .. " " .. item.id) })
     end
+
+    filterBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local q = string.lower(filterBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        for _, item in ipairs(floatRows) do
+            item.row.Visible = (q == "" or string.find(item.label, q, 1, true) ~= nil)
+        end
+        if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+    end)
 
     mkAction(secFloat, "Remove All Buttons", function()
         if S._floatClearAll then S._floatClearAll() end
         Notify("Buttons", "All floating buttons removed", 2)
-    end, #order + 2)
+    end, #order + 3)
 
     S._refreshFloatTab = function()
         for _, paint in pairs(paints) do pcall(paint) end
@@ -15319,14 +15367,19 @@ if MOBILE then
                 end
             end
             local grid = bar:FindFirstChildOfClass("UIGridLayout")
+            local list = bar:FindFirstChildOfClass("UIListLayout")
             local height
             if grid then
                 local perRow = math.max(1, grid.FillDirectionMaxCells)
                 local rows = math.max(1, math.ceil(buttons / perRow))
-                grid.CellSize = UDim2.new(grid.CellSize.X.Scale, grid.CellSize.X.Offset, 0, 34)
-                height = rows * 34 + (rows - 1) * grid.CellPadding.Y.Offset
+                grid.CellSize = UDim2.new(grid.CellSize.X.Scale, grid.CellSize.X.Offset, 0, 40)
+                grid.CellPadding = UDim2.new(grid.CellPadding.X.Scale, grid.CellPadding.X.Offset, 0, 6)
+                height = rows * 40 + (rows - 1) * grid.CellPadding.Y.Offset
+            elseif list then
+                list.Padding = UDim.new(0, 6)
+                height = 40
             else
-                height = 42
+                height = 44
             end
             bar.Size = UDim2.new(1, 0, 0, height)
             bar:SetAttribute("LayoutHeight", height)
