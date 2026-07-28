@@ -9691,6 +9691,18 @@ do
         if hl then pcall(function() hl:Destroy() end); hl = nil end
     end
 
+    local HAND_SHADER_MODES = {
+        Both = { highlight = true, fill = true, outline = true },
+        Fill = { highlight = true, fill = true, outline = false },
+        Outline = { highlight = true, fill = false, outline = true },
+        Mirror = { material = Enum.Material.Glass, reflectance = 1, transparency = 0.18, highlight = true, fill = false, outline = true },
+        Bloom = { material = Enum.Material.Neon, useFillTransparency = true, highlight = true, fill = true, outline = true },
+        Maze = { material = Enum.Material.ForceField, useFillTransparency = true, highlight = true, fill = true, outline = true },
+        Crystal = { material = Enum.Material.Glass, reflectance = 0.45, transparency = 0.48, highlight = true, fill = true, outline = true },
+        Chrome = { material = Enum.Material.Metal, reflectance = 0.85, transparency = 0, highlight = true, fill = false, outline = true },
+        Plasma = { material = Enum.Material.Neon, useFillTransparency = true, pulse = true, highlight = true, fill = true, outline = true },
+    }
+
     local origMaterials = {}
     local origColors = {}
     local origReflectances = {}
@@ -9711,6 +9723,26 @@ do
         table.clear(origColors)
         table.clear(origReflectances)
         table.clear(origTransparencies)
+    end
+
+    local function eachShaderPart(root, cb)
+        if not root then return end
+        if root:IsA("BasePart") then
+            cb(root)
+        end
+        for _, part in ipairs(root:GetDescendants()) do
+            if part:IsA("BasePart") then
+                cb(part)
+            end
+        end
+    end
+
+    local function rememberPart(part)
+        if origMaterials[part] then return end
+        origMaterials[part] = part.Material
+        origColors[part] = part.Color
+        origReflectances[part] = part.Reflectance
+        origTransparencies[part] = part.Transparency
     end
 
     local lastAdornee = nil
@@ -9740,6 +9772,7 @@ do
 
                 local shaderOn = S.HandShader and hlEnabled
                 local shaderType = S.HandShaderType
+                local cfg = HAND_SHADER_MODES[shaderType] or HAND_SHADER_MODES.Both
 
                 if shaderOn ~= lastShaderOn or adornee ~= lastAdornee or shaderType ~= lastType then
                     restoreHandMaterials()
@@ -9750,9 +9783,6 @@ do
                 end
 
                 if shaderOn and adornee then
-                    local isMaterialShader = (shaderType == "Mirror" or shaderType == "Bloom" or shaderType == "Maze"
-                        or shaderType == "Crystal" or shaderType == "Chrome" or shaderType == "Plasma")
-
                     local col
                     if S.HandRainbow then
                         hue = (hue + 0.02) % 1
@@ -9760,54 +9790,29 @@ do
                     else
                         col = (S.HandColor == "Black") and Color3.fromRGB(0, 0, 0) or (FOV_COLORS[S.HandColor] or Color3.fromRGB(0, 255, 255))
                     end
+                    local fillOpacity = math.clamp((tonumber(S.HandFill) or 60) / 100, 0, 1)
+                    local fillTransparency = math.clamp(1 - fillOpacity, 0, 1)
+                    local materialCol = col
+                    if cfg.pulse then
+                        local h, s, v = col:ToHSV()
+                        materialCol = Color3.fromHSV(h, s, math.clamp(v * (0.62 + 0.38 * math.sin(tick() * 5)), 0, 1))
+                    end
 
-                    if isMaterialShader then
-                        if hl then hl.Enabled = false end
-                        for _, part in ipairs(adornee:GetDescendants()) do
-                            if part:IsA("BasePart") then
-                                if not origMaterials[part] then
-                                    origMaterials[part] = part.Material
-                                    origColors[part] = part.Color
-                                    origReflectances[part] = part.Reflectance
-                                    origTransparencies[part] = part.Transparency
-                                end
-
-                                local partCol = col
-                                if shaderType == "Mirror" then
-                                    part.Material = Enum.Material.Glass
-                                    part.Reflectance = 1
-                                    part.Transparency = 0.2
-                                elseif shaderType == "Bloom" then
-                                    part.Material = Enum.Material.Neon
-                                    part.Reflectance = 0
-                                    part.Transparency = 1 - (S.HandFill or 60) / 100
-                                elseif shaderType == "Maze" then
-                                    part.Material = Enum.Material.ForceField
-                                    part.Reflectance = 0
-                                    part.Transparency = 1 - (S.HandFill or 60) / 100
-                                elseif shaderType == "Crystal" then
-                                    -- Translucent gemstone: glassy, lightly reflective, see-through.
-                                    part.Material = Enum.Material.Glass
-                                    part.Reflectance = 0.4
-                                    part.Transparency = 0.55
-                                elseif shaderType == "Chrome" then
-                                    -- Polished solid metal, mirror-like but not see-through.
-                                    part.Material = Enum.Material.Metal
-                                    part.Reflectance = 0.9
-                                    part.Transparency = 0
-                                elseif shaderType == "Plasma" then
-                                    -- Pulsing neon energy: brightness breathes over time.
-                                    part.Material = Enum.Material.Neon
-                                    part.Reflectance = 0
-                                    part.Transparency = 1 - (S.HandFill or 60) / 100
-                                    local h, s, v = col:ToHSV()
-                                    local pulse = 0.65 + 0.35 * math.sin(tick() * 4)
-                                    partCol = Color3.fromHSV(h, s, math.clamp(v * pulse, 0, 1))
-                                end
-                                part.Color = partCol
+                    if cfg.material then
+                        eachShaderPart(adornee, function(part)
+                            rememberPart(part)
+                            part.Material = cfg.material
+                            part.Color = materialCol
+                            part.Reflectance = cfg.reflectance or 0
+                            if cfg.useFillTransparency then
+                                part.Transparency = math.clamp(fillTransparency, 0, 0.85)
+                            else
+                                part.Transparency = cfg.transparency or 0
                             end
-                        end
-                    else
+                        end)
+                    end
+
+                    if cfg.highlight then
                         if not (hl and hl.Parent) then
                             hl = Instance.new("Highlight")
                             hl.Name = "MM2_HandShader"
@@ -9818,8 +9823,10 @@ do
                         hl.Enabled = true
                         hl.FillColor = col
                         hl.OutlineColor = col
-                        hl.FillTransparency = (shaderType == "Outline") and 1 or (1 - (S.HandFill or 60) / 100)
-                        hl.OutlineTransparency = (shaderType == "Fill") and 1 or 0
+                        hl.FillTransparency = cfg.fill and fillTransparency or 1
+                        hl.OutlineTransparency = cfg.outline and 0 or 1
+                    elseif hl then
+                        hl.Enabled = false
                     end
                 else
                     if hl then hl.Enabled = false end
