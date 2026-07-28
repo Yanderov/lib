@@ -11209,7 +11209,7 @@ local function loadConfig(name)
         local hasValue, value = false, nil
         if type(dat.controls) == "table" and dat.controls[c.id] ~= nil then
             hasValue, value = true, dat.controls[c.id]
-        elseif not dat.controls and dat.S then
+        elseif dat.S then
             value = _cfgValueFromState(c.id)
             hasValue = value ~= nil
         end
