@@ -5326,6 +5326,19 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     -- own shipped cubemap: six genuinely different faces, and being a client texture it can never
     -- fail to load or be moderated away.
     skyNames[2] = "Roblox Classic (seamless)"
+    -- Asset-ID cubemaps, appended after the GitHub list. Six genuinely different faces each -- the
+    -- point of the exercise, since most published "skyboxes" are one image repeated on all six and
+    -- render as a box with seams. Verified live by applying it and looking at the sky, because
+    -- ContentProvider/IsLoaded cannot be trusted for this.
+    local SKY_LIB = {
+        { Name = "Sunset Clouds",
+          Bk = 92464172, Dn = 92464250, Ft = 92464217,
+          Lf = 92464234, Rt = 92464189, Up = 92464157 },
+    }
+    local skyLibBase = #skyNames
+    for i, entry in ipairs(SKY_LIB) do
+        skyNames[skyLibBase + i] = entry.Name
+    end
     mkAction(secCustoms, "Choose Skybox", function()
         S._OpenOptionPicker("Skybox", skyNames, (S.SkyboxIndex or 0) + 1, function(pick)
             local lighting = game:GetService("Lighting")
@@ -5349,6 +5362,24 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                                             SkyboxLf = "lf", SkyboxRt = "rt", SkyboxUp = "up" }) do
                     sky[face] = "rbxasset://textures/sky/sky512_" .. suffix .. ".tex"
                 end
+                return
+            end
+            local libEntry = SKY_LIB[pick - skyLibBase]
+            if libEntry then
+                S.SkyboxIndex = pick - 1
+                local sky = lighting:FindFirstChild("CustomSkyboxUI")
+                if not sky then
+                    sky = Instance.new("Sky")
+                    sky.Name = "CustomSkyboxUI"
+                    sky.Parent = lighting
+                end
+                sky.SkyboxBk = "rbxassetid://" .. libEntry.Bk
+                sky.SkyboxDn = "rbxassetid://" .. libEntry.Dn
+                sky.SkyboxFt = "rbxassetid://" .. libEntry.Ft
+                sky.SkyboxLf = "rbxassetid://" .. libEntry.Lf
+                sky.SkyboxRt = "rbxassetid://" .. libEntry.Rt
+                sky.SkyboxUp = "rbxassetid://" .. libEntry.Up
+                Notify("Skybox", libEntry.Name .. " applied", 2)
                 return
             end
             S.SkyboxIndex = pick - 2
@@ -5390,9 +5421,40 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end, { previews = skyPreviews })
     end, 3)
 
+    -- Library sounds, on top of the 44 GitHub files. Every one of these was loaded on a live client
+    -- and kept only if it reported a TimeLength; ten other candidates came back with none (private
+    -- or moderated since) and were dropped. Nothing over ~3s is here: a gun sound fires per shot,
+    -- and a long clip just overlaps itself into noise.
+    local GUN_LIB = {
+        { "Gunshot", 6656835390 },
+        { "Revolver", 1674017283 },
+        { "Silenced Pistol", 168143115 },
+        { "Pistol Click", 130113322 },
+        { "Heavy Gun", 138084889 },
+        { "Grenade Launcher", 1981976520 },
+        { "Bruh", 5044897021 },
+        { "Vine Boom", 6308606116 },
+        { "Vine Boom Deep", 5153845714 },
+        { "Oof", 5943191430 },
+        { "Osu Hit", 7147454322 },
+        { "Level Up", 2686079706 },
+        { "Taco Bell", 5696182212 },
+        { "Za Warudo", 5679636294 },
+        { "DBZ Sword Hit", 232210146 },
+        { "Transformers", 183000311 },
+    }
     local gunSoundOptions = {"Game Default", "Use Equipped Skin Sound"}
+    for _, entry in ipairs(GUN_LIB) do
+        table.insert(gunSoundOptions, entry[1])
+    end
     for i = 1, #gunPaths do
         table.insert(gunSoundOptions, "Custom " .. i)
+    end
+    local function libSoundId(name)
+        for _, entry in ipairs(GUN_LIB) do
+            if entry[1] == name then return "rbxassetid://" .. entry[2] end
+        end
+        return nil
     end
 
     local function getEquippedSkinGunSound()
@@ -5422,6 +5484,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     -- Auditioning one of 44 sounds by clicking a cycle button 44 times was the complaint; the
     -- picker lists them all with a PLAY button so you can hear one without selecting it.
     local gunSoundRequest = 0
+    local function auditionSoundId(id)
+        if not id or id == "" then return end
+        local s = Instance.new("Sound")
+        s.SoundId = id
+        s.Volume = 1.5
+        s.Parent = SoundService
+        s:Play()
+        game:GetService("Debris"):AddItem(s, 5)
+    end
     local function auditionGunSound(index)
         local path = gunPaths[index]
         if not path then return end
@@ -5463,6 +5534,12 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 return
             end
 
+            local libId = libSoundId(v)
+            if libId then
+                S.CustomGunSoundId = libId
+                Notify("Gun Sound", v .. " selected", 2)
+                return
+            end
             local index = tonumber(v:match("^Custom (%d+)$"))
             local path = index and gunPaths[index]
             if not path then return end
@@ -5476,7 +5553,10 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end, {
             keepOpen = true,
             action = { label = "PLAY", fn = function(pick)
-                local index = tonumber(tostring(gunSoundOptions[pick]):match("^Custom (%d+)$"))
+                local name = tostring(gunSoundOptions[pick])
+                local libId = libSoundId(name)
+                if libId then auditionSoundId(libId) return end
+                local index = tonumber(name:match("^Custom (%d+)$"))
                 if index then auditionGunSound(index) end
             end },
         })
