@@ -1115,17 +1115,23 @@ local function Notify(title, msg, dur, style)
     if MOBILE then
         local camera = workspace.CurrentCamera
         local vp = camera and camera.ViewportSize
-        if vp then toastWidth = math.clamp(math.floor(vp.X - 28), 260, 360) end
+        -- Was clamp(vp.X - 28, 260, 360), i.e. a phone toast came out WIDER than the 240px desktop
+        -- one and ate a third of the screen. Take a fraction of the viewport instead and keep the
+        -- ceiling below the desktop width -- the screen is smaller, so the toast must be too.
+        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.30), 180, 260) end
     end
     local bodyTextSize = math.clamp(math.round((MOBILE and 10 or 12) * (S.TextSizeScale or 1)), 9, 16)
     local titleTextSize = math.clamp(math.round((MOBILE and 11 or 13) * (S.TextSizeScale or 1)), 10, 17)
     local bodyHeight = roleReveal and 52 or 19
     if not roleReveal then
         pcall(function()
+            -- Mobile used to allow a TALLER toast than desktop (118 vs 72) on a smaller screen,
+            -- which is backwards -- and the mobile text size is smaller anyway, so the extra room
+            -- was never needed. Cap it below the desktop figure instead.
             local measured = game:GetService("TextService"):GetTextSize(
-                bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 38, MOBILE and 160 or 96)
+                bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 38, MOBILE and 84 or 96)
             )
-            bodyHeight = math.clamp(math.ceil(measured.Y), 19, MOBILE and 118 or 72)
+            bodyHeight = math.clamp(math.ceil(measured.Y), 19, MOBILE and 60 or 72)
         end)
     end
     local finalHeight = roleReveal and 98 or (50 + bodyHeight)
@@ -1432,8 +1438,28 @@ local viewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSi
 -- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
 -- stay visible and playable around it.  relayout() re-proportions this per
 -- orientation immediately; these are just the first-frame values.
-local WW = MOBILE and math.floor(math.clamp(viewport.X - 12, 320, 760)) or math.max(560, math.min(980, math.floor(viewport.X - 36)))
-local WH = MOBILE and math.floor(math.clamp(viewport.Y - 18, 420, 860)) or math.max(430, math.min(640, math.floor(viewport.Y - 56)))
+-- Mobile is sized as a FRACTION of the viewport, then hard-capped to it. The previous form was
+-- `clamp(vp - margin, floor, ceiling)`, which on a phone resolves to the ceiling on width (a 760px
+-- panel on a ~900px screen) and, worse, to the 420px FLOOR on height -- taller than a landscape
+-- phone screen actually is, so the panel hung off the bottom. Fractions keep the compact floating
+-- panel the design intends, and the min() is the guarantee it can never exceed the screen.
+--
+-- Lives on S because three separate places size this window (first frame, applyMobileViewport, and
+-- relayout). They had drifted into three different formulas with contradicting comments -- one
+-- calling it a compact floating panel, another a full-screen sheet -- and whichever ran last won.
+S._MobilePanelSize = function(vpX, vpY)
+    local portrait = vpY >= vpX
+    local w = math.clamp(vpX * (portrait and 0.86 or 0.46), 300, 560)
+    local h = math.clamp(vpY * (portrait and 0.52 or 0.62), 240, portrait and 560 or 440)
+    return math.min(math.floor(w), math.floor(vpX) - 16), math.min(math.floor(h), math.floor(vpY) - 16)
+end
+local WW, WH
+if MOBILE then
+    WW, WH = S._MobilePanelSize(viewport.X, viewport.Y)
+else
+    WW = math.max(560, math.min(980, math.floor(viewport.X - 36)))
+    WH = math.max(430, math.min(640, math.floor(viewport.Y - 56)))
+end
 local expandedSize = UDim2.fromOffset(WW, WH)
 Main = Instance.new("ImageLabel")
 Main.ScaleType = Enum.ScaleType.Crop
@@ -1492,8 +1518,7 @@ if MOBILE then
         local cam = workspace.CurrentCamera
         local vp = cam and cam.ViewportSize
         if not vp or vp.X <= 0 or vp.Y <= 0 then return end
-        local w = math.floor(math.clamp(vp.X - 12, 320, 760))
-        local h = math.floor(math.clamp(vp.Y - 18, 420, 860))
+        local w, h = S._MobilePanelSize(vp.X, vp.Y)
         expandedSize = UDim2.fromOffset(w, h)
         Main.Size = expandedSize
         if not Main.Visible or not S._menuHome then
@@ -12439,13 +12464,11 @@ do
         local camera = workspace.CurrentCamera
         local vp = camera and camera.ViewportSize
         if not vp or vp.X < 1 or vp.Y < 1 then return end
-        local portrait = vp.Y >= vp.X
         if MOBILE then
-            -- Full mobile sheet: every tab/subtab/function must be reachable on
-            -- touch, so the phone build uses nearly the whole safe viewport and
-            -- leaves gameplay access to the floating buttons/dynamic island.
-            WW = math.floor(math.clamp(vp.X - 12, 320, portrait and 760 or 900))
-            WH = math.floor(math.clamp(vp.Y - 18, 420, portrait and 860 or 620))
+            -- One shared rule (see S._MobilePanelSize). This used to compute its own, larger size
+            -- and, running last, overrode the other two -- which is why the phone panel came out
+            -- near full-screen no matter what the build-time numbers said.
+            WW, WH = S._MobilePanelSize(vp.X, vp.Y)
         else
             WW = math.max(560, math.min(980, math.floor(vp.X - 36)))
             WH = math.max(430, math.min(640, math.floor(vp.Y - 56)))
