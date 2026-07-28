@@ -5150,8 +5150,10 @@ end, 6)
         end
         local function normalizeModel(model, data)
             data = data or {}
-            local target = tonumber(data.max) or 3.25
-            target = math.clamp(target, 2.4, 3.25)
+            -- Marketplace wing models have wildly different authored sizes. Keep a conservative
+            -- cap so a single oversized mesh cannot cover the whole character, especially on mobile.
+            local target = tonumber(data.max) or (MOBILE and 2.15 or 2.45)
+            target = math.clamp(target, MOBILE and 1.5 or 1.7, MOBILE and 2.35 or 2.55)
             pcall(function()
                 local _, size = model:GetBoundingBox()
                 local biggest = math.max(size.X, size.Y, size.Z)
@@ -5165,7 +5167,35 @@ end, 6)
             if not primary then return nil end
             model.PrimaryPart = primary
             normalizeModel(model, data)
-            model:PivotTo(root.CFrame * (offset or CFrame.new(0, 0, 0.75)))
+            -- Use one torso-relative anchor for every asset. The old per-asset Z offsets were
+            -- authored against unrelated pivots, which left some wings below or floating beside
+            -- the back. Preserve only any authored rotation and clamp the translation to the spine.
+            local authored = offset or CFrame.new(0, 0.12, 0.62)
+            local ox, oy, oz = authored:ToOrientation()
+            local op = authored.Position
+            local anchorOffset = CFrame.new(
+                0,
+                math.clamp(op.Y, 0.12, 0.24),
+                math.clamp(op.Z, 0.42, 0.62)
+            ) * CFrame.Angles(ox, oy, oz)
+            local target = root.CFrame * anchorOffset
+            model:PivotTo(target)
+
+            -- Correct asset pivots by aligning the model's actual bounds to the torso anchor.
+            -- This is translation-only, so the wing orientation chosen by the asset is preserved.
+            pcall(function()
+                local pivot = model:GetPivot()
+                local bounds = model:GetBoundingBox()
+                local delta = target.Position - bounds.Position
+                if delta.Magnitude > 0.001 then
+                    model:PivotTo(CFrame.fromMatrix(
+                        pivot.Position + delta,
+                        pivot.RightVector,
+                        pivot.UpVector,
+                        -pivot.LookVector
+                    ))
+                end
+            end)
             for _, part in ipairs(model:GetDescendants()) do
                 if part:IsA("BasePart") and part ~= primary then
                     pcall(function()
