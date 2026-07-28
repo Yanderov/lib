@@ -2574,7 +2574,6 @@ mkPage("Visuals")
 mkPage("Combat")
 mkPage("Motion")
 mkPage("Player")
-mkPage("Animations")
 mkPage("Misc")
 mkPage("Teleport")
 mkPage("Servers")
@@ -2898,12 +2897,11 @@ mkSBItem("Visuals", "eye", Pages.Visuals, 1)
 mkSBItem("Combat", "combat", Pages.Combat, 2)
 mkSBItem("Motion", "motion", Pages.Motion, 3)
 mkSBItem("Player", "player", Pages.Player, 4)
-mkSBItem("Animations", "motion", Pages.Animations, 5)
-mkSBItem("Misc", "misc", Pages.Misc, 6)
-mkSBItem("Teleport", "teleport", Pages.Teleport, 7)
-mkSBItem("Servers", "servers", Pages.Servers, 8)
-mkSBItem("Config", "misc", Pages.Config, 9)
-if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 10) end
+mkSBItem("Misc", "misc", Pages.Misc, 5)
+mkSBItem("Teleport", "teleport", Pages.Teleport, 6)
+mkSBItem("Servers", "servers", Pages.Servers, 7)
+mkSBItem("Config", "misc", Pages.Config, 8)
+if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9) end
 refreshSB()
 local BindReg = {}
 local PendingBind = nil
@@ -14083,7 +14081,63 @@ end
 
 -- ============ PLAYER TAB (Emotes + Animations, thumbnails + search) ============
 do
-    -- Removed Subtab bar (Emotes / Animations), keeping shared helpers below.
+    local PlayerTabs = { active = "Animations", animSections = {}, emoteSections = {} }
+    do
+        local bar = Instance.new("Frame")
+        bar.Name = "SubTabBar"
+        bar.LayoutOrder = 0
+        bar.BackgroundTransparency = 1
+        bar.Size = UDim2.new(1, 0, 0, 32)
+        bar:SetAttribute("LayoutHeight", 32)
+        bar.Parent = Pages.Player
+
+        local layout = Instance.new("UIListLayout")
+        layout.FillDirection = Enum.FillDirection.Horizontal
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 8)
+        layout.Parent = bar
+
+        PlayerTabs.animBtn = Instance.new("TextButton")
+        PlayerTabs.emotesBtn = Instance.new("TextButton")
+        PlayerTabs.animStroke = mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 1, 1 / 2, -4)
+        PlayerTabs.emotesStroke = mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 2, 1 / 2, -4)
+    end
+
+    local function registerPlayerSubTabSection(section, tabName)
+        if tabName == "Animations" then
+            table.insert(PlayerTabs.animSections, section)
+        elseif tabName == "Emotes" then
+            table.insert(PlayerTabs.emoteSections, section)
+        end
+        section:SetAttribute("PlayerSubTab", tabName)
+        return section
+    end
+
+    local function updatePlayerSubTabs()
+        local isAnim = PlayerTabs.active == "Animations"
+        styleSubTabActive(PlayerTabs.animBtn, PlayerTabs.animStroke, isAnim)
+        styleSubTabActive(PlayerTabs.emotesBtn, PlayerTabs.emotesStroke, not isAnim)
+        for _, sec in ipairs(PlayerTabs.animSections) do
+            if sec and sec.Parent then sec.Visible = isAnim end
+        end
+        for _, sec in ipairs(PlayerTabs.emoteSections) do
+            if sec and sec.Parent then sec.Visible = not isAnim end
+        end
+        if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+    end
+
+    S._UpdatePlayerSubtabs = updatePlayerSubTabs
+    PlayerTabs.animBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        PlayerTabs.active = "Animations"
+        updatePlayerSubTabs()
+    end)
+    PlayerTabs.emotesBtn.MouseButton1Click:Connect(function()
+        SFX.Click()
+        PlayerTabs.active = "Emotes"
+        updatePlayerSubTabs()
+    end)
+
     -- ---- shared helpers ----
     -- One clickable row: thumbnail (rbxthumb, no HTTP needed) + title. Used by both Emotes and the
     -- Animations catalog browse results.
@@ -14635,7 +14689,7 @@ do
 
 
 do
-local secEmotes = mkSection(Pages.Player, "Emotes", 1)
+local secEmotes = registerPlayerSubTabSection(mkSection(Pages.Player, "Emotes", 1), "Emotes")
 local EmoteHttpService = game:GetService("HttpService")
 local emoteCatalog = {
     { name = "Wave", id = 507770239 },
@@ -14668,9 +14722,25 @@ emoteStatus.TextSize = 12
 emoteStatus.TextColor3 = T.Tx3; pcall(function() emoteStatus:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
 emoteStatus.TextXAlignment = Enum.TextXAlignment.Left
 emoteStatus.TextWrapped = true
-emoteStatus.Text = "Built-in emotes. Search and tap Play; no separate 7yd7 popup."
+emoteStatus.Text = "Built-in emotes are ready. Tap Load All Emotes to load the full catalog inside Inertia."
 local emoteSearch = S._mkSearchBox(secEmotes, 2, "Search emotes...")
 local emoteScroll = S._mkListScroll(secEmotes, 3, MOBILE and 360 or 320)
+for _, child in ipairs(emoteScroll:GetChildren()) do
+    if child:IsA("UIListLayout") then child:Destroy() end
+end
+emoteScroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+local emoteMatches, emoteRenderQueued, emoteRefreshRequest = {}, false, 0
+local EMOTE_ROW_H = 60
+mkToggle(secEmotes, "Loop Emote", false, function(v)
+    S.LoopEmote = v
+    if currentEmoteTrack then
+        pcall(function() currentEmoteTrack.Looped = v == true end)
+        pcall(function()
+            currentEmoteTrack.Priority = v and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Action
+        end)
+    end
+    emoteStatus.Text = v and "Loop Emote enabled: movement can blend over the emote." or "Loop Emote disabled."
+end, 4)
 local function stopEmbeddedEmote()
     if currentEmoteTrack then pcall(function() currentEmoteTrack:Stop(0.15) end); currentEmoteTrack = nil end
     if currentEmoteAnim then pcall(function() currentEmoteAnim:Destroy() end); currentEmoteAnim = nil end
@@ -14699,44 +14769,83 @@ local function playEmbeddedEmote(item)
     end
     currentEmoteAnim = anim
     currentEmoteTrack = track
-    pcall(function() track.Priority = Enum.AnimationPriority.Action end)
-    pcall(function() track.Looped = true end)
+    pcall(function() track.Priority = S.LoopEmote and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Action end)
+    pcall(function() track.Looped = S.LoopEmote == true end)
     local played = pcall(function() track:Play(0.12, 1, tonumber(S.EmoteSpeed) or 1) end)
     emoteStatus.Text = played and ("Playing: " .. tostring(item.name or id)) or "Failed to play emote."
 end
-local function refreshEmbeddedEmotes()
+local function clearRenderedEmotes()
     for _, ch in ipairs(emoteScroll:GetChildren()) do
         if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
     end
-    local q = string.lower(emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    local shown, matches = 0, 0
-    for _, item in ipairs(emoteCatalog) do
-        local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
-        local hay = string.lower(name .. " " .. tostring(item.id or ""))
-        if q == "" or string.find(hay, q, 1, true) then
-            matches += 1
-            if shown < 90 then
-                shown += 1
-                S._mkThumbRow(emoteScroll, shown, tostring(item.id), name, function()
-                    playEmbeddedEmote(item)
-                end)
-            end
-        end
-    end
-    if matches == 0 then
+end
+local function renderEmbeddedEmoteWindow()
+    clearRenderedEmotes()
+    local total = #emoteMatches
+    emoteScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(0, total * EMOTE_ROW_H + 12))
+    if total == 0 then
         local empty = Instance.new("TextLabel")
         empty.Name = "Status"
         empty.Parent = emoteScroll
-        empty.LayoutOrder = 1
         empty.BackgroundTransparency = 1
-        empty.Size = UDim2.new(1, 0, 0, 34)
+        empty.Position = UDim2.fromOffset(0, 0)
+        empty.Size = UDim2.new(1, -12, 0, 34)
         empty.Font = F
         empty.TextSize = 12
         empty.TextColor3 = T.Tx3; pcall(function() empty:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
         empty.Text = "No emotes found."
+        return
     end
-    emoteStatus.Text = "Emotes in GUI: " .. tostring(#emoteCatalog) .. " loaded, showing " .. tostring(shown) .. " / " .. tostring(matches)
+    local viewportH = math.clamp(emoteScroll.AbsoluteWindowSize.Y > 0 and emoteScroll.AbsoluteWindowSize.Y or emoteScroll.AbsoluteSize.Y, 120, 640)
+    local first = math.max(1, math.floor(emoteScroll.CanvasPosition.Y / EMOTE_ROW_H) + 1)
+    local last = math.min(total, first + math.ceil(viewportH / EMOTE_ROW_H) + 8)
+    for i = first, last do
+        local item = emoteMatches[i]
+        local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
+        local row = S._mkThumbRow(emoteScroll, i, tostring(item.id), name, function()
+            playEmbeddedEmote(item)
+        end)
+        row.Position = UDim2.fromOffset(0, (i - 1) * EMOTE_ROW_H)
+        row.Size = UDim2.new(1, -12, 0, 56)
+    end
+end
+local function queueRenderEmbeddedEmotes()
+    if emoteRenderQueued then return end
+    emoteRenderQueued = true
+    task.defer(function()
+        emoteRenderQueued = false
+        if emoteScroll and emoteScroll.Parent then renderEmbeddedEmoteWindow() end
+    end)
+end
+local function refreshEmbeddedEmotes()
+    emoteRefreshRequest += 1
+    local request = emoteRefreshRequest
+    local q = string.lower(emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    emoteMatches = {}
+    emoteScroll.CanvasPosition = Vector2.zero
+    renderEmbeddedEmoteWindow()
+    emoteStatus.Text = "Scanning emotes: 0 / " .. tostring(#emoteCatalog)
     if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
+    task.spawn(function()
+        local found = 0
+        for index, item in ipairs(emoteCatalog) do
+            if request ~= emoteRefreshRequest then return end
+            local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
+            local hay = string.lower(name .. " " .. tostring(item.id or ""))
+            if q == "" or string.find(hay, q, 1, true) then
+                found += 1
+                emoteMatches[found] = item
+            end
+            if index % 800 == 0 then
+                emoteStatus.Text = "Scanning emotes: " .. tostring(index) .. " / " .. tostring(#emoteCatalog)
+                renderEmbeddedEmoteWindow()
+                task.wait()
+            end
+        end
+        if request ~= emoteRefreshRequest then return end
+        renderEmbeddedEmoteWindow()
+        emoteStatus.Text = "Emotes in GUI: " .. tostring(#emoteCatalog) .. " loaded, matching " .. tostring(#emoteMatches)
+    end)
 end
 local function loadRemoteEmoteCatalog()
     emoteStatus.Text = "Loading emote catalog inside Inertia..."
@@ -14756,27 +14865,31 @@ local function loadRemoteEmoteCatalog()
         return
     end
     local nextCatalog, seen = {}, {}
-    for _, item in ipairs(data) do
+    for index, item in ipairs(data) do
         local id = tonumber(item.id)
         if id and id > 0 and not seen[id] then
             seen[id] = true
             table.insert(nextCatalog, { name = tostring(item.name or ("Emote " .. id)), id = id })
         end
+        if index % 800 == 0 then
+            emoteStatus.Text = "Loading emote catalog: " .. tostring(index)
+            task.wait()
+        end
     end
     if #nextCatalog > 0 then
-        table.sort(nextCatalog, function(a, b) return tostring(a.name):lower() < tostring(b.name):lower() end)
         emoteCatalog = nextCatalog
     end
     refreshEmbeddedEmotes()
 end
 emoteSearch:GetPropertyChangedSignal("Text"):Connect(refreshEmbeddedEmotes)
-mkAction(secEmotes, "Stop Emote", function() stopEmbeddedEmote(); emoteStatus.Text = "Stopped." end, 4)
-mkAction(secEmotes, "Refresh Emote Catalog", function() task.spawn(loadRemoteEmoteCatalog) end, 5)
+emoteScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(queueRenderEmbeddedEmotes)
+emoteScroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(queueRenderEmbeddedEmotes)
+mkAction(secEmotes, "Stop Emote", function() stopEmbeddedEmote(); emoteStatus.Text = "Stopped." end, 5)
+mkAction(secEmotes, "Load All Emotes", function() task.spawn(loadRemoteEmoteCatalog) end, 6)
 tc(LP.CharacterRemoving:Connect(stopEmbeddedEmote))
 refreshEmbeddedEmotes()
-task.spawn(loadRemoteEmoteCatalog)
 end
-    local secPacks = mkSection(Pages.Animations or Pages.Player, "Animation Pack", 1)
+    local secPacks = registerPlayerSubTabSection(mkSection(Pages.Player, "Animations", 1), "Animations")
     local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
     local packScroll = S._mkListScroll(secPacks, 2, 320)
     local function refreshPacks()
@@ -14886,6 +14999,7 @@ end
     })
     end -- end Animations do-block
 
+    updatePlayerSubTabs()
 end -- end Player tab do-block
 
     -- ---- subtab visibility ----
