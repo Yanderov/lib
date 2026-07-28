@@ -3945,7 +3945,7 @@ opClose.TextSize = 14
 opClose.TextColor3 = T.Tx2; pcall(function() opClose:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
 opClose.MouseButton1Click:Connect(function() OptionPickerModal.Visible = false; SFX.Off() end)
 
--- Asset lists (44 gun sounds, 38 wallpapers, 19 skyboxes, 30 cursors) are far too long to
+-- Asset lists (44 gun sounds, 38 wallpapers, 19 skyboxes, and downloaded cursors) are far too long to
 -- scroll blind, so the picker carries its own filter box.
 local opSearch = Instance.new("TextBox")
 opSearch.Name = "OptionSearch"
@@ -4701,30 +4701,71 @@ end
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
-    -- Picking one of 30 cursors / 19 skyboxes / 44 sounds by dragging a numeric slider gave no
+    -- Picking one of the downloaded cursors / 19 skyboxes / 44 sounds by dragging a numeric slider gave no
     -- idea what you were selecting. All three now open the searchable picker with thumbnails.
     -- Wrapped in its own block: these lists would otherwise sit in the main chunk's register
     -- budget for the rest of the file, and that budget is already at Luau's ceiling.
     do
+    local cursorEntries = {}
+    for i, path in ipairs(cursorPaths) do
+        cursorEntries[#cursorEntries + 1] = {
+            Name = CustomAssets.Cursors[i] and CustomAssets.Cursors[i].Name or ("Cursor " .. i),
+            Kind = "Asset",
+            Path = path,
+        }
+    end
+
+    -- These presets are drawn locally with Frames/UIStrokes.  They stay crisp at any size,
+    -- do not depend on an external asset URL, and are light enough for the mobile build.
+    local vectorStyles = {
+        { Name = "Neon Ring", Style = "NeonRing" },
+        { Name = "Target Lock", Style = "TargetLock" },
+        { Name = "Diamond Grid", Style = "DiamondGrid" },
+        { Name = "Four Brackets", Style = "Brackets" },
+        { Name = "Star Point", Style = "StarPoint" },
+        { Name = "Four Dots", Style = "FourDots" },
+        { Name = "Pulse Halo", Style = "PulseHalo" },
+        { Name = "Square Dot", Style = "SquareDot" },
+        { Name = "Minimal Plus", Style = "MinimalPlus" },
+        { Name = "Chevron", Style = "Chevron" },
+        { Name = "Orbit Dot", Style = "OrbitDot" },
+        { Name = "Cross Dot", Style = "CrossDot" },
+    }
+    for _, preset in ipairs(vectorStyles) do
+        cursorEntries[#cursorEntries + 1] = {
+            Name = preset.Name,
+            Kind = "Vector",
+            Style = preset.Style,
+        }
+    end
+    S._CursorEntries = cursorEntries
+
     local cursorNames = {}
     local cursorPreviews = {}
-    for i, path in ipairs(cursorPaths) do
-        cursorNames[i] = CustomAssets.Cursors[i] and CustomAssets.Cursors[i].Name or ("Cursor " .. i)
-        cursorPreviews[i] = function() return fetchCustomAsset(path, "cursors") end
+    for i, entry in ipairs(cursorEntries) do
+        cursorNames[i] = entry.Name
+        if entry.Kind == "Asset" then
+            local path = entry.Path
+            cursorPreviews[i] = function() return fetchCustomAsset(path, "cursors") end
+        end
     end
     mkAction(secCustoms, "Choose Cursor / Crosshair", function()
         S._OpenOptionPicker("Cursor / Crosshair", cursorNames, S.CrosshairIndex or 1, function(pick)
+            local entry = cursorEntries[pick]
             S.CrosshairStyle = "Custom"
             S.CrosshairIndex = pick
             S.CrosshairAssetId = nil
-            task.spawn(function()
-                local fetchedId = fetchCustomAsset(cursorPaths[pick], "cursors")
-                if fetchedId ~= "" then
-                    S.CrosshairAssetId = fetchedId
-                else
-                    Notify("Cursor", "Could not download " .. cursorNames[pick], 3)
-                end
-            end)
+            S.CrosshairPreset = entry and entry.Style or nil
+            if entry and entry.Kind == "Asset" then
+                task.spawn(function()
+                    local fetchedId = fetchCustomAsset(entry.Path, "cursors")
+                    if fetchedId ~= "" then
+                        S.CrosshairAssetId = fetchedId
+                    else
+                        Notify("Cursor", "Could not download " .. cursorNames[pick], 3)
+                    end
+                end)
+            end
         end, { previews = cursorPreviews })
     end, 2)
 
@@ -5255,8 +5296,8 @@ end, 6)
 
     
     -- Mouse.Icon draws the image at its native resolution and offers no way to scale it, so the
-    -- full-size photos in the cursor library covered half the screen. The crosshair is drawn as
-    -- our own ImageLabel instead, which is the only way to control its size.
+    -- full-size photos in the cursor library covered half the screen. Images and vector presets
+    -- are drawn in our own GUI so the size and mobile/desktop behaviour stay predictable.
     do
         local cursorGui = Instance.new("ImageLabel")
         cursorGui.Name = "MM2_Crosshair"
@@ -5267,15 +5308,147 @@ end, 6)
         cursorGui.ZIndex = 4000
         cursorGui.ScaleType = Enum.ScaleType.Fit
 
+        local vectorCursorGui = Instance.new("Frame")
+        vectorCursorGui.Name = "MM2_VectorCursor"
+        vectorCursorGui.Parent = SG
+        vectorCursorGui.AnchorPoint = Vector2.new(0.5, 0.5)
+        vectorCursorGui.BackgroundTransparency = 1
+        vectorCursorGui.Visible = false
+        vectorCursorGui.ZIndex = 4000
+
+        local lastVectorKey = ""
+        local function buildVectorCursor(style, size)
+            vectorCursorGui:ClearAllChildren()
+            local scale = size / 32
+            local center = size / 2
+            local function px(value)
+                return math.max(1, math.floor(value * scale + 0.5))
+            end
+            local color = Color3.fromRGB(120, 240, 255)
+            if style == "DiamondGrid" or style == "SquareDot" then
+                color = Color3.fromRGB(255, 210, 92)
+            elseif style == "StarPoint" or style == "PulseHalo" then
+                color = Color3.fromRGB(206, 140, 255)
+            elseif style == "Chevron" then
+                color = Color3.fromRGB(255, 130, 190)
+            elseif style == "FourDots" or style == "OrbitDot" then
+                color = Color3.fromRGB(150, 255, 175)
+            end
+
+            local function part(width, height, x, y, rotation, fill)
+                local item = Instance.new("Frame")
+                item.Parent = vectorCursorGui
+                item.BorderSizePixel = 0
+                item.BackgroundColor3 = fill or color
+                item.BackgroundTransparency = 0
+                item.AnchorPoint = Vector2.new(0.5, 0.5)
+                item.Size = UDim2.fromOffset(px(width), px(height))
+                item.Position = UDim2.fromOffset(center + px(x), center + px(y))
+                item.Rotation = rotation or 0
+                item.ZIndex = 4001
+                Corner(item, math.max(1, math.floor(px(math.min(width, height)) / 2)))
+                Stroke(item, Color3.fromRGB(0, 0, 0), math.max(1, px(1)), 0.3)
+                return item
+            end
+            local function line(width, height, x, y, rotation)
+                return part(width, height, x, y, rotation, color)
+            end
+            local function dot(diameter, x, y)
+                return part(diameter, diameter, x, y, 0, color)
+            end
+            local function ring(diameter, thickness, transparency)
+                local item = Instance.new("Frame")
+                item.Parent = vectorCursorGui
+                item.AnchorPoint = Vector2.new(0.5, 0.5)
+                item.Position = UDim2.fromScale(0.5, 0.5)
+                item.Size = UDim2.fromOffset(px(diameter), px(diameter))
+                item.BackgroundTransparency = 1
+                item.ZIndex = 4001
+                Corner(item, 999)
+                Stroke(item, color, math.max(1, px(thickness)), transparency or 0.05)
+                return item
+            end
+
+            if style == "NeonRing" then
+                ring(22, 2)
+                dot(3, 0, 0)
+            elseif style == "TargetLock" then
+                ring(21, 2)
+                line(2, 5, 0, -14)
+                line(2, 5, 0, 14)
+                line(5, 2, -14, 0)
+                line(5, 2, 14, 0)
+                dot(2, 0, 0)
+            elseif style == "DiamondGrid" then
+                local diamond = part(16, 16, 0, 0, 45, nil)
+                diamond.BackgroundTransparency = 1
+                diamond.Size = UDim2.fromOffset(px(16), px(16))
+                Stroke(diamond, color, math.max(1, px(2)), 0.05)
+                dot(3, 0, 0)
+            elseif style == "Brackets" then
+                local r, arm, thick = 10, 5, 2
+                line(arm, thick, -r, -r)
+                line(thick, arm, -r, -r)
+                line(arm, thick, r, -r)
+                line(thick, arm, r, -r)
+                line(arm, thick, -r, r)
+                line(thick, arm, -r, r)
+                line(arm, thick, r, r)
+                line(thick, arm, r, r)
+                dot(2, 0, 0)
+            elseif style == "StarPoint" then
+                line(2, 17, 0, 0)
+                line(17, 2, 0, 0)
+                line(2, 13, 0, 0, 45)
+                line(13, 2, 0, 0, 45)
+                dot(4, 0, 0)
+            elseif style == "FourDots" then
+                dot(4, -8, -8)
+                dot(4, 8, -8)
+                dot(4, -8, 8)
+                dot(4, 8, 8)
+                dot(2, 0, 0)
+            elseif style == "PulseHalo" then
+                ring(26, 1, 0.55)
+                ring(17, 2, 0.02)
+                dot(3, 0, 0)
+            elseif style == "SquareDot" then
+                local square = part(18, 18, 0, 0, 0, nil)
+                square.BackgroundTransparency = 1
+                Stroke(square, color, math.max(1, px(2)), 0.05)
+                dot(3, 0, 0)
+            elseif style == "MinimalPlus" then
+                line(2, 18, 0, 0)
+                line(18, 2, 0, 0)
+                dot(2, 0, 0)
+            elseif style == "Chevron" then
+                line(2, 12, -5, -2, -42)
+                line(2, 12, 5, -2, 42)
+                dot(3, 0, 2)
+            elseif style == "OrbitDot" then
+                ring(21, 1, 0.1)
+                dot(4, 0, -11)
+                dot(2, 0, 0)
+            elseif style == "CrossDot" then
+                line(2, 6, 0, -9)
+                line(2, 6, 0, 9)
+                line(6, 2, -9, 0)
+                line(6, 2, 9, 0)
+                dot(3, 0, 0)
+            end
+        end
+
         mkSlider(secCustoms, "Crosshair Size", 8, 128, 32, function(v) S.CrosshairSize = v end, 2.5)
 
         RunService.RenderStepped:Connect(function()
             local mouse = Players.LocalPlayer:GetMouse()
             if not S.CustomCrosshair then
-                if cursorGui.Visible then
+                if cursorGui.Visible or vectorCursorGui.Visible then
                     cursorGui.Visible = false
+                    vectorCursorGui.Visible = false
                     UIS.MouseIconEnabled = true
                 end
+                lastVectorKey = ""
                 -- Undo any icon a previous build left behind.
                 for _, id in pairs(CustomCrosshairs) do
                     if mouse.Icon == id then mouse.Icon = "" end
@@ -5284,17 +5457,33 @@ end, 6)
                 return
             end
 
-            local idx = ((tonumber(S.CrosshairIndex) or 1) - 1) % #CustomCrosshairs + 1
-            local img = S.CrosshairAssetId or CustomCrosshairs[idx] or CustomCrosshairs[1]
-            if not img or img == "" then return end
-
             -- Keep the real pointer while the menu is up, or the hub becomes unusable.
             local menuOpen = Main and Main.Visible
             local size = math.clamp(tonumber(S.CrosshairSize) or 32, 8, 128)
-            cursorGui.Image = img
-            cursorGui.Size = UDim2.fromOffset(size, size)
-            cursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
-            cursorGui.Visible = not menuOpen
+            local entries = S._CursorEntries
+            local entryCount = type(entries) == "table" and #entries or #CustomCrosshairs
+            local idx = ((tonumber(S.CrosshairIndex) or 1) - 1) % math.max(1, entryCount) + 1
+            local entry = type(entries) == "table" and entries[idx] or nil
+            if entry and entry.Kind == "Vector" then
+                cursorGui.Visible = false
+                local key = tostring(entry.Style) .. ":" .. tostring(size)
+                if key ~= lastVectorKey then
+                    vectorCursorGui.Size = UDim2.fromOffset(size, size)
+                    buildVectorCursor(entry.Style, size)
+                    lastVectorKey = key
+                end
+                vectorCursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                vectorCursorGui.Visible = not menuOpen
+            else
+                vectorCursorGui.Visible = false
+                lastVectorKey = ""
+                local img = S.CrosshairAssetId or CustomCrosshairs[((idx - 1) % #CustomCrosshairs) + 1] or CustomCrosshairs[1]
+                if not img or img == "" then return end
+                cursorGui.Image = img
+                cursorGui.Size = UDim2.fromOffset(size, size)
+                cursorGui.Position = UDim2.fromOffset(mouse.X, mouse.Y + 36)
+                cursorGui.Visible = not menuOpen
+            end
             UIS.MouseIconEnabled = menuOpen
         end)
 
