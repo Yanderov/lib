@@ -62,7 +62,7 @@ local S = {
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false,
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Crystal Rig", VFXAura = "Off",
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -4869,130 +4869,197 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S._UpdateAvatarMods()
 end, 6)
     do
-        local WING_ASSET_ID = "120599009244025"
-        local wingObjects, wingLoading = {}, false
-        local wingAnimConn = nil
-        local function clearWings()
-            if wingAnimConn then pcall(function() wingAnimConn:Disconnect() end); wingAnimConn = nil end
-            for _, obj in ipairs(wingObjects) do
-                if obj and obj.Parent then pcall(function() obj:Destroy() end) end
-            end
-            table.clear(wingObjects)
-            local char = LP.Character
-            if char then
-                for _, child in ipairs(char:GetDescendants()) do
-                    if child.Name == "InertiaToolboxWings" then
-                        pcall(function() child:Destroy() end)
-                    end
-                end
-            end
+        local WINGS = {
+            ["Crystal Rig"] = { id = "120599009244025", rig = "Wings Rig Custom", offset = CFrame.new(0, 0.08, 0.82) },
+            ["Crystal Rig Alt"] = { id = "79327227228058", rig = "Wings Rig Custom", offset = CFrame.new(0, 0.08, 0.82) },
+            ["Blue Diamond"] = { id = "15156122128", offset = CFrame.new(0, 0.1, 0.78), whole = true },
+            ["Feather Dragon"] = { id = "90024680291226", offset = CFrame.new(0, 0.05, 0.72), whole = true },
+        }
+        local AURAS = {
+            ["Off"] = false,
+            ["Black Flame"] = { id = "89194108265492", cap = MOBILE and 14 or 24 },
+            ["Dark Aura"] = { id = "72031022600603", cap = MOBILE and 18 or 32 },
+            ["VFX Auras"] = { id = "14628750884", cap = MOBILE and 16 or 28 },
+            ["Axoie Aura"] = { id = "112065524377381", cap = MOBILE and 12 or 22 },
+        }
+        local wingNames = {"Crystal Rig", "Crystal Rig Alt", "Blue Diamond", "Feather Dragon"}
+        local auraNames = {"Off", "Black Flame", "Dark Aura", "VFX Auras", "Axoie Aura"}
+        local fx = { objects = {}, conns = {}, busy = false, ticket = 0 }
+
+        local function rootPart(char)
+            return char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
         end
-        local function prepPart(part)
+        local function prepPart(part, hidden)
             part.Anchored = false
             part.CanCollide = false
             part.CanTouch = false
             part.CanQuery = false
             part.Massless = true
+            if hidden then part.Transparency = 1 end
         end
-        local function stripLoadedScripts(container)
+        local function own(obj)
+            table.insert(fx.objects, obj)
+            return obj
+        end
+        local function clean()
+            fx.ticket = fx.ticket + 1
+            for _, conn in ipairs(fx.conns) do
+                if conn then pcall(function() conn:Disconnect() end) end
+            end
+            table.clear(fx.conns)
+            for _, obj in ipairs(fx.objects) do
+                if obj and obj.Parent then pcall(function() obj:Destroy() end) end
+            end
+            table.clear(fx.objects)
+            local char = LP.Character
+            if char then
+                for _, obj in ipairs(char:GetChildren()) do
+                    if obj.Name == "InertiaToolboxWings" or obj.Name == "InertiaToolboxAura" then
+                        pcall(function() obj:Destroy() end)
+                    end
+                end
+            end
+        end
+        local function sanitize(container, aura)
             for _, obj in ipairs(container:GetDescendants()) do
                 if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
                     pcall(function() obj:Destroy() end)
+                elseif aura and (obj:IsA("Humanoid") or obj:IsA("Animator") or obj:IsA("Animation") or obj:IsA("HumanoidDescription")) then
+                    pcall(function() obj:Destroy() end)
+                elseif aura and obj:IsA("BasePart") then
+                    prepPart(obj, true)
+                elseif obj:IsA("BasePart") then
+                    prepPart(obj, false)
+                elseif aura and obj:IsA("ParticleEmitter") then
+                    pcall(function()
+                        if obj.Rate <= 0 then obj.Rate = MOBILE and 6 or 10 end
+                        obj.Rate = math.min(obj.Rate, (AURAS[S.VFXAura] and AURAS[S.VFXAura].cap) or 20)
+                        obj.LightInfluence = 0
+                        obj.LockedToPart = true
+                        obj.Enabled = true
+                    end)
+                elseif aura and (obj:IsA("Beam") or obj:IsA("Trail")) then
+                    pcall(function() obj.Enabled = true end)
                 end
             end
         end
-        local function findWingRig(container)
-            if container.Name == "Wings Rig Custom" then return container end
-            return container:FindFirstChild("Wings Rig Custom", true) or container
+        local function makeModel(loaded, name, prefer)
+            local source
+            for _, obj in ipairs(loaded) do
+                source = (prefer and obj:FindFirstChild(prefer, true)) or source or obj
+                if source then break end
+            end
+            if not source then return nil end
+            if source:IsA("Model") then
+                local clone = source:Clone()
+                clone.Name = name
+                return clone
+            end
+            local model = Instance.new("Model")
+            model.Name = name
+            source:Clone().Parent = model
+            return model
         end
-        local function animateWingRig(model, rootWeld)
+        local function weldModel(model, root, offset)
+            local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if not primary then return nil end
+            model.PrimaryPart = primary
+            model:PivotTo(root.CFrame * (offset or CFrame.new(0, 0, 0.75)))
+            local weld = Instance.new("Weld")
+            weld.Name = "InertiaToolboxWeld"
+            weld.Part0 = root
+            weld.Part1 = primary
+            weld.C0 = root.CFrame:ToObjectSpace(primary.CFrame)
+            weld.Parent = primary
+            own(weld)
+            return weld
+        end
+        local function animate(model, weld, wholeOnly)
             local motors = {}
-            for _, obj in ipairs(model:GetDescendants()) do
-                if obj:IsA("Motor6D") then
-                    local full = obj:GetFullName():lower()
-                    local side = full:find("left", 1, true) and -1 or 1
-                    table.insert(motors, { m = obj, c0 = obj.C0, side = side })
-                end
-            end
-            local baseRoot = rootWeld.C0
-            wingAnimConn = RunService.RenderStepped:Connect(function()
-                if not (S.VFXWings and model and model.Parent and rootWeld and rootWeld.Parent) then
-                    clearWings()
-                    return
-                end
-                local t = tick()
-                local flap = math.sin(t * 2.45)
-                rootWeld.C0 = baseRoot * CFrame.Angles(math.sin(t * 1.35) * 0.018, math.sin(t * 0.9) * 0.016, 0)
-                for _, item in ipairs(motors) do
-                    if item.m and item.m.Parent then
-                        item.m.C0 = item.c0 * CFrame.Angles(0, item.side * flap * 0.12, math.abs(flap) * 0.045)
+            if not wholeOnly then
+                for _, obj in ipairs(model:GetDescendants()) do
+                    if obj:IsA("Motor6D") then
+                        local full = obj:GetFullName():lower()
+                        table.insert(motors, { m = obj, c0 = obj.C0, side = full:find("left", 1, true) and -1 or 1 })
                     end
                 end
-            end)
-        end
-        local function weldModelToRoot(model, root)
-            local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-            if not primary then return false end
-            model.PrimaryPart = primary
-            for _, part in ipairs(model:GetDescendants()) do
-                if part:IsA("BasePart") then prepPart(part) end
             end
-            model:PivotTo(root.CFrame * CFrame.new(0, 0.08, 0.82))
-            local rootWeld = Instance.new("Weld")
-            rootWeld.Name = "InertiaToolboxWingsWeld"
-            rootWeld.Part0 = root
-            rootWeld.Part1 = primary
-            rootWeld.C0 = root.CFrame:ToObjectSpace(primary.CFrame)
-            rootWeld.Parent = primary
-            table.insert(wingObjects, rootWeld)
-            animateWingRig(model, rootWeld)
-            return true
+            local base = weld.C0
+            table.insert(fx.conns, RunService.RenderStepped:Connect(function()
+                if not ((S.VFXWings or (S.VFXAura and S.VFXAura ~= "Off")) and model and model.Parent and weld and weld.Parent) then
+                    clean()
+                    return
+                end
+                local t, flap = tick(), math.sin(t * 2.55)
+                weld.C0 = base * CFrame.Angles(math.sin(t * 1.25) * 0.018, math.sin(t * 0.9) * 0.018, flap * 0.015)
+                for _, item in ipairs(motors) do
+                    if item.m and item.m.Parent then
+                        item.m.C0 = item.c0 * CFrame.Angles(0, item.side * flap * 0.13, math.abs(flap) * 0.05)
+                    end
+                end
+            end))
         end
-        local function rebuildWings()
-            clearWings()
-            if not S.VFXWings then return end
-            if wingLoading then return end
-            local char = LP.Character
-            local root = char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
+        local function attachAura(root, data, ticket)
+            local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. data.id) end)
+            if not (ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket) then
+                if ticket == fx.ticket then Notify("VFX Aura", "Asset load failed: " .. data.id, 3) end
+                return
+            end
+            local model = makeModel(loaded, "InertiaToolboxAura")
+            if not model then return end
+            sanitize(model, true)
+            model.Parent = LP.Character
+            local weld = weldModel(model, root, CFrame.new(0, -0.15, 0))
+            if weld then
+                own(model)
+            else
+                model:Destroy()
+            end
+        end
+        local function rebuild()
+            clean()
+            local char, root = LP.Character, rootPart(LP.Character)
             if not (char and root) then return end
-            wingLoading = true
+            local wingData, auraData = WINGS[S.VFXWingStyle or "Crystal Rig"], AURAS[S.VFXAura or "Off"]
+            if not (S.VFXWings or auraData) then return end
+            local ticket = fx.ticket
+            fx.busy = true
             task.spawn(function()
-                local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. WING_ASSET_ID) end)
-                wingLoading = false
-                if not (S.VFXWings and ok and type(loaded) == "table" and #loaded > 0) then
-                    Notify("VFX Wings", "Asset load failed: " .. WING_ASSET_ID, 3)
-                    return
+                if S.VFXWings and wingData then
+                    local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. wingData.id) end)
+                    char, root = LP.Character, rootPart(LP.Character)
+                    if ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket and char and root then
+                        local model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
+                        if model then
+                            sanitize(model, false)
+                            model.Parent = char
+                            local weld = weldModel(model, root, wingData.offset)
+                            if weld then
+                                own(model)
+                                animate(model, weld, wingData.whole)
+                            else
+                                model:Destroy()
+                                Notify("VFX Wings", "Asset has no attachable parts.", 3)
+                            end
+                        end
+                    elseif ticket == fx.ticket then
+                        Notify("VFX Wings", "Asset load failed: " .. wingData.id, 3)
+                    end
                 end
-                clearWings()
-                char = LP.Character
-                root = char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
-                if not (S.VFXWings and char and root) then return end
-                local model = nil
-                for _, obj in ipairs(loaded) do
-                    local rig = findWingRig(obj)
-                    if rig then model = rig:Clone(); break end
-                end
-                if not model then
-                    Notify("VFX Wings", "Asset has no wing rig.", 3)
-                    return
-                end
-                model.Name = "InertiaToolboxWings"
-                stripLoadedScripts(model)
-                model.Parent = char
-                if weldModelToRoot(model, root) then
-                    table.insert(wingObjects, model)
-                    Notify("VFX Wings", "Loaded asset " .. WING_ASSET_ID, 2)
-                else
-                    model:Destroy()
-                    Notify("VFX Wings", "Asset has no attachable parts.", 3)
-                end
+                char, root = LP.Character, rootPart(LP.Character)
+                if auraData and ticket == fx.ticket and char and root then attachAura(root, auraData, ticket) end
+                fx.busy = false
             end)
         end
-        S._RefreshVFXWings = rebuildWings
+        S._RefreshVFXWings = rebuild
         tc(LP.CharacterAdded:Connect(function()
-            task.delay(0.9, function() if S.VFXWings then rebuildWings() end end)
+            task.delay(0.9, function()
+                if S.VFXWings or (S.VFXAura and S.VFXAura ~= "Off") then rebuild() end
+            end)
         end))
-        mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 7)
+        mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
+        mkCycle(secCustoms, "VFX Wing Style", wingNames, "Crystal Rig", function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        mkCycle(secCustoms, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
