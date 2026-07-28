@@ -267,6 +267,18 @@ local T = {
     RoleSheriffBorder = Color3.fromRGB(35, 65, 110),
 }
 local Themes = {
+    Custom = {
+        BG = Color3.fromRGB(3, 3, 3), Sidebar = Color3.fromRGB(4, 4, 4),
+        Card = Color3.fromRGB(8, 8, 8), Elev = Color3.fromRGB(13, 13, 13),
+        Hover = Color3.fromRGB(19, 19, 19), ActiveBg = Color3.fromRGB(26, 26, 26),
+        Bd = Color3.fromRGB(20, 20, 20), Bd2 = Color3.fromRGB(40, 40, 40),
+        White = Color3.fromRGB(255, 255, 255), Tx = Color3.fromRGB(238, 238, 236),
+        Tx2 = Color3.fromRGB(214, 213, 210), Tx3 = Color3.fromRGB(180, 179, 175),
+        Tx4 = Color3.fromRGB(154, 153, 149), Accent = Color3.fromRGB(216, 215, 211),
+        Glow = Color3.fromRGB(145, 144, 141), TgOff = Color3.fromRGB(29, 29, 29),
+        TgOn = Color3.fromRGB(176, 176, 174), KnobOff = Color3.fromRGB(137, 136, 133),
+        KnobOn = Color3.fromRGB(250, 249, 246), AccentSoft = Color3.fromRGB(72, 72, 71),
+    },
     Default = {
         BG = Color3.fromRGB(3, 3, 3), Sidebar = Color3.fromRGB(4, 4, 4),
         Card = Color3.fromRGB(8, 8, 8), Elev = Color3.fromRGB(13, 13, 13),
@@ -511,41 +523,43 @@ S._UpdateAvatarMods = function()
     local legNames = char:FindFirstChild("RightUpperLeg")
         and { "RightUpperLeg", "RightLowerLeg", "RightFoot" } or { "Right Leg" }
     local anchor = char:FindFirstChild(legNames[1])
-    local rig = char:FindFirstChild("InertiaKorbloxLeg")
     if S.FakeKorblox and anchor then
-        local total = 0
-        for _, name in ipairs(legNames) do
+        for i, name in ipairs(legNames) do
             local part = char:FindFirstChild(name)
             if part and part:IsA("BasePart") then
-                if savedLimb[part] == nil then savedLimb[part] = { trans = part.Transparency } end
-                part.Transparency = 1
-                total = total + part.Size.Y
+                if savedLimb[part] == nil then
+                    savedLimb[part] = {
+                        trans = part.Transparency,
+                        size = part.Size,
+                        meshId = part:IsA("MeshPart") and part.MeshId or nil,
+                        textureId = part:IsA("MeshPart") and part.TextureID or nil
+                    }
+                end
+                if i == 1 and part:IsA("MeshPart") then
+                    part.Transparency = 0
+                    part.MeshId = "rbxassetid://902942096"
+                    part.TextureID = "rbxassetid://902843398"
+                    part.Size = Vector3.new(1, 2.71, 1)
+                    -- Shift down by modifying C1 of RightHip if available?
+                    -- The mesh centers itself on the resized part, so scaling it by Y expands equally up and down.
+                    -- The visual effect is what matters. We'll rely on the user's instructions.
+                else
+                    part.Transparency = 1
+                end
             end
         end
-        if not rig then
-            rig = Instance.new("Part")
-            rig.Name = "InertiaKorbloxLeg"
-            rig.Size = Vector3.new(0.2, 0.2, 0.2)
-            rig.CanCollide, rig.CanQuery, rig.CanTouch, rig.Massless = false, false, false, true
-            local mesh = Instance.new("SpecialMesh")
-            mesh.MeshType = Enum.MeshType.FileMesh
-            mesh.MeshId = "rbxassetid://902942096"
-            mesh.TextureId = "rbxassetid://902843398"
-            mesh.Scale = Vector3.new(total, total, total) / 0.81
-            mesh.Parent = rig
-            -- Position before welding: a WeldConstraint locks in whatever offset it is born with.
-            rig.CFrame = anchor.CFrame * CFrame.new(0, anchor.Size.Y / 2 - total / 2, 0)
-            rig.Parent = char
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0, weld.Part1 = rig, anchor
-            weld.Parent = rig
-        end
     else
-        if rig then rig:Destroy() end
         for _, name in ipairs(legNames) do
             local part = char:FindFirstChild(name)
             if part and savedLimb[part] then
                 part.Transparency = savedLimb[part].trans or 0
+                if part:IsA("MeshPart") and savedLimb[part].meshId then
+                    part.MeshId = savedLimb[part].meshId
+                    part.TextureID = savedLimb[part].textureId
+                end
+                if savedLimb[part].size then
+                    part.Size = savedLimb[part].size
+                end
                 savedLimb[part] = nil
             end
         end
@@ -561,6 +575,26 @@ LP.CharacterAdded:Connect(function()
         end
     end)
 end)
+
+local editCustomBtn = Instance.new("TextButton")
+editCustomBtn.Parent = mScroll
+editCustomBtn.LayoutOrder = 8.5
+editCustomBtn.Size = UDim2.new(1, 0, 0, 28)
+editCustomBtn.BackgroundColor3 = T.Elev; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+editCustomBtn.BorderSizePixel = 0
+editCustomBtn.Font = F
+editCustomBtn.TextSize = 13
+editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+editCustomBtn.Text = "Edit Custom Theme..."
+editCustomBtn.ZIndex = 1001
+Corner(editCustomBtn, 6)
+Stroke(editCustomBtn, T.Bd, 1, 0.4)
+editCustomBtn.MouseButton1Click:Connect(function()
+    SFX.Click()
+    if S._OpenThemeEditor then S._OpenThemeEditor() end
+end)
+editCustomBtn.MouseEnter:Connect(function() editCustomBtn.TextColor3 = T.White; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end) end)
+editCustomBtn.MouseLeave:Connect(function() editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end) end)
 end
 
 local function updateGuiTransparency()
@@ -2098,7 +2132,7 @@ themeListLayout.CellSize = UDim2.new(0.5, -2, 0, 25)
 
 local themeNames = {
     "Default", "Graphite", "Ocean", "Forest", "Wine",
-    "Violet", "Ember", "Amber", "Rose",
+    "Violet", "Ember", "Amber", "Rose", "Custom"
 }
 
 for idx, tName in ipairs(themeNames) do
@@ -2141,6 +2175,27 @@ for idx, tName in ipairs(themeNames) do
     end)
 end
 
+local editCustomBtn = Instance.new("TextButton")
+editCustomBtn.Parent = mScroll
+editCustomBtn.LayoutOrder = 8.5
+editCustomBtn.Size = UDim2.new(1, 0, 0, 28)
+editCustomBtn.BackgroundColor3 = T.Elev; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+editCustomBtn.BorderSizePixel = 0
+editCustomBtn.Font = F
+editCustomBtn.TextSize = 13
+editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+editCustomBtn.Text = "Edit Custom Theme..."
+editCustomBtn.ZIndex = 1001
+Corner(editCustomBtn, 6)
+Stroke(editCustomBtn, T.Bd, 1, 0.4)
+editCustomBtn.MouseButton1Click:Connect(function()
+    SFX.Click()
+    if S._OpenThemeEditor then S._OpenThemeEditor() end
+end)
+editCustomBtn.MouseEnter:Connect(function() editCustomBtn.TextColor3 = T.White; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end) end)
+editCustomBtn.MouseLeave:Connect(function() editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end) end)
+
+
 -- The generic slider builder is declared later.  Keep this factory inside the
 -- settings scope so it retains the local scrolling container, then run it once
 -- the builder is ready.
@@ -2173,6 +2228,7 @@ local function applyWall()
     local url = urls[v] or ""
     local main = SG:FindFirstChild("Main", true)
     local settings = SG:FindFirstChild("InertiaSettings", true)
+    -- TEST LINE SHIFT
     -- ImageTransparency is 0 when fully visible and 1 when invisible.  The
     -- previous inverse calculation made the default 20% setting nearly hide
     -- every wallpaper instead of showing it with 20% transparency.
@@ -3416,7 +3472,9 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     local entry = { label = label, cfgId = _cfgId(parent, type(configLabel) == "string" and configLabel or label), bindKey = nil, oldKey = nil, isToggle = true, state = default }
     local function setVis(on, anim)
         local tCol = on and T.TgOn or T.TgOff
+        pcall(function() track:SetAttribute("ThemeColorRole_BackgroundColor3", on and "TgOn" or "TgOff") end)
         local kCol = on and T.KnobOn or T.KnobOff
+        pcall(function() knob:SetAttribute("ThemeColorRole_BackgroundColor3", on and "KnobOn" or "KnobOff") end)
         local shellCol = on and T.KnobOn:Lerp(T.Card, 0.48) or T.Bd2
         local kPos = on
             and UDim2.new(1, -(M.knobShell + shellInset), 0.5, -math.floor(M.knobShell / 2))
@@ -4779,6 +4837,123 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Fake Korblox (Local)", false, function(v)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
+    do
+        local fxAuraTgt = nil
+        local activeMeshes = {}
+        local wingMap = {
+            ["Angel Wings"] = 192557913,
+            ["Dracula Wings"] = 4323204938,
+            ["Demon Wings"] = 5040228389,
+            ["Butterfly"] = 4441916307,
+            ["Void"] = 6415779083,
+            ["Galaxy"] = 8408101486,
+        }
+        
+        local function refreshAura()
+            if fxAuraTgt then fxAuraTgt:Destroy() fxAuraTgt = nil end
+            table.clear(activeMeshes)
+            if not S.FxAura or not LP.Character or not LP.Character:FindFirstChild("UpperTorso") then return end
+            
+            fxAuraTgt = Instance.new("Attachment")
+            fxAuraTgt.Name = "InertiaFxAura"
+            fxAuraTgt.Parent = LP.Character.UpperTorso
+            
+            local style = S.FxAuraStyle or "Angel Wings"
+            local colorName = S.FxAuraColor or "White"
+            local colorMap = {
+                White=Color3.new(1,1,1), Red=Color3.new(1,0,0), Green=Color3.new(0,1,0),
+                Blue=Color3.new(0,0,1), Yellow=Color3.new(1,1,0), Cyan=Color3.new(0,1,1),
+                Purple=Color3.new(0.5,0,0.5), Orange=Color3.new(1,0.5,0), Pink=Color3.new(1,0.5,1),
+                Black=Color3.new(0,0,0)
+            }
+            local color = colorMap[colorName] or Color3.new(1,1,1)
+            local intensity = (S.FxAuraIntensity or 50) / 100
+            
+            local assetId = wingMap[style]
+            local hasMesh = false
+            if assetId then
+                local desc = Instance.new("HumanoidDescription")
+                desc.BackAccessory = tostring(assetId)
+                local s, model = pcall(function() return game:GetService("Players"):CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15) end)
+                if s and model then
+                    for _, child in ipairs(model:GetChildren()) do
+                        if child:IsA("Accessory") and child:FindFirstChild("Handle") then
+                            local handle = child.Handle:Clone()
+                            handle.Parent = LP.Character
+                            handle.CFrame = LP.Character.UpperTorso.CFrame * CFrame.new(0, 0, 0.5)
+                            local weld = Instance.new("WeldConstraint")
+                            weld.Part0 = LP.Character.UpperTorso
+                            weld.Part1 = handle
+                            weld.Parent = handle
+                            if handle:IsA("MeshPart") then
+                                handle.Color = color
+                            else
+                                local mesh = handle:FindFirstChildWhichIsA("SpecialMesh")
+                                if mesh then mesh.VertexColor = Vector3.new(color.R, color.G, color.B) end
+                            end
+                            hasMesh = true
+                            table.insert(activeMeshes, {handle = handle, weld = weld, baseC0 = handle.CFrame:Inverse() * LP.Character.UpperTorso.CFrame})
+                        end
+                    end
+                    model:Destroy()
+                end
+            end
+            
+            if not hasMesh then
+                local pe = Instance.new("ParticleEmitter")
+                pe.Color = ColorSequence.new(color)
+                pe.Rate = 50 * intensity
+                pe.Speed = NumberRange.new(5 * intensity)
+                pe.SpreadAngle = Vector2.new(180, 180)
+                pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(0.5, 2 * intensity), NumberSequenceKeypoint.new(1,0)})
+                pe.Parent = fxAuraTgt
+                
+                local pl = Instance.new("PointLight")
+                pl.Color = color
+                pl.Range = 10 * intensity
+                pl.Brightness = 2 * intensity
+                pl.Parent = fxAuraTgt
+                table.insert(activeMeshes, {pe = pe, pl = pl, baseColor = color})
+            end
+        end
+        
+        tc(RunService.RenderStepped:Connect(function(dt)
+            if not S.FxAura or #activeMeshes == 0 then return end
+            
+            local color = nil
+            if S.FxAuraRainbow then
+                local hue = (tick() % 3) / 3
+                color = Color3.fromHSV(hue, 1, 1)
+            end
+            
+            for _, item in ipairs(activeMeshes) do
+                if color then
+                    if item.handle then
+                        if item.handle:IsA("MeshPart") then
+                            item.handle.Color = color
+                        else
+                            local mesh = item.handle:FindFirstChildWhichIsA("SpecialMesh")
+                            if mesh then mesh.VertexColor = Vector3.new(color.R, color.G, color.B) end
+                        end
+                    elseif item.pe then
+                        item.pe.Color = ColorSequence.new(color)
+                        item.pl.Color = color
+                    end
+                end
+            end
+        end))
+        
+        tc(LP.CharacterAdded:Connect(function()
+            task.delay(1, refreshAura)
+        end))
+        
+        mkToggle(secCustoms, "Enable FX Aura", false, function(v) S.FxAura = v; refreshAura() end, 7)
+        mkCycle(secCustoms, "FX Aura Style", {"Angel Wings", "Dracula Wings", "Frozen Bloom", "Water Vortex", "Pink Thunder", "Magic", "Demon Wings", "Butterfly", "Galaxy", "Phoenix Fire", "Void", "Sakura"}, "Angel Wings", function(v) S.FxAuraStyle = v; refreshAura() end, 8)
+        mkCycle(secCustoms, "FX Aura Color", {"White", "Red", "Green", "Blue", "Yellow", "Cyan", "Purple", "Orange", "Pink", "Black"}, "White", function(v) S.FxAuraColor = v; refreshAura() end, 9)
+        mkToggle(secCustoms, "FX Aura Rainbow", false, function(v) S.FxAuraRainbow = v end, 10)
+        mkSlider(secCustoms, "FX Aura Intensity", 0, 100, 50, function(v) S.FxAuraIntensity = v; refreshAura() end, 11)
+    end
+
     end, 6)
 
     
@@ -6805,6 +6980,33 @@ do
         local secKE = mkSection(Pages.Misc, "Kill Effects", 10)
         S._RegisterMiscSection(secKE, "Utility")
         mkToggle(secKE, "Hide Kill Effects", false, function(v) S.HideKillFX = v end, 1)
+
+        local secBoombox = mkSection(Pages.Misc, "Boombox Lib", 10.5)
+        S._RegisterMiscSection(secBoombox, "Utility")
+        local bbxId = ""
+        mkIdBox(secBoombox, "Song ID", 1, "Roblox Audio ID", 
+            function() return bbxId end, 
+            function(v) bbxId = v end
+        )
+        local btnPlay = Instance.new("TextButton")
+        btnPlay.Parent = secBoombox
+        btnPlay.LayoutOrder = 2
+        btnPlay.Size = UDim2.new(1, 0, 0, 28)
+        btnPlay.BackgroundColor3 = T.Elev; pcall(function() btnPlay:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        btnPlay.BorderSizePixel = 0
+        btnPlay.Font = F
+        btnPlay.TextSize = 13
+        btnPlay.TextColor3 = T.Tx; pcall(function() btnPlay:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        btnPlay.Text = "Play Song"
+        Corner(btnPlay, 6)
+        Stroke(btnPlay, T.Bd, 1, 0.4)
+        btnPlay.MouseButton1Click:Connect(function()
+            SFX.Click()
+            local id = tonumber(bbxId:match("%d+"))
+            if id then
+                pcall(function() game:GetService("ReplicatedStorage").Remotes.Inventory.PlaySong:FireServer(id) end)
+            end
+        end)
     end
 end
 do
@@ -9661,9 +9863,15 @@ do
 
                 local actionButton = card:FindFirstChild("ActionButton", true)
                 if actionButton and actionButton:IsA("GuiButton") then
-                    actionButton.Active = false
-                    actionButton.Selectable = false
-                    actionButton.AutoButtonColor = false
+                    actionButton.Active = true
+                    actionButton.Selectable = true
+                    actionButton.AutoButtonColor = true
+                    actionButton.MouseButton1Click:Connect(function()
+                        if SFX and SFX.Click then pcall(SFX.Click) end
+                        S.ActiveVisualEffect = effect.Id
+                        if Notify then pcall(function() Notify("Visual Effect", "Set local effect to " .. tostring(effect.Data.Name or effect.Id), 2) end) end
+                        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+                    end)
                 end
                 local amount = card:FindFirstChild("Amount", true)
                 if amount and amount:IsA("TextLabel") then amount.Text = "" end
@@ -10387,10 +10595,17 @@ end
 local function buildConfig()
     local data = {
         SelectedTheme = S.SelectedTheme,
+        CustomTheme = {},
+        ActiveVisualEffect = S.ActiveVisualEffect,
         Language = S.Language,
         TextSizeScale = S.TextSizeScale,
         NotificationPosition = S.NotificationPosition,
         controls = {}, hud = {}, binds = {} }
+    for k, v in pairs(Themes.Custom) do
+        if typeof(v) == "Color3" then
+            data.CustomTheme[k] = {r = v.R, g = v.G, b = v.B}
+        end
+    end
     for _, c in ipairs(ConfigControls) do
         local ok, val = pcall(c.get)
         if ok and val ~= nil then data.controls[c.id] = val end
@@ -10437,8 +10652,18 @@ local function applyConfig(data)
     -- stay true for the rest of the session and silently kill every later save, so the reset is
     -- scheduled up front rather than relying on reaching the end of the function.
     task.delay(5, function() configApplying = false end)
+    if type(data.CustomTheme) == "table" then
+        for k, v in pairs(data.CustomTheme) do
+            if type(v) == "table" and tonumber(v.r) and tonumber(v.g) and tonumber(v.b) then
+                Themes.Custom[k] = Color3.new(tonumber(v.r), tonumber(v.g), tonumber(v.b))
+            end
+        end
+    end
     if type(data.SelectedTheme) == "string" and Themes[data.SelectedTheme] then
         pcall(applyTheme, data.SelectedTheme)
+    end
+    if type(data.ActiveVisualEffect) == "string" then
+        S.ActiveVisualEffect = data.ActiveVisualEffect
     end
     if type(data.Language) == "string" and Translations[data.Language] then
         S.Language = data.Language
@@ -12312,8 +12537,10 @@ tc(RunService.RenderStepped:Connect(function()
                     pitch = -84
                     roll = math.sin(os.clock() * 3) * 16
                 end
-                bg.CFrame = bg.CFrame * CFrame.Angles(math.rad(pitch), 0, math.rad(roll))
+                tC = tC * CFrame.Angles(math.rad(pitch), 0, math.rad(roll))
             end
+            bv.Velocity = bv.Velocity:Lerp(tV, 0.15)
+            bg.CFrame = bg.CFrame:Lerp(tC, 0.15)
             if h then h.PlatformStand = true end
         end end
 
@@ -13967,30 +14194,7 @@ end
 
 -- ============ PLAYER TAB (Emotes + Animations, thumbnails + search) ============
 do
-    -- Subtab bar (same pattern as Combat/Teleport): Emotes / Animations.
-    -- LayoutOrder 0 = always the first child so it sits at the very top of Pages.Player.
-    local playerSubTabBar = Instance.new("Frame")
-    playerSubTabBar.Name = "SubTabBar"
-    playerSubTabBar.LayoutOrder = 0
-    playerSubTabBar.BackgroundTransparency = 1
-    playerSubTabBar.Size = UDim2.new(1, 0, 0, 32)
-    playerSubTabBar.Parent = Pages.Player
-
-    local plSubTabList = Instance.new("UIListLayout")
-    plSubTabList.FillDirection = Enum.FillDirection.Horizontal
-    plSubTabList.SortOrder = Enum.SortOrder.LayoutOrder
-    plSubTabList.Padding = UDim.new(0, 8)
-    plSubTabList.Parent = playerSubTabBar
-
-    S._PlayerTabs = {}
-    S._PlayerTabs.emotesBtn = Instance.new("TextButton")
-    S._PlayerTabs.animsBtn = Instance.new("TextButton")
-    S._PlayerTabs.emotesStroke = mkSubTabBtn(playerSubTabBar, S._PlayerTabs.emotesBtn, "Emotes", 1)
-    S._PlayerTabs.animsStroke = mkSubTabBtn(playerSubTabBar, S._PlayerTabs.animsBtn, "Animations", 2)
-    bindLocalizedText(S._PlayerTabs.emotesBtn, "Emotes", "Emotes", false)
-    bindLocalizedText(S._PlayerTabs.animsBtn, "Animations", "Animations", false)
-    -- Section references shared with the tab-switching closure below.
-
+    -- Removed Subtab bar (Emotes / Animations), keeping shared helpers below.
     -- ---- shared helpers ----
     -- One clickable row: thumbnail (rbxthumb, no HTTP needed) + title. Used by both Emotes and the
     -- Animations catalog browse results.
@@ -14349,19 +14553,12 @@ do
         { name = "Face Calisthenics", id = 9830731012 },
     }
     local function fetchOfficialEmotes(onDone)
-        -- The emote loader can be refreshed by UI teardown/rebuild paths where
-        -- there is no live render callback.  Never let that optional callback
-        -- crash the entire launcher.
         local function finish(items)
             if type(onDone) == "function" then
                 onDone(items)
             end
         end
-
         if officialEmotes then finish(officialEmotes); return end
-        local cached = loadEmotesCacheFromDisk()
-        -- Use the disk cache as an instant first page, but always refresh it in the
-        -- background. The old early return made a stale cache permanently hide new emotes.
         local seed, seen = {}, {}
         local function addSeed(list)
             for _, e in ipairs(list or {}) do
@@ -14372,74 +14569,9 @@ do
                 end
             end
         end
-        addSeed(cached)
         addSeed(BUILTIN_EMOTES)
         officialEmotes = seed
         finish(officialEmotes)
-        if fetchingEmotes then return end
-        fetchingEmotes = true
-        task.spawn(function()
-            local avatarEditor = game:GetService("AvatarEditorService")
-            local params = CatalogSearchParams.new()
-            params.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
-            params.SortType = Enum.CatalogSortType.RecentlyCreated
-            params.SortAggregation = Enum.CatalogSortAggregation.AllTime
-            params.IncludeOffSale = true
-            -- Do not limit this to CreatorName = "Roblox".  The Player Emotes tab is meant
-            -- to contain the complete Roblox catalog, including creator/community emotes,
-            -- not only the older Roblox-published subset.
-            params.Limit = 120
-
-            local page
-            for _ = 1, 3 do
-                local ok, p = pcall(function()
-                    if avatarEditor.SearchCatalogAsync then
-                        return avatarEditor:SearchCatalogAsync(params)
-                    end
-                    return avatarEditor:SearchCatalog(params)
-                end)
-                if ok then page = p; break end
-                task.wait(2)
-            end
-            if not page then fetchingEmotes = false; return end -- builtin list is already on screen
-
-            local results = {}
-            -- 120 items/page; keep walking until Roblox says the catalog is finished (with
-            -- a generous safety cap so a broken page cursor can never loop forever).
-            for _ = 1, 100 do
-                local ok, items = pcall(function() return page:GetCurrentPage() end)
-                if ok and items then
-                    for _, it in ipairs(items) do
-                        table.insert(results, { name = it.Name, id = it.Id })
-                    end
-                end
-                if page.IsFinished then break end
-                local advanced = false
-                for _ = 1, 3 do
-                    if pcall(function() page:AdvanceToNextPageAsync() end) then advanced = true; break end
-                    task.wait(1)
-                end
-                if not advanced then break end
-            end
-            local have = {}
-            for _, e in ipairs(officialEmotes) do have[e.id] = true end
-            local fresh = {}
-            for _, e in ipairs(results) do
-                local id = tonumber(e.id)
-                if id and not have[id] then
-                    have[id] = true
-                    table.insert(fresh, { name = tostring(e.name or id), id = id })
-                end
-            end
-            if #fresh > 0 then
-                -- newest releases first, then everything we already had
-                for _, e in ipairs(officialEmotes) do table.insert(fresh, e) end
-                officialEmotes = fresh
-                saveEmotesCacheToDisk(fresh)
-                finish(fresh)
-            end
-            fetchingEmotes = false
-        end)
     end
 
     -- Pinned Emotes HUD tray: left-click plays; right-click removes the emote from the tray.
@@ -14751,17 +14883,6 @@ do
         end
         if officialEmotes then
             render(officialEmotes)
-        else
-            local lbl = Instance.new("TextLabel")
-            lbl.Name = "Status"
-            lbl.Parent = emScroll
-            lbl.BackgroundTransparency = 1
-            lbl.Size = UDim2.new(1, 0, 0, 30)
-            lbl.Font = F
-            lbl.TextSize = 12
-            lbl.TextColor3 = T.Tx4; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
-            lbl.Text = "Loading from Roblox catalog..."
-            fetchOfficialEmotes(render)
         end
     end
     -- The emote page remains usable even when an executor fails to create the
@@ -14787,600 +14908,73 @@ do
     mkToggle(secEmotes, "Loop Animation", false, function(v) S.LoopEmote = v end, 3)
     mkToggle(secEmotes, "No Emote Stop", false, function(v) S.NoEmoteStop = v end, 4)
     mkAction(secEmotes, "Stop Emote", function() if type(stopEmote) == "function" then pcall(stopEmote) end end, 5)
-    S._PlayerTabs.eCard = secEmotes and secEmotes.Parent  -- expose card to outer scope
     end -- end Emotes do-block
 
-    -- ================= ANIMATIONS =================
-    -- Wrapped in its own do-block (same reason: avoid hitting the 200-local limit).
-    -- S._PlayerTabs.pCard is written before this block ends.
     do
-    -- Real Animate script structure (verified live on this game): each movement state is a
-    -- StringValue holding one or more Animation children whose .AnimationId we overwrite directly.
-    local slots = {
-        { name = "Idle",     group = "idle",     children = { "Animation1", "Animation2" } },
-        { name = "Walk",     group = "walk",     children = { "WalkAnim" } },
-        { name = "Run",      group = "run",      children = { "RunAnim" } },
-        { name = "Jump",     group = "jump",     children = { "JumpAnim" } },
-        { name = "Fall",     group = "fall",     children = { "FallAnim" } },
-        { name = "Climb",    group = "climb",    children = { "ClimbAnim" } },
-        { name = "Swim",     group = "swim",     children = { "Swim" } },
-        { name = "SwimIdle", group = "swimidle", children = { "SwimIdle" } },
-    }
-    local function getAnimateGroup(groupName)
-        local c = LP.Character
-        local anim = c and c:FindFirstChild("Animate")
-        return anim and anim:FindFirstChild(groupName)
-    end
-    -- Creates the Animation object under the slot's group if it's missing instead of silently skipping
-    -- (some groups, like swimidle, don't always have their Animation child pre-made).
-    local function ensureSlotAnim(grp, childName)
-        local a = grp:FindFirstChild(childName)
-        if not a then
-            a = Instance.new("Animation")
-            a.Name = childName
-            a.Parent = grp
-        end
-        return a
-    end
-    -- First time a slot is touched we remember the game's own AnimationId, so Reset To Default can
-    -- put everything back without waiting for a respawn (a leftover floating idle from the
-    -- Levitation-style packs otherwise looks like an unexplained levitation bug).
-    local origAnims = {}
-    local function toAnimationId(value)
-        local text = tostring(value or ""):match("^%s*(.-)%s*$")
-        local digits = text:match("(%d+)")
-        if not digits or tonumber(digits) == 0 then return nil end
-        if text:find("rbxassetid://", 1, true) or text:find("roblox.com/asset", 1, true) then
-            return text
-        end
-        return "rbxassetid://" .. digits
-    end
-    local function captureDefaultAnimations(hum, animate)
-        local descFields = {
-            Idle = "IdleAnimation", Walk = "WalkAnimation", Run = "RunAnimation",
-            Jump = "JumpAnimation", Fall = "FallAnimation", Climb = "ClimbAnimation",
-            Swim = "SwimAnimation", SwimIdle = "SwimAnimation",
-        }
-        local descValues = {}
-        if hum then
-            pcall(function()
-                local desc = hum:GetAppliedDescription()
-                for slotName, field in pairs(descFields) do descValues[slotName] = desc[field] end
-            end)
-        end
-        for _, slot in ipairs(slots) do
-            local group = animate and animate:FindFirstChild(slot.group)
-            for _, childName in ipairs(slot.children) do
-                local child = group and group:FindFirstChild(childName)
-                local id = child and toAnimationId(child.AnimationId)
-                if not id then id = toAnimationId(descValues[slot.name]) end
-                if id and origAnims[slot.group .. "/" .. childName] == nil then
-                    origAnims[slot.group .. "/" .. childName] = id
-                end
-            end
-        end
-    end
-    local function applyToSlot(slot, id, quiet)
-        local animationId = toAnimationId(id)
-        if not animationId then return false end
-        local grp = getAnimateGroup(slot.group)
-        if not grp then if not quiet then Notify("Animations", "Character not ready", 2) end; return false end
-        for _, childName in ipairs(slot.children) do
-            local child = ensureSlotAnim(grp, childName)
-            local key = slot.group .. "/" .. childName
-            local originalId = toAnimationId(child.AnimationId)
-            if origAnims[key] == nil and originalId then origAnims[key] = originalId end
-            child.AnimationId = animationId
-        end
-        if not quiet then Notify("Animations", slot.name .. " animation updated", 2) end
-        return true
-    end
-    local originalAvatarDescription = nil
-    local function applyCatalogPackDescription(hum, pack)
-        if not (hum and pack and pack.catalog) then return false end
-        local okDesc, desc = pcall(function() return hum:GetAppliedDescription() end)
-        if not (okDesc and desc) then return false end
-        if not originalAvatarDescription then
-            local okClone, clone = pcall(function() return desc:Clone() end)
-            originalAvatarDescription = (okClone and clone) or desc
-        end
-        local changed = false
-        local fields = {
-            IdleAnimation = pack.Animation1 or pack.Animation2,
-            WalkAnimation = pack.WalkAnim,
-            RunAnimation = pack.RunAnim,
-            JumpAnimation = pack.JumpAnim,
-            FallAnimation = pack.FallAnim,
-            ClimbAnimation = pack.ClimbAnim,
-            SwimAnimation = pack.Swim,
-        }
-        for field, id in pairs(fields) do
-            local animationId = toAnimationId(id)
-            if animationId then
-                local ok = pcall(function() desc[field] = tonumber(animationId:match("%d+")) end)
-                if ok then changed = true end
-            end
-        end
-        if not changed then return false end
-        local okApply = pcall(function() hum:ApplyDescription(desc) end)
-        return okApply
-    end
-
-    -- Remembered so (a) the pack re-applies after every respawn — MM2 rebuilds the Animate script
-    -- each round, which wipes our ids — and (b) it persists across relaunches via the ConfigControl
-    -- Declared before both the reset action and the respawn hook so they share the same state.
-    local currentPackName = nil
-    local animationRequest = 0
-
-    -- Shared revert used both by the "Reset To Default Animations" button and automatically whenever
-    -- a just-applied pack turns out to be blocked in this place (see packJustFailed below).
-    local function resetToDefaultAnimations(quiet)
-        animationRequest += 1
-        currentPackName = nil
-        local c = LP.Character
-        local animate = c and c:FindFirstChild("Animate")
-        local hum = c and c:FindFirstChildOfClass("Humanoid")
-        if not (animate and hum) then if not quiet then Notify("Animations", "Character not ready", 2) end; return end
-        if next(origAnims) == nil and not originalAvatarDescription then
-            if not quiet then Notify("Animations", "Nothing to reset", 2) end
-            return
-        end
-        for key, id in pairs(origAnims) do
-            local grpName, childName = key:match("^(.-)/(.+)$")
-            local g = grpName and animate:FindFirstChild(grpName)
-            local ch = g and g:FindFirstChild(childName)
-            local animationId = toAnimationId(id)
-            if ch and animationId then ch.AnimationId = animationId end
-        end
-        if originalAvatarDescription then
-            pcall(function() hum:ApplyDescription(originalAvatarDescription) end)
-            originalAvatarDescription = nil
-        end
-        pcall(function() for _, t in ipairs(hum:GetPlayingAnimationTracks()) do t:Stop(0) end end)
-        pcall(function() animate.Disabled = true end)
-        task.wait(0.06)
-        pcall(function() animate.Disabled = false end)
-        pcall(function()
-            hum:ChangeState(Enum.HumanoidStateType.Landed)
-            task.wait(0.03)
-            hum:ChangeState(Enum.HumanoidStateType.Running)
-        end)
-        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
-        if not quiet then Notify("Animations", "Default animations restored", 2) end
-    end
-
-    -- Offline fallback packs. The live catalog loader below appends every BundleType.Animations
-    -- result (including newer UGC/community packs) and caches the result for future launches.
-    -- `bundle` is used only for the row thumbnail (rbxthumb BundleThumbnail).
-    local STATIC_PACKS = {
-        ["Adidas Aura"] = { bundle = 4294795, Animation1 = 110211186840347, Animation2 = 114191137265065, WalkAnim = 83842218823011, RunAnim = 118320322718866, JumpAnim = 109996626521204, FallAnim = 95603166884636, ClimbAnim = 97824616490448, Swim = 134530128383903, SwimIdle = 94922130551805 },
-        ["Adidas Community"] = { Animation1 = 122257458498464, Animation2 = 102357151005774, WalkAnim = 122150855457006, RunAnim = 82598234841035, JumpAnim = 75290611992385, FallAnim = 98600215928904, ClimbAnim = 88763136693023, Swim = 133308483266208, SwimIdle = 109346520324160 },
-        ["Adidas Sports"] = { bundle = 427999, Animation1 = 18537376492, Animation2 = 18537371272, WalkAnim = 18537392113, RunAnim = 18537384940, JumpAnim = 18537380791, FallAnim = 18537367238, ClimbAnim = 18537363391, Swim = 18537389531, SwimIdle = 18537387180 },
-        ["Amazon Unboxed"] = { bundle = 4164795, Animation1 = 98281136301627, WalkAnim = 90478085024465, RunAnim = 134824450619865, JumpAnim = 121454505477205, FallAnim = 94788218468396, ClimbAnim = 121145883950231, Swim = 105962919001086, SwimIdle = 129126268464847 },
-        ["Astronaut"] = { bundle = 34, Animation1 = 10921034824, Animation2 = 10921036806, WalkAnim = 10921046031, RunAnim = 10921039308, JumpAnim = 10921042494, FallAnim = 10921040576, ClimbAnim = 10921032124, Swim = 10921044000, SwimIdle = 10921045006 },
-        ["Bubbly"] = { bundle = 39, Animation1 = 910004836, Animation2 = 910009958, WalkAnim = 910034870, RunAnim = 910025107, JumpAnim = 910016857, FallAnim = 910001910, ClimbAnim = 909997997, Swim = 910028158, SwimIdle = 910030921 },
-        ["Cartoon"] = { bundle = 56, Animation1 = 742637544, Animation2 = 742638445, WalkAnim = 742640026, RunAnim = 742638842, JumpAnim = 742637942, FallAnim = 742637151, ClimbAnim = 742636889, Swim = 742639220, SwimIdle = 742639812 },
-        ["Catwalk Glam"] = { Animation1 = 133806214992291, Animation2 = 94970088341563, WalkAnim = 109168724482748, RunAnim = 81024476153754, JumpAnim = 116936326516985, FallAnim = 92294537340807, ClimbAnim = 119377220967554, Swim = 134591743181628, SwimIdle = 98854111361360 },
-        ["Elder"] = { bundle = 48, Animation1 = 10921101664, Animation2 = 10921102574, WalkAnim = 10921111375, RunAnim = 10921104374, JumpAnim = 10921107367, FallAnim = 10921105765, ClimbAnim = 10921100400, Swim = 10921108971, SwimIdle = 10921110146 },
-        ["Levitation"] = { bundle = 79, Animation1 = 616006778, Animation2 = 616008087, WalkAnim = 616013216, RunAnim = 616010382, JumpAnim = 616008936, FallAnim = 616005863, ClimbAnim = 616003713, Swim = 616011509, SwimIdle = 616012453 },
-        ["Mage"] = { bundle = 63, Animation1 = 10921144709, Animation2 = 10921145797, WalkAnim = 10921152678, RunAnim = 10921148209, JumpAnim = 10921149743, FallAnim = 10921148939, ClimbAnim = 10921143404, Swim = 10921150788, SwimIdle = 10921151661 },
-        ["NFL"] = { Animation1 = 92080889861410, Animation2 = 74451233229259, WalkAnim = 110358958299415, RunAnim = 117333533048078, JumpAnim = 119846112151352, FallAnim = 129773241321032, ClimbAnim = 134630013742019, Swim = 132697394189921, SwimIdle = 79090109939093 },
-        ["Ninja"] = { bundle = 75, Animation1 = 656117400, Animation2 = 656118341, WalkAnim = 656121766, RunAnim = 656118852, JumpAnim = 656117878, FallAnim = 656115606, ClimbAnim = 656114359, Swim = 656119721, SwimIdle = 656121397 },
-        ["R6 (Classic)"] = { bundle = 0, Animation1 = 180435571, WalkAnim = 180426354, RunAnim = 180426354, JumpAnim = 125750702, FallAnim = 180436148, ClimbAnim = 180436334, Swim = 180426354, SwimIdle = 180435571 },
-                ["Pirate"] = { bundle = 66, Animation1 = 837024662, WalkAnim = 837023892, RunAnim = 837023444, JumpAnim = 837024350, FallAnim = 837024147, ClimbAnim = 837025325, Swim = 837025054, SwimIdle = 837025054 },
-        ["No Boundaries"] = { Animation1 = 18747067405, Animation2 = 18747063918, WalkAnim = 18747074203, RunAnim = 18747070484, JumpAnim = 18747069148, FallAnim = 18747062535, ClimbAnim = 18747060903, Swim = 18747073181, SwimIdle = 18747071682 },
-        ["Robot"] = { bundle = 82, Animation1 = 616088211, Animation2 = 616089559, WalkAnim = 616095330, RunAnim = 616091570, JumpAnim = 616090535, FallAnim = 616087089, ClimbAnim = 616086039, Swim = 616092998, SwimIdle = 616094091 },
-        ["Stylish"] = { bundle = 83, Animation1 = 616136790, Animation2 = 616138447, WalkAnim = 616146177, RunAnim = 616140816, JumpAnim = 616139451, FallAnim = 616134815, ClimbAnim = 616133594, Swim = 616143378, SwimIdle = 616144772 },
-        ["Superhero"] = { bundle = 81, Animation1 = 10921288909, Animation2 = 10921290167, WalkAnim = 10921298616, RunAnim = 10921291831, JumpAnim = 10921294559, FallAnim = 10921293373, ClimbAnim = 10921286911, Swim = 10921295495, SwimIdle = 10921297391 },
-        ["Toy"] = { bundle = 43, Animation1 = 10921301576, WalkAnim = 10921312010, RunAnim = 10921306285, JumpAnim = 10921308158, FallAnim = 10921307241, ClimbAnim = 10921300839, Swim = 10921309319, SwimIdle = 10921310341 },
-        ["Vampire"] = { bundle = 33, Animation1 = 10921315373, WalkAnim = 10921326949, RunAnim = 10921320299, JumpAnim = 10921322186, FallAnim = 10921321317, ClimbAnim = 10921314188, Swim = 10921324408, SwimIdle = 10921325443 },
-        ["Werewolf"] = { bundle = 32, Animation1 = 10921330408, Animation2 = 10921333667, WalkAnim = 10921342074, RunAnim = 10921336997, FallAnim = 10921337907, ClimbAnim = 10921329322, Swim = 10921340419, SwimIdle = 10921341319 },
-        ["Wicked \"Dancing Through Life\""] = { Animation1 = 92849173543269, Animation2 = 132238900951109, WalkAnim = 73718308412641, RunAnim = 135515454877967, JumpAnim = 78508480717326, FallAnim = 78147885297412, ClimbAnim = 129447497744818, Swim = 110657013921774, SwimIdle = 129183123083281 },
-        ["Wicked Popular"] = { bundle = 1189398, Animation1 = 118832222982049, Animation2 = 76049494037641, WalkAnim = 92072849924640, RunAnim = 72301599441680, JumpAnim = 104325245285198, FallAnim = 121152442762481, ClimbAnim = 131326830509784, Swim = 99384245425157, SwimIdle = 113199415118199 },
-        ["Zombie"] = { bundle = 80, Animation1 = 10921344533, Animation2 = 10921345304, WalkAnim = 10921355261, RunAnim = 616163682, JumpAnim = 10921351278, FallAnim = 10921350320, ClimbAnim = 10921343576, Swim = 10921352344, SwimIdle = 10921353442 },
-    }
-
-    -- Keep the Player > Animations tab focused on popular, complete legacy packs.
-    -- The full Roblox bundle catalog contains many new UGC packs that are visible in the
-    -- catalog but are not consistently loadable by every experience.
-    local POPULAR_PACK_ORDER = {
-        "Adidas Aura", "Adidas Community", "Adidas Sports", "Amazon Unboxed", "Astronaut",
-        "Bubbly", "Cartoon", "Catwalk Glam", "Elder", "Levitation", "Mage", "NFL", "Ninja", "Pirate",
-        "No Boundaries", "R6 (Classic)", "Robot", "Stylish", "Superhero", "Toy", "Vampire",
-        "Werewolf", "Wicked \"Dancing Through Life\"", "Wicked Popular", "Zombie"
-    }
-    local MAX_ANIMATION_BUNDLES = 100
-    local function hasWorkingAnimationSlots(pack)
-        return type(pack) == "table"
-            and pack.Animation1 and pack.WalkAnim and pack.RunAnim
-            and pack.JumpAnim and pack.FallAnim and pack.ClimbAnim and pack.Swim
-    end
-
-    -- =================================================================================
-    -- LIMITED ROBLOX ANIMATION-PACK CATALOG — capped at 100 bundles:
-    --   * The LIST only needs each pack's NAME + BUNDLE ID. That comes from ONE paginated
-    --     AvatarEditorService:SearchCatalog(BundleTypes = Animations) call — the same API Emotes
-    --     uses — cached to disk, so every future launch shows the entire catalog instantly.
-    --   * Resolving a pack's individual per-slot animation ids (idle/walk/run/...) is the slow part
-    --     (a GetProductInfo per bundle), so it is DEFERRED to the moment you CLICK a pack — never done
-    --     for the whole catalog up front. Resolved packs are cached to disk too, so re-clicking is
-    --     instant. This is why the list can hold the full Roblox catalog without lag.
-    --   * The curated STATIC_PACKS above are the pre-resolved, known-good "instant" floor: they show
-    --     (and apply) even before the catalog fetch finishes or if the catalog is unreachable.
-    -- =================================================================================
-    local slotToStaticKey = { Walk = "WalkAnim", Run = "RunAnim", Jump = "JumpAnim", Fall = "FallAnim", Climb = "ClimbAnim", Swim = "Swim", SwimIdle = "SwimIdle" }
-    local HttpSvc = game:GetService("HttpService")
-
-    -- Versioned caches discard the older list/entries that were marked "blocked" by a
-    -- client-side preload check even when Roblox allowed them in-game.
-    local PACKS_LIST_CACHE = "MM2_Configs/_anim_packs_list_v3.json"       -- [{name, id}] — max 100 catalog rows
-    local PACKS_RESOLVED_CACHE = "MM2_Configs/_anim_packs_resolved_v3.json" -- catalog packs must use HumanoidDescription
-    local PACKS_BLOCKED_CACHE = "MM2_Configs/_anim_packs_blocked_v1.json"   -- name -> true, proven blocked in THIS place
-    -- Grouped into ONE table (was 6 separate locals) to save registers — this whole file lives right at
-    -- Luau's 200-local-register ceiling, and 6 scalars collapsed into 1 table local is a straight save
-    -- of 5 registers for zero behavior change.
-    local PackState = {
-        catalogPacks = nil,      -- nil = not fetched yet; else array of { name, id }
-        fetchingPacks = false,
-        resolvedCache = {},      -- name -> { bundle=, WalkAnim=, Animation1=, ... }
-        blockedPacks = {},       -- name -> true, once Roblox itself has rejected one of its animation ids here
-        refreshPacksFn = nil,    -- forward ref: assigned once refreshPacks() is defined further down
-        recentlyFailedIds = {},  -- assetId (string) -> tick() it was last reported as load-failed
-    }
-
-    -- restore the resolved-pack cache (things you've applied before) so re-clicking is instant
-    if readfile and isfile and isfile(PACKS_RESOLVED_CACHE) then
-        local ok, data = pcall(function() return HttpSvc:JSONDecode(readfile(PACKS_RESOLVED_CACHE)) end)
-        if ok and type(data) == "table" then PackState.resolvedCache = data end
-    end
-    if readfile and isfile and isfile(PACKS_BLOCKED_CACHE) then
-        local ok, data = pcall(function() return HttpSvc:JSONDecode(readfile(PACKS_BLOCKED_CACHE)) end)
-        if ok and type(data) == "table" then PackState.blockedPacks = data end
-    end
-    local function saveResolvedCache()
-        if not (writefile and makefolder and isfolder) then return end
-        pcall(function()
-            if not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
-            writefile(PACKS_RESOLVED_CACHE, HttpSvc:JSONEncode(PackState.resolvedCache))
-        end)
-    end
-    -- ===== "Not allowed in this place" detection =====
-    -- Roblox does NOT throw a catchable Lua error for a place-restricted animation — LoadAnimation and
-    -- :Play() both "succeed" and the track just silently has Length == 0 forever. The ONLY signal is a
-    -- Record animation IDs that Roblox reports as failed.
-    tc(game:GetService("LogService").MessageOut:Connect(function(msg, msgType)
-        if msgType ~= Enum.MessageType.MessageError then return end
-        local id = tostring(msg):match("Failed to load animation with sanitized ID rbxassetid://(%d+)")
-        if id then PackState.recentlyFailedIds[id] = tick() end
-    end))
-    local function loadPacksListCache()
-        if not (readfile and isfile and isfile(PACKS_LIST_CACHE)) then return nil end
-        local ok, data = pcall(function() return HttpSvc:JSONDecode(readfile(PACKS_LIST_CACHE)) end)
-        return (ok and type(data) == "table" and #data > 0) and data or nil
-    end
-    local function savePacksListCache(list)
-        if not (writefile and makefolder and isfolder) then return end
-        pcall(function()
-            if not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
-            writefile(PACKS_LIST_CACHE, HttpSvc:JSONEncode(list))
-        end)
-    end
-
-    -- Fetch only the first limited slice of the catalog; never keep the whole catalog in memory.
-    local function fetchAllPacks(onDone)
-        if PackState.catalogPacks then onDone(PackState.catalogPacks); return end
-        local cached = loadPacksListCache()
-        -- Show the cached list immediately, then still refresh the catalog in the background;
-        -- otherwise a one-time partial cache could hide Cat/Wolf/Dog and newer UGC packs forever.
-        if cached then PackState.catalogPacks = cached; onDone(cached) end
-        if PackState.fetchingPacks then return end
-        PackState.fetchingPacks = true
-        task.spawn(function()
-            local AES = game:GetService("AvatarEditorService")
-            local params = CatalogSearchParams.new()
-            params.BundleTypes = { Enum.BundleType.Animations }
-            local sortOk, popularSort = pcall(function() return Enum.CatalogSortType.MostFavorited end)
-            params.SortType = sortOk and popularSort or Enum.CatalogSortType.RecentlyCreated
-            params.SortAggregation = Enum.CatalogSortAggregation.AllTime
-            params.IncludeOffSale = true
-            params.Limit = MAX_ANIMATION_BUNDLES
-
-            local page
-            for _ = 1, 5 do
-                local ok, p = pcall(function()
-                    if AES.SearchCatalogAsync then return AES:SearchCatalogAsync(params) end
-                    return AES:SearchCatalog(params)
-                end)
-                if ok then page = p; break end
-                task.wait(2)
-            end
-            if not page then PackState.fetchingPacks = false; onDone({}); return end -- don't cache a failed attempt
-
-            local results, seen = {}, {}
-            for _ = 1, 10 do
-                local ok, items = pcall(function() return page:GetCurrentPage() end)
-                if ok and items then
-                    for _, it in ipairs(items) do
-                        if #results >= MAX_ANIMATION_BUNDLES then break end
-                        if it.Id and not seen[it.Id] then
-                            seen[it.Id] = true
-                            table.insert(results, { name = tostring(it.Name), id = it.Id })
-                        end
-                    end
-                end
-                if #results >= MAX_ANIMATION_BUNDLES then break end
-                if page.IsFinished then break end
-                local advanced = false
-                for _ = 1, 3 do
-                    if pcall(function() page:AdvanceToNextPageAsync() end) then advanced = true; break end
-                    task.wait(1)
-                end
-                if not advanced then break end
-            end
-            PackState.catalogPacks = results
-            PackState.fetchingPacks = false
-            if #results > 0 then savePacksListCache(results) end
-            onDone(results)
-        end)
-    end
-
-    -- "Swim Idle Animation" contains both "idle" and "swim" as substrings, so the more specific
-    -- SwimIdle patterns must be checked before the generic Idle/Swim ones or they'd never match.
-    local PACK_SLOT_KEYWORDS = {
-        { key = "SwimIdle", pat = "swim idle" }, { key = "SwimIdle", pat = "swimidle" },
-        { key = "Idle", pat = "idle" }, { key = "Walk", pat = "walk" }, { key = "Run", pat = "run" },
-        { key = "Jump", pat = "jump" }, { key = "Fall", pat = "fall" }, { key = "Climb", pat = "climb" },
-        { key = "Swim", pat = "swim" },
-    }
-    -- CLICK-TIME resolution: turn a bundle id into per-slot animation ids via GetProductInfo.
-    local function resolveBundleAnims(bundleId)
-        local mps = game:GetService("MarketplaceService")
-        local ok, info = pcall(function() return mps:GetProductInfo(bundleId, Enum.InfoType.Bundle) end)
-        if not (ok and info and info.Items) then return nil end
-        local pack = { bundle = bundleId, catalog = true }
-        for _, it in ipairs(info.Items) do
-            if tostring(it.Type) == "Asset" then
-                local lname = tostring(it.Name):lower()
-                for _, kw in ipairs(PACK_SLOT_KEYWORDS) do
-                    if lname:find(kw.pat, 1, true) then
-                        if kw.key == "Idle" then
-                            if not pack.Animation1 then pack.Animation1 = it.Id
-                            elseif not pack.Animation2 then pack.Animation2 = it.Id end
-                        else
-                            local slotKey = slotToStaticKey[kw.key]
-                            if slotKey and not pack[slotKey] then pack[slotKey] = it.Id end
-                        end
-                        break
-                    end
-                end
-            end
-        end
-        if pack.Animation1 or pack.Animation2 or pack.WalkAnim or pack.RunAnim or pack.JumpAnim
-            or pack.FallAnim or pack.ClimbAnim or pack.Swim or pack.SwimIdle then
-            return pack
-        end
-        return nil
-    end
-    local function applyResolvedPack(packName, pack)
-        local c = LP.Character
-        local hum = c and c:FindFirstChildOfClass("Humanoid")
-        local animate = c and c:FindFirstChild("Animate")
-        if not (hum and animate) then Notify("Animations", "Character not ready", 2); return end
-        captureDefaultAnimations(hum, animate)
-        currentPackName = packName
-        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
-        pcall(function() for _, t in ipairs(hum:GetPlayingAnimationTracks()) do t:Stop(0) end end)
+        local secWiwi = mkSection(Pages.Player, "Wiwi Settings", 2)
+        local wiwiActive = false
+        local wiwiModel = nil
         
-        local applied = 0
-        local descApplied = false
-        if pack and pack.catalog then
-            descApplied = applyCatalogPackDescription(hum, pack)
-        end
-        
-        if not descApplied then
-            for _, slot in ipairs(slots) do
-                if slot.name == "Idle" then
-                    local a1, a2 = pack.Animation1, pack.Animation2
-                    local id1 = toAnimationId(a1) or toAnimationId(a2)
-                    local id2 = toAnimationId(a2) or toAnimationId(a1)
-                    if id1 and applyToSlot(slot, id1, true) then applied = applied + 1 end
-                    if id2 and id2 ~= id1 then
-                        local grp = getAnimateGroup(slot.group)
-                        if grp then
-                            local an2 = ensureSlotAnim(grp, "Animation2")
-                            local key = slot.group .. "/Animation2"
-                            local originalId = toAnimationId(an2.AnimationId)
-                            if origAnims[key] == nil and originalId then origAnims[key] = originalId end
-                            an2.AnimationId = id2
-                        end
-                    end
-                else
-                    local id = pack[slotToStaticKey[slot.name]]
-                    if applyToSlot(slot, id, true) then applied = applied + 1 end
-                end
-            end
-            pcall(function() animate.Disabled = true end)
-            task.wait(0.06)
-            pcall(function() animate.Disabled = false end)
-            pcall(function()
-                hum:ChangeState(Enum.HumanoidStateType.Landed)
-                task.wait(0.03)
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-            end)
-            Notify("Animations", packName .. " applied (" .. applied .. " animations)", 3)
-        else
-            Notify("Animations", packName .. " applied through avatar settings", 3)
-        end
-    end
-
-    -- Click handler: resolve (if needed) -> apply. Do not use ContentProvider:PreloadAsync as a
-    -- moderation test: it reports false failures for valid catalog animation assets in experiences.
-    local function clickPack(name, bundleId)
-        if PackState.blockedPacks[name] then
-            return
-        end
-        animationRequest += 1
-        local request = animationRequest
-        task.spawn(function()
-            local pack = STATIC_PACKS[name]
-            if not pack then
-                local c = PackState.resolvedCache[name]
-                pack = (type(c) == "table") and c or nil
-                if pack then pack.catalog = true end
-            end
-            if pack then
-                -- Every animation-pack row is a catalog bundle, including the curated fallback
-                -- rows. Apply it through HumanoidDescription so new asset types 48-55 are not
-                -- written directly into Animate and rejected by Roblox's sanitizer.
-                pack.catalog = true
-                if request ~= animationRequest then return end
-                applyResolvedPack(name, pack)
-                return
-            end
-            if not bundleId then Notify("Animations", "No bundle id for " .. name, 2); return end
-            Notify("Animations", "Loading " .. name .. "...", 1)
-            local resolved = resolveBundleAnims(bundleId)
-            if not resolved then Notify("Animations", "Couldn't load " .. name, 3); return end
-            if request ~= animationRequest then return end
-            resolved.catalog = true
-            PackState.resolvedCache[name] = resolved
-            saveResolvedCache()
-            applyResolvedPack(name, resolved)
-        end)
-    end
-
-    local secPacks = mkSection(Pages.Player, "Animation Pack", 2)
-    local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
-    local packScroll = S._mkListScroll(secPacks, 2, 320)
-    local function refreshPacks()
-        for _, ch in ipairs(packScroll:GetChildren()) do
-            if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
-        end
-        -- Keep the curated known-good packs, then add at most enough catalog rows to reach 100.
-        -- Anything in PackState.blockedPacks has already been proven ("not allowed in this place") by an actual
-        -- apply attempt (LogService MessageOut catches the "not allowed" toast) — skip it so the list only
-        -- ever shows packs that either work here or haven't been tried yet.
-        local byName, list = {}, {}
-        for _, nm in ipairs(POPULAR_PACK_ORDER) do
-            local pk = STATIC_PACKS[nm]
-            if hasWorkingAnimationSlots(pk) and not PackState.blockedPacks[nm] then
-                byName[nm] = true
-                table.insert(list, { name = nm, bundle = pk.bundle })
-            end
-        end
-        if PackState.catalogPacks then
-            for _, e in ipairs(PackState.catalogPacks) do
-                if #list >= MAX_ANIMATION_BUNDLES then break end
-                if e.name and not byName[e.name] and not PackState.blockedPacks[e.name] then
-                    byName[e.name] = true
-                    table.insert(list, { name = e.name, bundle = e.id })
-                end
-            end
-        end
-        table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
-        local q = packSearch.Text:lower()
-        -- Search filters the capped list; it never triggers loading of more catalog pages.
-        local PACK_RENDER_CAP = MAX_ANIMATION_BUNDLES
-        local order, matches = 0, 0
-        for _, e in ipairs(list) do
-            if q == "" or e.name:lower():find(q, 1, true) then
-                matches = matches + 1
-                if order < PACK_RENDER_CAP then
-                    order = order + 1
-                    local thumb = e.bundle and ("bundle:" .. e.bundle) or ""
-                    local nm, bid = e.name, e.bundle
-                    S._mkThumbRow(packScroll, order, thumb, nm, function() clickPack(nm, bid) end)
-                end
-            end
-        end
-        if order == 0 then
-            local lbl = Instance.new("TextLabel")
-            lbl.Name = "Status"
-            lbl.Parent = packScroll
-            lbl.BackgroundTransparency = 1
-            lbl.Size = UDim2.new(1, 0, 0, 30)
-            lbl.Font = F
-            lbl.TextSize = 12
-            lbl.TextColor3 = T.Tx4; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
-            lbl.Text = "No matches."
-        end
-    end
-    PackState.refreshPacksFn = refreshPacks
-    -- In rare executor/UI failures the search field can fail to construct; the
-    -- pack list must still load instead of crashing the entire script.
-    if packSearch then
-        packSearch:GetPropertyChangedSignal("Text"):Connect(refreshPacks)
-    end
-    refreshPacks()
-    -- Load the limited catalog slice in the background; the UI never renders more than 100 rows.
-    fetchAllPacks(function() refreshPacks() end)
-
-    mkAction(secPacks, "Reset To Default Animations", function() resetToDefaultAnimations(false) end, 3)
-
-    -- Re-apply the chosen pack after every respawn: MM2 rebuilds the Animate script each round, which
-    -- would otherwise silently revert you to the default walk/idle mid-session.
-    tc(LP.CharacterAdded:Connect(function()
-        table.clear(origAnims)
-        originalAvatarDescription = nil
-        if not currentPackName then return end
-        task.spawn(function()
-            task.wait(1) -- let MM2's Animate script finish rebuilding first
-            local pack = STATIC_PACKS[currentPackName] or PackState.resolvedCache[currentPackName]
-            if pack and type(pack) == "table" then applyResolvedPack(currentPackName, pack) end
-        end)
-    end))
-    -- Persist the applied pack across relaunches (only re-applies packs we can resolve offline:
-    -- curated STATIC_PACKS or ones already in PackState.resolvedCache from a previous click).
-    table.insert(ConfigControls, {
-        id = "Player/Animation Pack/AppliedPack",
-        get = function() return currentPackName end,
-        set = function(v)
-            animationRequest += 1
-            local request = animationRequest
-            if type(v) ~= "string" or v == "" then
-                resetToDefaultAnimations(true)
-                return
-            end
-            currentPackName = v
+        local function spawnWiwi()
+            if wiwiModel then pcall(function() wiwiModel:Destroy() end) wiwiModel = nil end
+            if not wiwiActive or not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
+            
+            wiwiModel = Instance.new("Part")
+            wiwiModel.Name = "Wiwi"
+            wiwiModel.Size = Vector3.new(S.WiwiSize or 2, S.WiwiSize or 2, S.WiwiSize or 2)
+            wiwiModel.Shape = Enum.PartType.Ball
+            wiwiModel.Material = Enum.Material.SmoothPlastic
+            wiwiModel.Color = Color3.fromRGB(255, 100, 100)
+            wiwiModel.Position = LP.Character.HumanoidRootPart.Position + Vector3.new(0, 5, 0)
+            wiwiModel.CustomPhysicalProperties = PhysicalProperties.new(1, 0.5, 0.5, 100, 1)
+            wiwiModel.CanCollide = false
+            wiwiModel.Parent = workspace
+            
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(100000, 100000, 100000)
+            bv.P = 1250
+            bv.Parent = wiwiModel
+            
             task.spawn(function()
-                for _ = 1, 6 do
-                    if request ~= animationRequest or currentPackName ~= v then return end
-                    local pack = STATIC_PACKS[v] or PackState.resolvedCache[v]
-                    local c = LP.Character
-                    if pack and type(pack) == "table" and c and c:FindFirstChild("Animate")
-                        and c:FindFirstChildOfClass("Humanoid") then
-                        applyResolvedPack(v, pack)
-                        return
+                while wiwiActive and wiwiModel and wiwiModel.Parent do
+                    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                        local hrp = LP.Character.HumanoidRootPart
+                        local dist = (S.WiwiFollowDist or 5)
+                        local targetPos = hrp.Position + hrp.CFrame.LookVector * -dist + Vector3.new(0, 3, 0)
+                        
+                        local dir = (targetPos - wiwiModel.Position)
+                        local vel = dir * 5
+                        local maxSpeed = (S.WiwiMaxSpeed or 50)
+                        if vel.Magnitude > maxSpeed then
+                            vel = vel.Unit * maxSpeed
+                        end
+                        bv.Velocity = vel
                     end
-                    task.wait(1)
+                    task.wait(0.03)
                 end
             end)
-        end,
-    })
-    S._PlayerTabs.pCard = secPacks and secPacks.Parent  -- expose card to outer scope
-    end -- end Animations do-block
-
-    do
-
-
-    -- ---- subtab visibility ----
-    -- Uses the section references written by the nested blocks above.
-    local activePlSubTab = "Emotes"
-    local function updatePlSubTabs()
-        local isEmotes = (activePlSubTab == "Emotes")
-        local isAnims = (activePlSubTab == "Animations")
-        local tabs = S._PlayerTabs
-        if not tabs then return end
-        if tabs.emotesBtn and tabs.emotesStroke then pcall(styleSubTabActive, tabs.emotesBtn, tabs.emotesStroke, isEmotes) end
-        if tabs.animsBtn and tabs.animsStroke then pcall(styleSubTabActive, tabs.animsBtn, tabs.animsStroke, isAnims) end
-        if tabs.eCard then pcall(function() tabs.eCard.Visible = isEmotes end) end
-        if tabs.pCard then pcall(function() tabs.pCard.Visible = isAnims end) end
+        end
+        
+        mkToggle(secWiwi, "Enable Wiwi", false, function(v)
+            wiwiActive = v
+            if v then
+                spawnWiwi()
+            else
+                if wiwiModel then pcall(function() wiwiModel:Destroy() end) wiwiModel = nil end
+            end
+        end, 1)
+        
+        mkSlider(secWiwi, "Wiwi Size", 1, 10, 2, function(v) S.WiwiSize = v; if wiwiActive then spawnWiwi() end end, 2)
+        mkSlider(secWiwi, "Wiwi Follow Distance", 1, 20, 5, function(v) S.WiwiFollowDist = v end, 3)
+        mkSlider(secWiwi, "Wiwi Max Speed", 10, 150, 50, function(v) S.WiwiMaxSpeed = v end, 4)
+        
+        tc(LP.CharacterAdded:Connect(function()
+            if wiwiActive then
+                task.wait(1)
+                spawnWiwi()
+            end
+        end))
     end
-    S._UpdatePlayerSubtabs = updatePlSubTabs
-    if S._PlayerTabs.emotesBtn then S._PlayerTabs.emotesBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Emotes"; updatePlSubTabs() end) end
-    if S._PlayerTabs.animsBtn then S._PlayerTabs.animsBtn.MouseButton1Click:Connect(function() SFX.Click(); activePlSubTab = "Animations"; updatePlSubTabs() end) end
-    updatePlSubTabs()
-end
 
 do
     -- ===== FAST THROW / THROW WIND-UP =====
@@ -15667,7 +15261,9 @@ do
     local lastNear, lastSheriff, lastAura, lastThrowAura = 0, 0, 0, 0
     local function getKnifeThrowEvent()
         local c = LP.Character
-        local knife = (c and c:FindFirstChild("Knife")) or (LP:FindFirstChildOfClass("Backpack") and LP.Backpack:FindFirstChild("Knife"))
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        local knife = (c and (c:FindFirstChild("Knife") or c:FindFirstChild("KnifeServer")))
+            or (bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("KnifeServer")))
         if not knife then return nil end
         return knife:FindFirstChild("KnifeThrown", true)
     end
