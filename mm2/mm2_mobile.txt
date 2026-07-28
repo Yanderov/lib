@@ -62,7 +62,7 @@ local S = {
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false,
+    FakeHeadless = false, FakeKorblox = false, CustomCharacterPack = "Off",
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -4867,6 +4867,152 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S._UpdateAvatarMods()
 end, 6)
     do
+        local PACKS = {
+            ["1x1x1x1"] = "118225030405167",
+            ["Milestone 4 Slasher"] = "115403024944965",
+        }
+        local customObjects, customOriginal, customLoading = {}, {}, false
+        local function clearCustomCharacter()
+            for part, old in pairs(customOriginal) do
+                if part and part.Parent then pcall(function() part.LocalTransparencyModifier = old end) end
+            end
+            table.clear(customOriginal)
+            for _, obj in ipairs(customObjects) do
+                if obj and obj.Parent then pcall(function() obj:Destroy() end) end
+            end
+            table.clear(customObjects)
+            local char = LP.Character
+            if char then
+                for _, child in ipairs(char:GetChildren()) do
+                    if child.Name == "InertiaCustomCharacter" then
+                        pcall(function() child:Destroy() end)
+                    end
+                end
+            end
+        end
+        local function prepCosmeticPart(part)
+            part.Anchored = false
+            part.CanCollide = false
+            part.CanTouch = false
+            part.CanQuery = false
+            part.Massless = true
+        end
+        local function stripLoadedScripts(container)
+            for _, obj in ipairs(container:GetDescendants()) do
+                if obj:IsA("BaseScript") or obj:IsA("ModuleScript") then
+                    pcall(function() obj:Destroy() end)
+                end
+            end
+        end
+        local function hideCurrentAvatar(char)
+            for _, obj in ipairs(char:GetDescendants()) do
+                if obj:IsA("BasePart") and obj.Name ~= "HumanoidRootPart" then
+                    local owned = obj:FindFirstAncestor("InertiaCustomCharacter")
+                        or obj:FindFirstAncestor("InertiaArchdemonWings")
+                    if not owned then
+                        if customOriginal[obj] == nil then
+                            customOriginal[obj] = obj.LocalTransparencyModifier
+                        end
+                        obj.LocalTransparencyModifier = 1
+                    end
+                end
+            end
+        end
+        local function weldCharacterModel(model, root)
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if not primary then return false end
+            model.PrimaryPart = primary
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    prepCosmeticPart(part)
+                    if part ~= primary then
+                        local weld = Instance.new("WeldConstraint")
+                        weld.Part0 = primary
+                        weld.Part1 = part
+                        weld.Parent = part
+                    end
+                end
+            end
+            model:PivotTo(root.CFrame)
+            local rootWeld = Instance.new("WeldConstraint")
+            rootWeld.Name = "InertiaCustomCharacterWeld"
+            rootWeld.Part0 = root
+            rootWeld.Part1 = primary
+            rootWeld.Parent = primary
+            return true
+        end
+        local function collectAccessories(container, out)
+            if container:IsA("Accessory") then table.insert(out, container) end
+            for _, child in ipairs(container:GetChildren()) do collectAccessories(child, out) end
+        end
+        local function rebuildCustomCharacter()
+            clearCustomCharacter()
+            local pack = S.CustomCharacterPack or "Off"
+            local assetId = PACKS[pack]
+            if not assetId then return end
+            if customLoading then return end
+            local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not (char and hum and root) then return end
+            customLoading = true
+            task.spawn(function()
+                local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. assetId) end)
+                customLoading = false
+                if not (S.CustomCharacterPack == pack and ok and type(loaded) == "table" and #loaded > 0) then
+                    Notify("Custom Character", "Asset load failed: " .. assetId, 3)
+                    return
+                end
+                clearCustomCharacter()
+                char = LP.Character
+                hum = char and char:FindFirstChildOfClass("Humanoid")
+                root = char and char:FindFirstChild("HumanoidRootPart")
+                if not (S.CustomCharacterPack == pack and char and hum and root) then return end
+                hideCurrentAvatar(char)
+                local accessories = {}
+                for _, obj in ipairs(loaded) do collectAccessories(obj, accessories) end
+                if #accessories > 0 then
+                    for _, accessory in ipairs(accessories) do
+                        local clone = accessory:Clone()
+                        clone.Name = "InertiaCustomCharacter"
+                        stripLoadedScripts(clone)
+                        for _, part in ipairs(clone:GetDescendants()) do
+                            if part:IsA("BasePart") then prepCosmeticPart(part) end
+                        end
+                        local added = pcall(function() hum:AddAccessory(clone) end)
+                        if not added then clone.Parent = char end
+                        table.insert(customObjects, clone)
+                    end
+                    Notify("Custom Character", pack .. " loaded", 2)
+                    return
+                end
+                local model = Instance.new("Model")
+                model.Name = "InertiaCustomCharacter"
+                for _, obj in ipairs(loaded) do obj:Clone().Parent = model end
+                stripLoadedScripts(model)
+                model.Parent = char
+                if weldCharacterModel(model, root) then
+                    table.insert(customObjects, model)
+                    Notify("Custom Character", pack .. " loaded", 2)
+                else
+                    model:Destroy()
+                    clearCustomCharacter()
+                    Notify("Custom Character", "Asset has no visible parts.", 3)
+                end
+            end)
+        end
+        S._RefreshCustomCharacter = rebuildCustomCharacter
+        tc(LP.CharacterAdded:Connect(function()
+            task.delay(1, function()
+                if (S.CustomCharacterPack or "Off") ~= "Off" then rebuildCustomCharacter() end
+            end)
+        end))
+        mkCycle(secCustoms, "Custom Character", {"Off", "1x1x1x1", "Milestone 4 Slasher"}, "Off", function(v)
+            S.CustomCharacterPack = v
+            rebuildCustomCharacter()
+        end, 7)
+    end
+    do
         local WING_ASSET_ID = "76200335500118"
         local wingObjects, wingLoading = {}, false
         local function clearWings()
@@ -4881,7 +5027,54 @@ end, 6)
                         pcall(function() child:Destroy() end)
                     end
                 end
+                for _, obj in ipairs(char:GetDescendants()) do
+                    if obj.Name == "InertiaArchdemonWingAura" or obj.Name == "InertiaArchdemonAuraAttachment" then
+                        pcall(function() obj:Destroy() end)
+                    end
+                end
             end
+        end
+        local function addWingAura(root)
+            local att = Instance.new("Attachment")
+            att.Name = "InertiaArchdemonAuraAttachment"
+            att.Position = Vector3.new(0, 0.25, 0.55)
+            att.Parent = root
+            local aura = Instance.new("ParticleEmitter")
+            aura.Name = "InertiaArchdemonWingAura"
+            aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+            aura.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 25, 70)),
+                ColorSequenceKeypoint.new(0.45, Color3.fromRGB(155, 35, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 0, 35)),
+            })
+            aura.Size = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.35),
+                NumberSequenceKeypoint.new(0.5, 1.35),
+                NumberSequenceKeypoint.new(1, 0),
+            })
+            aura.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.25),
+                NumberSequenceKeypoint.new(0.75, 0.45),
+                NumberSequenceKeypoint.new(1, 1),
+            })
+            aura.Lifetime = NumberRange.new(0.75, 1.25)
+            aura.Rate = MOBILE and 16 or 24
+            aura.Speed = NumberRange.new(0.15, 0.85)
+            aura.SpreadAngle = Vector2.new(360, 360)
+            aura.Rotation = NumberRange.new(0, 360)
+            aura.RotSpeed = NumberRange.new(-65, 65)
+            aura.LightEmission = 0.72
+            aura.LightInfluence = 0
+            aura.LockedToPart = true
+            aura.Parent = att
+            local light = Instance.new("PointLight")
+            light.Name = "InertiaArchdemonWingAura"
+            light.Color = Color3.fromRGB(190, 25, 255)
+            light.Brightness = 1.15
+            light.Range = 9
+            light.Parent = root
+            table.insert(wingObjects, att)
+            table.insert(wingObjects, light)
         end
         local function prepPart(part)
             part.Anchored = false
@@ -4955,6 +5148,7 @@ end, 6)
                         if not added then clone.Parent = char end
                         table.insert(wingObjects, clone)
                     end
+                    addWingAura(root)
                     Notify("Archdemon Wings", "Loaded asset " .. WING_ASSET_ID, 2)
                     return
                 end
@@ -4964,6 +5158,7 @@ end, 6)
                 model.Parent = char
                 if weldModelToRoot(model, root) then
                     table.insert(wingObjects, model)
+                    addWingAura(root)
                     Notify("Archdemon Wings", "Loaded asset " .. WING_ASSET_ID, 2)
                 else
                     model:Destroy()
@@ -4975,7 +5170,7 @@ end, 6)
         tc(LP.CharacterAdded:Connect(function()
             task.delay(0.9, function() if S.VFXWings then rebuildWings() end end)
         end))
-        mkToggle(secCustoms, "Archdemon Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 7)
+        mkToggle(secCustoms, "Archdemon Wings", false, function(v) S.VFXWings = v; rebuildWings() end, 8)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
