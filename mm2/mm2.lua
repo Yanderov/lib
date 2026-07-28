@@ -466,33 +466,6 @@ end
 -- RightLeg = 139607718 on a live client; re-derive them the same way if Roblox republishes it.
 -- Own do-block to keep these three off the main chunk's register budget (200-local ceiling).
 do
--- Korblox is resolved at runtime instead of hardcoded. Swapping only MeshId left each part at its
--- original Size, so the skeletal mesh got stretched to fill a normal leg and rendered as detached
--- blobs. Size has to come across too — and it depends on the wearer's body scale, so the only
--- correct source is a rig built from THIS player's own description with the leg overridden.
-local KORBLOX_PARTS = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
-local korbloxLook = nil
-local function resolveKorblox()
-    if korbloxLook then return korbloxLook end
-    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if not hum then return nil end
-    local ok, look = pcall(function()
-        local desc = hum:GetAppliedDescription():Clone()
-        desc.RightLeg = 139607718
-        local model = Players:CreateHumanoidModelFromDescription(desc, hum.RigType)
-        local out = {}
-        for _, name in ipairs(KORBLOX_PARTS) do
-            local p = model:FindFirstChild(name)
-            if p and p:IsA("MeshPart") then
-                out[name] = { mesh = p.MeshId, tex = p.TextureID, size = p.Size }
-            end
-        end
-        model:Destroy()
-        return out
-    end)
-    if ok and look and look.RightUpperLeg then korbloxLook = look end
-    return korbloxLook
-end
 local savedLimb = setmetatable({}, { __mode = "k" })
 local savedHead = nil
 S._UpdateAvatarMods = function()
@@ -504,30 +477,54 @@ S._UpdateAvatarMods = function()
         if S.FakeHeadless then
             if savedHead == nil then savedHead = head.Transparency end
             head.Transparency = 1
+            -- R6 and some R15 heads carry the face as a Decal, which stays drawn floating in
+            -- mid-air unless it is hidden too.
+            for _, d in ipairs(head:GetChildren()) do
+                if d:IsA("Decal") then
+                    if savedLimb[d] == nil then savedLimb[d] = { trans = d.Transparency } end
+                    d.Transparency = 1
+                end
+            end
         elseif savedHead ~= nil then
             head.Transparency = savedHead
             savedHead = nil
+            for _, d in ipairs(head:GetChildren()) do
+                if d:IsA("Decal") and savedLimb[d] then
+                    d.Transparency = savedLimb[d].trans or 0
+                    savedLimb[d] = nil
+                end
+            end
         end
     end
 
-    -- R6 has no RightUpperLeg/RightFoot, so those look-ups simply miss and the leg stays stock.
-    local look = S.FakeKorblox and resolveKorblox() or nil
-    for _, name in ipairs(KORBLOX_PARTS) do
+    -- Swapping all three leg parts to their own Korblox meshes looked broken: three separately
+    -- scaled skeletal pieces read as detached blobs. The approach that actually works is the
+    -- long-standing community one — put the full skeletal leg on the upper part and simply hide
+    -- the lower leg and the foot, since that one mesh already covers the whole limb.
+    -- R6 has none of these parts, so the look-ups miss and the leg stays stock.
+    local upper = char:FindFirstChild("RightUpperLeg")
+    if upper and upper:IsA("MeshPart") then
+        if S.FakeKorblox then
+            if not savedLimb[upper] then
+                savedLimb[upper] = { mesh = upper.MeshId, tex = upper.TextureID }
+            end
+            pcall(function() upper.MeshId = "rbxassetid://902942096" end)
+            pcall(function() upper.TextureID = "rbxassetid://902843398" end)
+        elseif savedLimb[upper] then
+            local orig = savedLimb[upper]
+            pcall(function() upper.MeshId = orig.mesh end)
+            pcall(function() upper.TextureID = orig.tex end)
+            savedLimb[upper] = nil
+        end
+    end
+    for _, name in ipairs({ "RightLowerLeg", "RightFoot" }) do
         local part = char:FindFirstChild(name)
-        if part and part:IsA("MeshPart") then
-            if look and look[name] then
-                if not savedLimb[part] then
-                    savedLimb[part] = { mesh = part.MeshId, tex = part.TextureID, size = part.Size }
-                end
-                local want = look[name]
-                pcall(function() part.Size = want.size end)
-                pcall(function() part.MeshId = want.mesh end)
-                pcall(function() part.TextureID = want.tex end)
+        if part and part:IsA("BasePart") then
+            if S.FakeKorblox then
+                if savedLimb[part] == nil then savedLimb[part] = { trans = part.Transparency } end
+                part.Transparency = 1
             elseif savedLimb[part] then
-                local orig = savedLimb[part]
-                pcall(function() part.Size = orig.size end)
-                pcall(function() part.MeshId = orig.mesh end)
-                pcall(function() part.TextureID = orig.tex end)
+                part.Transparency = savedLimb[part].trans or 0
                 savedLimb[part] = nil
             end
         end
