@@ -9991,13 +9991,29 @@ do
         lbl:GetPropertyChangedSignal("AbsoluteSize"):Connect(refit)
         task.defer(refit)
     end
+    -- Rows are laid out in WHOLE pixels, not quarters of the body height. The panel resizes between
+    -- 132 and 196px, so a 0.25 share landed on fractions like 36.25 and every label in it rendered
+    -- off the pixel grid -- which is what made this text look ragged next to the rest of the UI.
+    local quickRows = {}
+    local function layoutQuickRows()
+        local h = body.AbsoluteSize.Y
+        if h <= 0 then return end
+        local each = math.floor(h / 4)
+        for i, r in ipairs(quickRows) do
+            r.Position = UDim2.fromOffset(8, (i - 1) * each)
+            r.Size = UDim2.new(1, -16, 0, each)
+        end
+    end
+    body:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutQuickRows)
     local function quickRow(label, index)
         local row = Instance.new("Frame")
         row.Parent = body
-        row.Position = UDim2.new(0, 8, (index - 1) * 0.25, 0)
-        row.Size = UDim2.new(1, -16, 0.25, 0)
+        row.Position = UDim2.fromOffset(8, 0)
+        row.Size = UDim2.new(1, -16, 0, 24)
         row.BackgroundTransparency = 1
         row.ZIndex = 26
+        quickRows[index] = row
+        task.defer(layoutQuickRows)
         if index > 1 then
             local line = Instance.new("Frame")
             line.Parent = row
