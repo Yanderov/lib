@@ -589,6 +589,30 @@ end)
 
 end
 
+-- Section cards are named after their own title ("Desync", "Aimbot", ...), so unlike TBar or HUD_*
+-- there is no name to match them on -- which is why the transparency slider never reached them and
+-- they stayed at BackgroundTransparency 0.015, i.e. opaque, with the blur hidden behind them.
+-- A registry, not an attribute scan: the slider fires on every drag step and walking every
+-- descendant of SG that often is exactly the kind of per-frame work that makes this hub stutter.
+S._Surfaces = {}
+S._MarkSurface = function(obj)
+    if obj then table.insert(S._Surfaces, obj) end
+    return obj
+end
+-- Iterate the registry, dropping entries whose instance is gone. Shared by transparency and glass.
+S._EachSurface = function(fn)
+    local list = S._Surfaces
+    if not list then return end
+    for i = #list, 1, -1 do
+        local o = list[i]
+        if not o or not o.Parent then
+            table.remove(list, i)
+        else
+            pcall(fn, o)
+        end
+    end
+end
+
 local function updateGuiTransparency()
     -- Keep enough opacity for controls and notifications to remain readable even
     -- when an old or malformed config contains an out-of-range value.
@@ -613,6 +637,14 @@ local function updateGuiTransparency()
             end
         end
     end
+    -- Cards and HUD panels follow the same slider as the window. Straight mapping rather than a
+    -- derived value: two surfaces stacked at t=0.85 still composite to something readable, and a
+    -- slider that means one thing everywhere is easier to reason about than one that secretly
+    -- doubles on cards.
+    S._EachSurface(function(o)
+        o.BackgroundTransparency = o:GetAttribute("InertiaHudSurface") and hudTrans or guiTrans
+    end)
+    if S._ApplyGlass then S._ApplyGlass() end
 end
 S._UpdateGuiTransparency = updateGuiTransparency
 
@@ -1506,29 +1538,36 @@ Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
 -- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
 -- Main itself and not a child frame -- an opaque child would square off the window's rounded
 -- corners, because UICorner does not clip descendants.
+S._GlassOn = function(obj, amount)
+    if not obj or not obj.Parent then return end
+    local g = obj:FindFirstChild("GlassSheen")
+    if amount <= 0.01 then
+        if g then g:Destroy() end
+        return
+    end
+    if not g then
+        g = Instance.new("UIGradient")
+        g.Name = "GlassSheen"
+        g.Rotation = 90
+        g.Parent = obj
+    end
+    g.Color = ColorSequence.new(
+        Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
+        Color3.new(0, 0, 0))
+    g.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
+        NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+end
+
 S._ApplyGlass = function()
     local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
-    pcall(function()
-        local g = Main:FindFirstChild("GlassSheen")
-        if amount <= 0.01 then
-            if g then g:Destroy() end
-            return
-        end
-        if not g then
-            g = Instance.new("UIGradient")
-            g.Name = "GlassSheen"
-            g.Rotation = 90
-            g.Parent = Main
-        end
-        g.Color = ColorSequence.new(
-            Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
-            Color3.new(0, 0, 0))
-        g.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
-            NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-    end)
+    pcall(S._GlassOn, Main, amount)
+    -- Cards and HUD panels get the same sheen. Without this the glass stopped dead at the window
+    -- edge and every card sitting on top of it stayed flat, which is what "cards do not blur"
+    -- actually looked like.
+    S._EachSurface(function(o) S._GlassOn(o, amount) end)
 end
 
 -- Background blur. Deliberately NOT gated on the menu being open: you set it to look at the game
@@ -3860,7 +3899,8 @@ local function mkSection(parent, title, order)
     card.Parent = parent
     card.LayoutOrder = order
     card.BackgroundColor3 = T.Card; pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-    card.BackgroundTransparency = 0.015
+    card.BackgroundTransparency = math.clamp(tonumber(S.GuiTransparency) or 0.015, 0, 0.95)
+    S._MarkSurface(card)
     card.BorderSizePixel = 0
     card.Size = UDim2.new(1, 0, 0, 0)
     card.AutomaticSize = Enum.AutomaticSize.Y
@@ -6228,17 +6268,16 @@ end, 6)
         -- pivot, so the built-in numbers can only ever be an average. These three expose the same
         -- knobs the code already used internally: the size cap, and the torso-relative Y and Z of
         -- the anchor. Percent/hundredths because mkSlider is integer-only.
-        mkSlider(secWings, "Wing Size (%)", 40, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
-        mkSlider(secWings, "Wing Height", -60, 60, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
-        mkSlider(secWings, "Wing Back Offset", -40, 90, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
-        mkCycle(secWings, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
-        -- Aura tuning. Each rebuilds so the change is visible immediately; "Preset" leaves the
-        -- style's own colour alone.
-        mkCycle(secWings, "Aura Color",
-            { "Preset", "White", "Red", "Green", "Yellow", "Cyan", "Purple", "Orange", "Pink" },
-            "Preset", function(v) S.AuraColor = v; rebuild() end, 9.1)
-        mkSlider(secWings, "Aura Density (%)", 20, 300, 100, function(v) S.AuraDensity = v; rebuild() end, 9.2)
-        mkSlider(secWings, "Aura Particle Size (%)", 40, 250, 100, function(v) S.AuraSize = v; rebuild() end, 9.3)
+        -- Ranges widened downward: the old floors (-60 height, -40 back, 40% size) were not low
+        -- enough to tuck a wing in tight against the torso on the assets that sit too far out.
+        mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
+        mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
+        mkSlider(secWings, "Wing Back Offset", -150, 150, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
+        -- VFX Aura and its three tuning controls are gone, on request. The marketplace aura models
+        -- it pulled were unreliable to load and never looked right; S.VFXAura is pinned "Off" below
+        -- so every remaining reference to it -- the rebuild path, the config keys, an old saved
+        -- config -- stays valid without needing to be chased down.
+        S.VFXAura = "Off"
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
@@ -9735,6 +9774,10 @@ end
 local function mkDragHUD(name, pos, size, z)
     local f = Instance.new("Frame")
     f.Name = "HUD_"..name
+    -- Registered so the glass sheen reaches HUD panels too. They are matched by name for
+    -- transparency, but the glass pass works off the registry.
+    pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(f)
     f.Parent = SG
     f.Active = true
     f.Position = pos
@@ -9852,6 +9895,8 @@ HUD.roleLbl.ZIndex = 857
 local function mkStatHUD(name, pos, w, z)
     local f = Instance.new("Frame")
     f.Name = "HUD_" .. name
+    pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(f)
     f.Parent = SG
     f.Active = true
     f.Position = pos
@@ -9920,6 +9965,10 @@ HUD.hFps, HUD.fpsLbl = mkStatHUD("FPS", UDim2.new(1, -142, 0, 290), 130, 854)
 do
     HUD.quickFrame = Instance.new("Frame")
     HUD.quickFrame.Name = "HUD_QuickStatus"
+    -- Named directly rather than through mkDragHUD, so it needs its own registration or the glass
+    -- pass never reaches it (measured: hudGlass=false while every dragged panel had one).
+    pcall(function() HUD.quickFrame:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(HUD.quickFrame)
     HUD.quickFrame.Parent = Main
     HUD.quickFrame.Position = UDim2.fromOffset(8, 410)
     -- 124 wide left the value column 60px after the 48px key gutter, which clipped every
@@ -10096,6 +10145,8 @@ local function mkWatermark()
     f.AutoButtonColor = false
     f.Text = ""
     f.Name = "HUD_Watermark"
+    pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(f)
     f.Parent = SG
     f.Active = true
     f.AnchorPoint = Vector2.new(0.5, 0)
@@ -11178,6 +11229,10 @@ do
             end
         end)
     end
+
+    -- Exposed so the Custom Fog controls can repaint immediately instead of waiting up to 100ms for
+    -- the poll below to come round.
+    S._ApplyEnvironment = applyAtmo
 
     task.spawn(function()
         while S.Gui and S.Gui.Parent do
@@ -13542,12 +13597,27 @@ end
 -- Wrapped in its own do-block and hung off S (not a new top-level local) for the same reason as
 -- S._resetMyCharacter above: the main chunk was already at Luau's 200-local ceiling.
 do
+    -- Every option the "Gun Chams Mode" cycle offers needs an entry here. Five of its eight -- and
+    -- that includes Highlight, the DEFAULT -- had none, and the lookup below silently falls back to
+    -- Outline, i.e. fill = 1. So the default gun cham drew nothing but a hairline edge and read as
+    -- "Gun Chams do not work" even once the adornee was found.
     local ITEM_CHAM_TRANSPARENCY = {
-        Outline = { fill = 1,    outline = 0 },
-        Fill    = { fill = 0.35, outline = 1 },
-        Both    = { fill = 0.35, outline = 0 },
-        Maze    = { fill = 0.35, outline = 0 },
-        Mirror  = { fill = 0.15, outline = 0 },
+        Highlight  = { fill = 0.35, outline = 0 },
+        Outline    = { fill = 1,    outline = 0 },
+        Solid      = { fill = 0,    outline = 0 },
+        Fill       = { fill = 0.35, outline = 1 },
+        Both       = { fill = 0.35, outline = 0 },
+        ForceField = { fill = 0.35, outline = 0 },
+        Neon       = { fill = 0.25, outline = 0 },
+        Glass      = { fill = 0.5,  outline = 0 },
+        Maze       = { fill = 0.35, outline = 0 },
+        Mirror     = { fill = 0.15, outline = 0 },
+    }
+    -- Modes drawn by swapping the part's material rather than by adding a Highlight. On S so the
+    -- three call sites cannot drift apart; they each hardcoded `== "Maze" or == "Mirror"`, which is
+    -- why ForceField, Neon and Glass never reached the material path at all.
+    S._ItemChamMaterialModes = {
+        Maze = true, Mirror = true, ForceField = true, Neon = true, Glass = true,
     }
     local ITEM_CHAM_COLORS = {
         White   = Color3.fromRGB(245, 245, 245),
@@ -13582,21 +13652,38 @@ do
     }
     S._ChamColorMap = ITEM_CHAM_COLORS
 
+    -- materialState holds each part's PRISTINE look, captured once and never overwritten.
+    -- materialActive is the set currently wearing a cham material. Keeping them apart is the fix for
+    -- a measured bug: the two used to be one table that was cleared on every mode switch and
+    -- re-captured on the next pass, so whenever a restore had not landed yet the "original" recorded
+    -- was the PREVIOUS cham material. Every later restore then put the part back to that, and
+    -- switching material modes looked like it did nothing -- ForceField stuck through Neon, Glass,
+    -- and a Highlight baseline in between.
     local materialState = {}
+    local materialActive = {}
     local materialMode, materialColor
 
     local function restoreItemChamMaterials()
-        for part, original in pairs(materialState) do
-            pcall(function()
-                if part and part.Parent then
-                    part.Material = original.Material
-                    part.Color = original.Color
-                    part.Reflectance = original.Reflectance
-                    part.Transparency = original.Transparency
+        -- Early out when there is nothing to put back. The caller at the end of the chams loop runs
+        -- this EVERY frame whenever the gun cham toggles are off, i.e. almost always, and without
+        -- this guard that is a table walk plus a pcall per entry, sixty times a second, forever.
+        if materialMode == nil and next(materialActive) == nil then return end
+        for part in pairs(materialActive) do
+            local original = materialState[part]
+            if part and part.Parent then
+                if original then
+                    pcall(function()
+                        part.Material = original.Material
+                        part.Color = original.Color
+                        part.Reflectance = original.Reflectance
+                        part.Transparency = original.Transparency
+                    end)
                 end
-            end)
+            else
+                materialState[part] = nil -- part is gone; do not hold its pristine copy forever
+            end
         end
-        table.clear(materialState)
+        table.clear(materialActive)
         materialMode = nil
         materialColor = nil
     end
@@ -13617,7 +13704,9 @@ do
             materialColor = color
         end
         eachItemPart(adornee, function(part)
-            if not materialState[part] then
+            -- Captured once, for the lifetime of the part -- never on a later pass, when what we
+            -- would read back is our own cham rather than the part's real look.
+            if materialState[part] == nil then
                 materialState[part] = {
                     Material = part.Material,
                     Color = part.Color,
@@ -13625,15 +13714,30 @@ do
                     Transparency = part.Transparency,
                 }
             end
+            materialActive[part] = true
             part.Color = color
+            local fade = math.clamp(1 - (S.ChamsOpacity or 50) / 100, 0, 0.85)
             if mode == "Mirror" then
                 part.Material = Enum.Material.Glass
                 part.Reflectance = 0.95
                 part.Transparency = 0.12
+            elseif mode == "Glass" then
+                part.Material = Enum.Material.Glass
+                part.Reflectance = 0.25
+                part.Transparency = math.max(0.35, fade)
+            elseif mode == "Neon" then
+                -- Neon ignores transparency for the glow, so keep it solid or the effect vanishes.
+                part.Material = Enum.Material.Neon
+                part.Reflectance = 0
+                part.Transparency = 0
+            elseif mode == "ForceField" then
+                part.Material = Enum.Material.ForceField
+                part.Reflectance = 0
+                part.Transparency = 0
             else -- Maze
                 part.Material = Enum.Material.ForceField
                 part.Reflectance = 0
-                part.Transparency = math.clamp(1 - (S.ChamsOpacity or 50) / 100, 0, 0.85)
+                part.Transparency = fade
             end
         end)
     end
@@ -13646,14 +13750,20 @@ do
         local t = ITEM_CHAM_TRANSPARENCY[S.ItemChamsMode] or ITEM_CHAM_TRANSPARENCY.Outline
         return color, t.fill, t.outline, S.ItemChamsMode
     end
+    -- Exact names plus word-boundary matches, never a bare substring. The substring version matched
+    -- "Building_Brick_Burgundy" -- bur-GUN-dy contains "gun" -- so the lobby's wall bricks read as
+    -- firearms. Measured: the workspace scan returned Lobby.Lobby.Building_Brick_Burgundy, that
+    -- brick got cached as the dropped gun, and the real gun was never looked at again. That is what
+    -- "Gun Chams do not work" was: they worked, on a wall.
+    local GUN_NAMES = {
+        gun = true, gundrop = true, ["gun drop"] = true, revolver = true,
+        pistol = true, blaster = true, firearm = true,
+    }
     local function looksLikeGun(obj)
         local n = tostring(obj and obj.Name or ""):lower()
-        return n == "gun" or n == "gundrop" or n == "revolver"
-            or n:find("gun", 1, true) ~= nil
-            or n:find("revolver", 1, true) ~= nil
-            or n:find("pistol", 1, true) ~= nil
-            or n:find("blaster", 1, true) ~= nil
-            or n:find("firearm", 1, true) ~= nil
+        if GUN_NAMES[n] then return true end
+        return n:match("^gun[%s_%-]") ~= nil or n:match("[%s_%-]gun$") ~= nil
+            or n:match("^revolver[%s_%-]") ~= nil or n:match("^pistol[%s_%-]") ~= nil
     end
     S._findGunChamAdornee = function(container)
         if not container then return nil, nil end
@@ -14076,6 +14186,8 @@ local function stopIYFling()
             root.AssemblyAngularVelocity = Vector3.zero
         end)
     end
+    -- Nothing to restore any more: the engine no longer touches physical properties or noclip. Kept
+    -- as a drain in case an older saved state is still around from before that change.
     for part, state in pairs(iyPartState) do
         if part and part.Parent then
             pcall(function()
@@ -14086,7 +14198,6 @@ local function stopIYFling()
         end
     end
     iyPartState = {}
-    S.NoClip = iyNoClipWasOn
 end
 
 local function startIYFling()
@@ -14096,22 +14207,16 @@ local function startIYFling()
     local root = c and c:FindFirstChild("HumanoidRootPart")
     if not (c and hum and root and hum.Health > 0) then return false end
 
-    iyPartState = {}
-    for _, child in ipairs(c:GetDescendants()) do
-        if child:IsA("BasePart") then
-            iyPartState[child] = {
-                Props = child.CustomPhysicalProperties,
-                CanCollide = child.CanCollide,
-                Massless = child.Massless,
-            }
-            pcall(function() child.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5) end)
-        end
-    end
-
-    iyNoClipWasOn = S.NoClip == true
-    S.NoClip = true
-    task.wait(0.1)
-
+    -- No noclip and no CustomPhysicalProperties here any more, and that is the whole fix for
+    -- "Touch Fling does not fling at all".
+    --
+    -- A touch fling works by COLLISION: the one-frame velocity spike below only transfers to somebody
+    -- if your parts actually touch theirs. The old setup turned S.NoClip on first, which drops
+    -- CanCollide on the whole character -- so you passed straight through everyone and the spike had
+    -- nothing to act on. The density-100 physical properties were left over from IY's spinning
+    -- variant, which this engine no longer uses (iySpinBAV is never even created); on a
+    -- velocity-spike fling they only make your own movement heavy.
+    -- The reference implementation the user supplied does neither, and it is the one that works.
     iyFlinging = true
     iyDiedConn = tc(hum.Died:Connect(stopIYFling))
 
@@ -14368,7 +14473,15 @@ end))
 
 local _antivoidBaseHeight = workspace.FallenPartsDestroyHeight
 tc(RunService.RenderStepped:Connect(function()
-    pcall(function()
+    -- Every stage in this handler -- status labels, walk speed, anti-fling, fly, chams, gun drop --
+    -- shares ONE pcall. A throw anywhere silently kills every stage BELOW it, and if the throw is
+    -- deterministic it kills them on every frame forever. That failure mode is invisible: the
+    -- feature simply does nothing and there is no console output. Record the error so it can be read
+    -- back instead of vanishing.
+    -- xpcall with a handler rather than `local ok, err = pcall(...)`: this closure is the largest in
+    -- the file and two extra locals in it stopped the hub loading outright (measured -- the register
+    -- ceiling applies per function, not just to the main chunk). The handler needs no locals.
+    xpcall(function()
         fpsCount = fpsCount + 1
         local now = tick()
         if now - lastFpsT >= 1 then
@@ -14526,14 +14639,17 @@ tc(RunService.RenderStepped:Connect(function()
         if tick() - (S._chamsAt or 0) >= 0.08 then
         S._chamsAt = tick()
         S._chamsWereOn = anyCham
+        -- The local player is in this loop now. It used to be skipped outright, so the gun cham
+        -- never reached the gun in YOUR OWN hand -- only other people's. Role chams still skip you;
+        -- your own body is Self Chams' job.
         for _, pl in pairs(Players:GetPlayers()) do
-            if pl ~= LP and pl.Character then
+            if pl.Character then
                 local ch = pl.Character
                 local hum = ch:FindFirstChildOfClass("Humanoid")
                 local alive = hum and hum.Health > 0
 
                 -- Role chams (highlight whole character model)
-                if S.RoleChams then
+                if S.RoleChams and pl ~= LP then
                     local isTarget = S.ManualTargets[pl.Name] == true
                     if isTarget then
                         -- Pulsing neon magenta highlight for targets
@@ -14555,11 +14671,17 @@ tc(RunService.RenderStepped:Connect(function()
 
                 -- Gun chams (gun currently in a player's hand). MM2 skins often rename or nest the
                 -- visible handle, so use the broader detector instead of only Character.Gun.Handle.
-                local gunTool, gunPart = S._findGunChamAdornee and S._findGunChamAdornee(ch)
+                -- Was `local gunTool, gunPart = S._findGunChamAdornee and S._findGunChamAdornee(ch)`.
+                -- An `and` expression is adjusted to exactly ONE value, so the second return was
+                -- discarded and gunPart was always nil -- which made the `if gunPart` below dead and
+                -- meant Gun Chams had never once applied to anybody. Measured: the detector returned
+                -- Workspace.<me>.Gun while the highlight count stayed 0.
+                local gunTool, gunPart
+                if S._findGunChamAdornee then gunTool, gunPart = S._findGunChamAdornee(ch) end
                 local heldGunCham = S.GunHeldChams or S.GunChams
                 if gunPart and heldGunCham then
                         local color, fillT, outlineT, chamMode = S._getItemChamStyle()
-                        if chamMode == "Maze" or chamMode == "Mirror" then
+                        if S._ItemChamMaterialModes[chamMode] then
                             removeCham(gunPart, "GunHeldChams")
                             S._applyItemChamMaterial(gunTool or gunPart, color, chamMode)
                         else
@@ -14583,17 +14705,19 @@ tc(RunService.RenderStepped:Connect(function()
             local now = tick()
             if now - (S._lastGunDropScan or 0) >= 0.25 then
                 S._lastGunDropScan = now
-                S._cachedGunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
-                if not S._cachedGunDrop and S._findGunChamAdornee then
-                    local _, part = S._findGunChamAdornee(workspace)
-                    S._cachedGunDrop = part
-                end
+                -- Targeted name lookup only. The fallback that used to sit here called
+                -- _findGunChamAdornee(workspace), i.e. workspace:GetDescendants() with a Lua test on
+                -- each of 23035 objects: measured at 16.0 ms, four times a second, which is a
+                -- dropped frame every quarter second for a scan whose only ever result was a false
+                -- positive on a wall brick.
+                S._cachedGunDrop = workspace:FindFirstChild("GunDrop")
+                    or workspace:FindFirstChild("GunDrop", true)
             end
             local gd = S._cachedGunDrop
             if gd and gd.Parent then
                 if wantGunDropCham then
                     local color, fillT, outlineT, chamMode = S._getItemChamStyle()
-                    if chamMode == "Maze" or chamMode == "Mirror" then
+                    if S._ItemChamMaterialModes[chamMode] then
                         removeCham(gd, "GunDropChams")
                         S._applyItemChamMaterial(gd, color, chamMode)
                     else
@@ -14610,9 +14734,12 @@ tc(RunService.RenderStepped:Connect(function()
             end
         end
         if not (S.GunHeldChams or S.GunChams)
-            or (S.ItemChamsMode ~= "Maze" and S.ItemChamsMode ~= "Mirror") then
+            or not S._ItemChamMaterialModes[S.ItemChamsMode] then
             S._restoreItemChamMaterials()
         end
+    end, function(e)
+        S._RSError = tostring(e)
+        S._RSErrorCount = (S._RSErrorCount or 0) + 1
     end)
 end))
 local function getNcPlat()
@@ -17901,6 +18028,11 @@ do
     local rings = {}          -- [player] = BillboardGui
     local openFor = nil       -- player whose menu is currently up
     local CULL = 220          -- studs; the BillboardGui hides itself past this
+    local lastOpen = 0        -- see the dedup guard in openMenuFor
+
+    local function ringPx()
+        return math.clamp(tonumber(S.ClickRingSize) or (MOBILE and 26 or 22), 10, 60)
+    end
 
     local function themeColor()
         return T.Accent or Color3.fromRGB(216, 215, 211)
@@ -17910,6 +18042,7 @@ do
         if not openFor then return end
         local bb = rings[openFor]
         openFor = nil
+        if bb then bb.Active = false end
         local menu = bb and bb:FindFirstChild("Menu")
         if not menu then return end
         local scale = menu:FindFirstChildOfClass("UIScale")
@@ -17920,12 +18053,17 @@ do
         task.delay(0.13, function() if menu.Parent then menu.Visible = false end end)
     end
 
-    local function buildMenu(bb, player)
+    local function buildMenu(bb, player, px)
         local menu = Instance.new("Frame")
         menu.Name = "Menu"
         menu.AnchorPoint = Vector2.new(0.5, 1)
-        menu.Position = UDim2.new(0.5, 0, 0, -4)
-        menu.Size = UDim2.fromOffset(104, 58)
+        -- Anchored to the BOTTOM of the billboard, above the ring. It used to sit at y=0 with a
+        -- negative offset, i.e. entirely outside the billboard's own rect, where hit-testing is
+        -- not reliable.
+        menu.Position = UDim2.new(0.5, 0, 1, -(px + 6))
+        -- Taller rows on touch: 22px targets are below the reliable tap size on a phone, which is
+        -- part of why the buttons "did nothing" there.
+        menu.Size = UDim2.fromOffset(MOBILE and 132 or 104, MOBILE and 78 or 58)
         menu.BackgroundColor3 = T.Card
         pcall(function() menu:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
         menu.BorderSizePixel = 0
@@ -17947,7 +18085,7 @@ do
             local b = Instance.new("TextButton")
             b.Parent = menu
             b.LayoutOrder = order
-            b.Size = UDim2.new(1, 0, 0, 22)
+            b.Size = UDim2.new(1, 0, 0, MOBILE and 32 or 22)
             b.BackgroundColor3 = T.Elev
             pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
             b.BorderSizePixel = 0
@@ -17990,6 +18128,10 @@ do
     local makeRing
     local function openMenuFor(player)
         if not (S.ClickMenu and player and player ~= LP) then return end
+        -- Kept from when two paths could both fire for one tap. Harmless now that the ring is gone,
+        -- and it still absorbs a duplicated touch event.
+        if os.clock() - lastOpen < 0.2 then return end
+        lastOpen = os.clock()
         local char = player.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -18005,6 +18147,8 @@ do
         if openFor == player then closeMenu() return end
         closeMenu()
         openFor = player
+        -- Only the billboard with an open menu accepts input; the rest stay click-through.
+        bb.Active = true
         menu.Visible = true
         local scale = menu:FindFirstChildOfClass("UIScale")
         if scale then
@@ -18015,55 +18159,25 @@ do
         SFX.On()
     end
 
+    -- No ring any more. There used to be a themed disc floating over every player that you had to
+    -- click FIRST to get the menu, and it was the thing being reported as "the buttons on players are
+    -- too big" -- it was a 54px plate above twelve heads at once. It was also the source of the
+    -- double-fire: its MouseButton1Click and the raycast in InputBegan both reached openMenuFor for
+    -- one tap, and openMenuFor toggles, so the menu shut in the frame it opened.
+    -- Now you click the PLAYER, which is what was asked for, and this billboard only hosts the menu.
     makeRing = function(player)
         local bb = Instance.new("BillboardGui")
         bb.Name = "MM2_ClickRing"
-        -- Drawn above the torso: rings at the feet were often hidden by the map/floor or missed by
-        -- executor Billboard input, which made Click Menu look dead even while the toggle was on.
         bb.AlwaysOnTop = true
-        bb.Size = UDim2.fromOffset(MOBILE and 62 or 54, MOBILE and 62 or 54)
+        bb.Size = UDim2.fromOffset(120, 72)
         bb.StudsOffsetWorldSpace = Vector3.new(0, 3.05, 0)
         bb.MaxDistance = CULL
         bb.ResetOnSpawn = false
+        -- Active=false while nothing is open, so an invisible billboard can never swallow a click
+        -- meant for the game. openMenuFor turns it on.
+        bb.Active = false
         bb.Parent = SG
-
-        local ring = Instance.new("TextButton")
-        ring.Name = "Ring"
-        ring.Parent = bb
-        ring.Size = UDim2.fromScale(1, 1)
-        ring.BackgroundTransparency = 1
-        ring.Text = ""
-        ring.AutoButtonColor = false
-
-        -- The ring is a bordered circle, so it needs no image asset and picks up the selected
-        -- theme through the same ThemeColorRole attributes every other surface uses.
-        local disc = Instance.new("Frame")
-        disc.Name = "Disc"
-        disc.Parent = ring
-        disc.Size = UDim2.fromScale(1, 1)
-        disc.BackgroundTransparency = 0.72
-        disc.BackgroundColor3 = T.Card
-        pcall(function() disc:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-        disc.BorderSizePixel = 0
-        Corner(disc, 9999)
-        local ringStroke = Stroke(disc, themeColor(), 2, 0)
-        ringStroke.Name = "RingStroke"
-
-        local icon = Instance.new("TextLabel")
-        icon.Name = "Icon"
-        icon.Parent = ring
-        icon.Size = UDim2.fromScale(1, 1)
-        icon.BackgroundTransparency = 1
-        icon.Font = FB
-        icon.TextSize = 16
-        icon.Text = "\u{261D}"
-        icon.TextColor3 = themeColor()
-
-        buildMenu(bb, player)
-
-        ring.MouseButton1Click:Connect(function()
-            openMenuFor(player)
-        end)
+        buildMenu(bb, player, 0)
         return bb
     end
 
@@ -18091,11 +18205,20 @@ do
     end
 
     tc(UIS.InputBegan:Connect(function(input, processed)
-        if processed or not S.ClickMenu then return end
-        if Main and Main.Visible then return end
+        if not S.ClickMenu then return end
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        -- Deliberately NOT closing on a processed click. A tap on a menu button arrives here first,
+        -- flagged processed, and hiding the menu between press and release means the button's own
+        -- MouseButton1Click never fires -- which is the other half of the report, "the functions do
+        -- not work". The buttons close the menu themselves once they have run.
+        if processed then return end
+        if Main and Main.Visible then return end
         local player = playerFromInput(input)
-        if player then openMenuFor(player) end
+        if player then
+            openMenuFor(player)
+        elseif openFor then
+            closeMenu()
+        end
     end))
 
     local function dropRing(player)
@@ -18105,12 +18228,15 @@ do
         if openFor == player then openFor = nil end
     end
 
+    S._ClickRingRebuild = function()
+        for p in pairs(rings) do dropRing(p) end
+    end
+
     local function refresh()
         if not S.ClickMenu then
             for p in pairs(rings) do dropRing(p) end
             return
         end
-        local accent = themeColor()
         for _, p in ipairs(Players:GetPlayers()) do
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -18122,13 +18248,6 @@ do
                     rings[p] = bb
                 end
                 bb.Adornee = hrp
-                local disc = bb:FindFirstChild("Ring") and bb.Ring:FindFirstChild("Disc")
-                local stroke = disc and disc:FindFirstChild("RingStroke")
-                -- Whitelisted players read green so it is obvious before you click.
-                local col = isWhitelisted(p) and Color3.fromRGB(96, 220, 128) or accent
-                if stroke then stroke.Color = col end
-                local ico = bb:FindFirstChild("Ring") and bb.Ring:FindFirstChild("Icon")
-                if ico then ico.TextColor3 = col end
             elseif rings[p] then
                 dropRing(p)
             end
@@ -19140,23 +19259,28 @@ do
     local secDesync = mkSection(Pages.Combat, "Desync", 6.5)
     local lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
 
-    local function offsetVector()
-        local r = math.clamp(tonumber(S.DesyncRadius) or 60, 0, 400)
-        local mode = S.DesyncMode or "Blink"
-        local t = os.clock()
-        if mode == "Static" then
-            return Vector3.new(r, 0, 0)
-        elseif mode == "Up" then
-            return Vector3.new(0, r, 0)
-        elseif mode == "Spin" then
-            local a = t * 25
-            return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-        end
-        -- Blink: a fresh random point on the sphere every single frame. Nothing to lead, which is
-        -- the point -- a predictor needs a trajectory and this has none.
-        local ang = math.random() * math.pi * 2
-        local up = (math.random() - 0.5) * r
-        return Vector3.new(math.cos(ang) * r, up, math.sin(ang) * r)
+    -- No radius, no modes, no tuning. Every frame the replicated root goes to a fresh random point
+    -- with each axis anywhere in +/-7777 studs, and a fresh random orientation.
+    --
+    -- Why fixed and huge rather than an adjustable radius: a small offset is still a cloud with a
+    -- centre, and a resolver only has to average a few samples to find that centre and hit you --
+    -- which is what "I can still be hit" was. At +/-7777 on all three axes, consecutive samples are
+    -- thousands of studs apart in unrelated directions, so there is no centre to converge on and no
+    -- trajectory to lead. For everyone else you are teleporting across the whole map as fast as the
+    -- network will carry it.
+    -- Y is displaced UPWARD only. A symmetric +/-7777 on Y sends the root below
+    -- workspace.FallenPartsDestroyHeight, at which point Roblox destroys the parts out from under the
+    -- restore and the character is left stranded: measured 9054 studs of drift after a two-second
+    -- run, i.e. exactly the "I stay where I am" guarantee broken. Upward is just as unreachable and
+    -- crosses nothing.
+    local DESYNC_SPAN = 7777
+    local function offsetCFrame()
+        local rnd = math.random
+        return Vector3.new(
+            (rnd() * 2 - 1) * DESYNC_SPAN,
+            rnd() * DESYNC_SPAN,
+            (rnd() * 2 - 1) * DESYNC_SPAN
+        ), CFrame.Angles(rnd() * 6.2832, rnd() * 6.2832, rnd() * 6.2832)
     end
 
     -- AFTER physics, BEFORE replication.
@@ -19166,22 +19290,21 @@ do
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
-        -- Pause while you are actually walking. Teleporting the root every frame makes the Humanoid
-        -- treat itself as displaced and it stops integrating its own movement -- measured, walking
-        -- went from 9.3 studs per 1.5s to 0.0. Standing still is also exactly when this matters:
-        -- that is when someone else's aim is locked on you.
-        if S.DesyncOnlyStill == true and hum.MoveDirection.Magnitude > 0.05 then return end
+        -- No "only while standing" gate any more. It existed because an early version killed
+        -- movement, but that was fixed by the frame ordering below, not by pausing: measured 25.13
+        -- studs walked with this on against 25.09 with it off.
         -- Snapshot the EXACT pose and velocity, then displace. Restoring the snapshot next frame
         -- rather than subtracting the offset is what keeps this stable: subtracting let solver error
         -- accumulate frame over frame and the character wandered 259-310 studs off on its own.
         -- Heartbeat runs AFTER physics, so this snapshot already contains the movement this frame
         -- produced -- putting it back next frame therefore loses nothing and you keep walking.
-        lastOffset = offsetVector()
+        local pos, rot = offsetCFrame()
+        lastOffset = pos
         lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
         lastAng = hrp.AssemblyAngularVelocity
         applied = true
-        hrp.CFrame = lastCF + lastOffset
+        hrp.CFrame = (lastCF + pos) * rot
     end))
 
     -- Restored at the very TOP of the next frame, ahead of everything else. Doing it on Stepped left
@@ -19222,11 +19345,59 @@ do
             lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
         end
     end, 1)
-    mkCycle(secDesync, "Desync Mode", { "Blink", "Spin", "Static", "Up" }, "Blink", function(v)
-        S.DesyncMode = v
+    -- One toggle and nothing else, on request. Mode, radius, tumble and "only while standing" are
+    -- gone: every one of them was a way to make the desync weaker, and a weaker desync is one a
+    -- resolver can average out.
+end
+
+-- ============ MOVEMENT EXTRAS + CUSTOM FOG ============
+-- Own do-block: this file sits on Luau's register ceiling and the limit applies per function as well
+-- as to the main chunk, so nothing here may become a top-level local.
+do
+    local secJump = mkSection(Pages.Misc, "Movement Extras", 2.5)
+    if S._RegisterMiscSection then pcall(S._RegisterMiscSection, secJump, "Protection") end
+
+    -- Infinity Jump. S.InfiniteJump was already declared in the defaults table and listed among the
+    -- saved config keys, but no toggle and no implementation ever existed -- the flag was read by
+    -- nothing. JumpRequest fires on every jump input including a held space bar, so re-asserting the
+    -- Jumping state there is all this needs; no per-frame work while it is off.
+    tc(UIS.JumpRequest:Connect(function()
+        if not S.InfiniteJump then return end
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health > 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end))
+    mkToggle(secJump, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 1)
+
+    -- ---- Custom Fog ----
+    -- The fog ENGINE already existed and was complete: applyAtmo() reads S.FogEnabled, S.FogMode
+    -- (Classic legacy FogStart/End vs Atmosphere density haze), S.FogColorName, S.FogStart,
+    -- S.FogEnd, S.FogDensity and S.FogRainbow, parks any map Atmosphere out of the way for classic
+    -- fog, and restores everything on the way out. What never existed was a single control to set
+    -- any of those keys -- same shape of gap as Infinity Jump. So this wires the existing engine up
+    -- rather than adding a second one.
+    -- I did write a parallel implementation first; it collided on S.FogStart/S.FogEnd and applyAtmo's
+    -- own restoreFog() overwrote it every pass. Measured: FogEnd stayed at 1e9 with the slider at 450.
+    local secFog = mkSection(Pages.Visuals, "Custom Fog", 5.4)
+    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secFog) end
+
+    -- Names must match the engine's own FOG_COLORS table keys, not a new palette.
+    local function fogRefresh()
+        if S._ApplyEnvironment then pcall(S._ApplyEnvironment) end
+    end
+
+    mkToggle(secFog, "Custom Fog", false, function(v) S.FogEnabled = v; fogRefresh() end, 1)
+    mkCycle(secFog, "Fog Mode", { "Classic", "Atmosphere" }, "Classic", function(v)
+        S.FogMode = v; fogRefresh()
     end, 2)
-    -- Up to 40 now: the offset no longer touches physics, so a big radius costs nothing locally and
-    -- is exactly what makes someone else's aim miss.
-    mkSlider(secDesync, "Desync Radius", 0, 400, 60, function(v) S.DesyncRadius = v end, 3)
-    mkToggle(secDesync, "Only While Standing", false, function(v) S.DesyncOnlyStill = v end, 4)
+    mkCycle(secFog, "Fog Color",
+        { "Gray", "White", "Black", "Red", "Orange", "Green", "Cyan", "Blue", "Purple", "Pink" },
+        "Gray", function(v) S.FogColorName = v; fogRefresh() end, 3)
+    mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; fogRefresh() end, 4)
+    mkSlider(secFog, "Fog Start", 0, 1500, 0, function(v) S.FogStart = v; fogRefresh() end, 5)
+    mkSlider(secFog, "Fog End", 10, 3000, 500, function(v) S.FogEnd = v; fogRefresh() end, 6)
+    -- Only meaningful in Atmosphere mode.
+    mkSlider(secFog, "Fog Density (%)", 0, 100, 40, function(v) S.FogDensity = v; fogRefresh() end, 7)
 end

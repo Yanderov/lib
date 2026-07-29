@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
+local ContentProvider = game:GetService("ContentProvider")
 
 -- ===== BUILD MODE (PC / MOBILE) =====
 -- The launcher's PC/MOBILE switch sets _G.INERTIA_MOBILE before running this
@@ -37,7 +38,7 @@ local S = {
     Connections = {}, Gui = nil, OriginalTransparencies = {},
     VoidPlatform = nil, LastGrab = 0,
     CustomWalkSpeed = 16, CustomJumpPower = 50,
-    GunChams = false, GunNotify = false,
+    GunNotify = false,
     AutoGrabGun = false, XrayOn = false, CamClip = false, NoCamLimit = false,
     AntiFling = false, AntiVoid = false, NoClip = false, AntiRagdoll = false,
     Fly = false, FlySpeed = 50, TouchFling = false, FlingDuration = 6,
@@ -49,9 +50,8 @@ local S = {
     NameESP = false, DistanceESP = false, RoleESP = false,
     BoxESP = false, BoxStyle = "Full", BoxFillStyle = "None", TracerESP = false, ESPMaxDist = 1000,
     HeadDot = false, TracerOrigin = "Bottom",
-    ChamsOpacity = 50, GunHeldChams = false, RoleChams = false, RoleHUDEnabled = false,
+    ChamsOpacity = 50, RoleChams = false, RoleHUDEnabled = false,
     ItemChamsMode = "Outline", ItemChamsColor = "White", ItemChamsRainbow = false,
-    FullBright = false, NoFog = false, ForceDay = false, ForceNight = false, NoShadows = false, Brightness = 2,
     Saturation = 0, Contrast = 0, CamFOV = 70,
     SkyEnabled = false, SkyPreset = "Day", SkyTint = "Preset", SkyRainbow = false,
     FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
@@ -65,13 +65,10 @@ local S = {
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
     Desync = false, DesyncMode = "Blink", DesyncRadius = 60, DesyncOnlyStill = false,
     KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
-    NoBlackout = false, SelfChams = false, SelfChamsMode = "Fill", SelfChamsColor = "Cyan",
-    SelfChamsRainbow = false, SelfChamsOpacity = 45,
-    BulletTracers = false, BulletTracerStyle = "Beam", BulletTracerColor = "Cyan",
-    BulletTracerLife = 15, BulletTracerWidth = 12, BulletTracerAll = false,
+    NoBlackout = false,
     KillSoundMurderer = "Off", KillSoundSheriff = "Off", KillSoundVolume = 70,
     DualWield = false,
-    Crosshair = false,
+    Crosshair = false, CustomCrosshair = false, CrosshairIndex = 1,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
     FOVThickness = 2, FOVColor = "White", FOVRadius = 360,
     HUD_Watermark = false, HUD_Speed = false, HUD_Session = false, HUD_KillFeed = false,
@@ -86,9 +83,9 @@ local S = {
     Orbit = false, OrbitSpeed = 20, OrbitDist = 6, OrbitHeight = 0,
     Bang = false, BangSpeed = 3, Jerk = false,
     BlockJump = false,
-    InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false, ClickMenu = false,
+    InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false,
     Fling = false, FlyFling = false, InvisFling = false,
-    CoinESP = false, FastAutofarm = false, FastAutofarmSpeed = 20,
+    FastAutofarm = false, FastAutofarmSpeed = 20,
     -- Safe Mode caps how far the root may be moved in ONE frame. MM2 rejects a
     -- position that jumps further than a player could plausibly travel in a step
     -- ("invalid position" / snap-back), and that limit is per-step, not per-second:
@@ -98,11 +95,9 @@ local S = {
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
     FakeLag = false, FakeLagLimit = 15,
     CrosshairShape = "Cross", CrosshairColor = "White", CrosshairSize = 12, CrosshairThickness = 2, CrosshairGap = 4, CrosshairRotation = 0,
-    AutoEvade = false, AutoEvadeRange = 25, AutoGG = false, CustomGGText = "GG!", UseCustomGG = false,
-    AutoDodgeKnife = false, AutoDodgeMode = "Teleport", AutoDodgeSpeed = 16,
-    KnifeDodgeDistance = 8,
+    AutoGG = false, CustomGGText = "GG!", UseCustomGG = false,
     VoteFarmSlot = "1", VoteFarmCount = 5, AutoVote = false,
-    MuteGun = false, MuteCoin = false, MuteKill = false, MuteKillNotify = false, MuteKillEffect = false, HideKillFX = false,
+    MuteGun = false, MuteCoin = false, MuteKill = false, MuteKillNotify = false, MuteKillEffect = false,
     Whitelist = {},   -- [playerName]=true : right-click in Targets; skipped by fling / kill / aura / aim
     ManualTargets = {},  -- [playerName]=true : left-click multi-select in Targets (Fun / Follow). empty = Auto
     SheriffSilentAim = false,
@@ -208,13 +203,23 @@ local function isWhitelisted(p) return p ~= nil and S.Whitelist and S.Whitelist[
 local SndCache = {}
 local function snd(id, pitch, vol)
     task.spawn(function() pcall(function()
+        if type(id) ~= "string" or id == "" then return end
         local k = id..pitch
         local s = SndCache[k]
         if not s or not s.Parent then
             s = Instance.new("Sound"); s.SoundId = id; s.Parent = SoundService; SndCache[k] = s
         end
-        s.PlaybackSpeed = pitch; s.Volume = vol or 0.3; s:Play()
+        s.PlaybackSpeed = pitch; s.Volume = vol or 0.3
+        pcall(function() ContentProvider:PreloadAsync({s}) end)
+        pcall(function() SoundService:PlayLocalSound(s) end)
+        if not s.IsPlaying then pcall(function() s:Play() end) end
     end) end)
+end
+local function playLocalSoundObject(s)
+    if not s or not s:IsA("Sound") then return end
+    pcall(function() ContentProvider:PreloadAsync({s}) end)
+    pcall(function() SoundService:PlayLocalSound(s) end)
+    if not s.IsPlaying then pcall(function() s:Play() end) end
 end
 -- Notification tones. Every id here was checked on a live client (PreloadAsync + TimeLength) —
 -- a candidate that failed to load was dropped rather than shipped, which is exactly how the old
@@ -585,6 +590,30 @@ end)
 
 end
 
+-- Section cards are named after their own title ("Desync", "Aimbot", ...), so unlike TBar or HUD_*
+-- there is no name to match them on -- which is why the transparency slider never reached them and
+-- they stayed at BackgroundTransparency 0.015, i.e. opaque, with the blur hidden behind them.
+-- A registry, not an attribute scan: the slider fires on every drag step and walking every
+-- descendant of SG that often is exactly the kind of per-frame work that makes this hub stutter.
+S._Surfaces = {}
+S._MarkSurface = function(obj)
+    if obj then table.insert(S._Surfaces, obj) end
+    return obj
+end
+-- Iterate the registry, dropping entries whose instance is gone. Shared by transparency and glass.
+S._EachSurface = function(fn)
+    local list = S._Surfaces
+    if not list then return end
+    for i = #list, 1, -1 do
+        local o = list[i]
+        if not o or not o.Parent then
+            table.remove(list, i)
+        else
+            pcall(fn, o)
+        end
+    end
+end
+
 local function updateGuiTransparency()
     -- Keep enough opacity for controls and notifications to remain readable even
     -- when an old or malformed config contains an out-of-range value.
@@ -609,6 +638,14 @@ local function updateGuiTransparency()
             end
         end
     end
+    -- Cards and HUD panels follow the same slider as the window. Straight mapping rather than a
+    -- derived value: two surfaces stacked at t=0.85 still composite to something readable, and a
+    -- slider that means one thing everywhere is easier to reason about than one that secretly
+    -- doubles on cards.
+    S._EachSurface(function(o)
+        o.BackgroundTransparency = o:GetAttribute("InertiaHudSurface") and hudTrans or guiTrans
+    end)
+    if S._ApplyGlass then S._ApplyGlass() end
 end
 S._UpdateGuiTransparency = updateGuiTransparency
 
@@ -1502,29 +1539,36 @@ Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
 -- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
 -- Main itself and not a child frame -- an opaque child would square off the window's rounded
 -- corners, because UICorner does not clip descendants.
+S._GlassOn = function(obj, amount)
+    if not obj or not obj.Parent then return end
+    local g = obj:FindFirstChild("GlassSheen")
+    if amount <= 0.01 then
+        if g then g:Destroy() end
+        return
+    end
+    if not g then
+        g = Instance.new("UIGradient")
+        g.Name = "GlassSheen"
+        g.Rotation = 90
+        g.Parent = obj
+    end
+    g.Color = ColorSequence.new(
+        Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
+        Color3.new(0, 0, 0))
+    g.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
+        NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+end
+
 S._ApplyGlass = function()
     local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
-    pcall(function()
-        local g = Main:FindFirstChild("GlassSheen")
-        if amount <= 0.01 then
-            if g then g:Destroy() end
-            return
-        end
-        if not g then
-            g = Instance.new("UIGradient")
-            g.Name = "GlassSheen"
-            g.Rotation = 90
-            g.Parent = Main
-        end
-        g.Color = ColorSequence.new(
-            Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
-            Color3.new(0, 0, 0))
-        g.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
-            NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-    end)
+    pcall(S._GlassOn, Main, amount)
+    -- Cards and HUD panels get the same sheen. Without this the glass stopped dead at the window
+    -- edge and every card sitting on top of it stayed flat, which is what "cards do not blur"
+    -- actually looked like.
+    S._EachSurface(function(o) S._GlassOn(o, amount) end)
 end
 
 -- Background blur. Deliberately NOT gated on the menu being open: you set it to look at the game
@@ -1711,7 +1755,6 @@ local ConfigControls = {}
 local TOGGLE_STATE_ALIASES = {
     autosave = "AutoSaveCfg",
     sheriff = "SheriffSilentAim",
-    gunchams = "GunChams",
     gunchamsrainbow = "ItemChamsRainbow",
     enablecustomcursorcrosshair = "CustomCrosshair",
     enablehandshader = "HandShader",
@@ -1744,9 +1787,8 @@ local function _toggleStateFromS(controlId)
     end
     -- A substring fallback used to live here, scanning every boolean in S and returning the first
     -- whose key merely appeared inside the toggle's id. That is why toggles needed two or three
-    -- clicks to switch on: toggle() re-runs this right AFTER the callback, so "Gun Chams Rainbow"
-    -- set S.ItemChamsRainbow and then had its state overwritten by whatever S.GunChams happened to
-    -- be. pairs() order is not stable either, so the number of clicks varied between sessions.
+    -- clicks to switch on: toggle() re-runs this right AFTER the callback, so a persisted value could
+    -- overwrite the control state. Exact matches and explicit aliases now own the value.
     -- Un-aliased toggles now return nil, which leaves entry.state authoritative — add an entry to
     -- TOGGLE_STATE_ALIASES / FULL_TOGGLE_STATE_ALIASES if a toggle really must mirror an S flag.
     return nil
@@ -3856,7 +3898,8 @@ local function mkSection(parent, title, order)
     card.Parent = parent
     card.LayoutOrder = order
     card.BackgroundColor3 = T.Card; pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-    card.BackgroundTransparency = 0.015
+    card.BackgroundTransparency = math.clamp(tonumber(S.GuiTransparency) or 0.015, 0, 0.95)
+    S._MarkSurface(card)
     card.BorderSizePixel = 0
     card.Size = UDim2.new(1, 0, 0, 0)
     card.AutomaticSize = Enum.AutomaticSize.Y
@@ -3918,7 +3961,10 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     lbl.Size = UDim2.new(1, -(M.trackW + (MOBILE and 74 or 68)), 1, 0)
     lbl.Font = F
     lbl.TextSize = M.rowFont
-    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    -- Keep names readable in the compact cards; the label lane is measured above so long
+    -- feature names stay visible instead of becoming an unexplained ellipsis.
+    lbl.TextTruncate = Enum.TextTruncate.None
+    lbl.TextWrapped = false
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(lbl, label, label, false)
@@ -4255,7 +4301,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     lbl.Size = UDim2.new(0.6, 0, 0, MOBILE and 18 or 16)
     lbl.Font = F
     lbl.TextSize = MOBILE and 12 or 12
-    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.TextTruncate = Enum.TextTruncate.None
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(lbl, label, label, false)
@@ -4674,7 +4720,7 @@ local function mkCycle(parent, label, options, default, callback, order)
     lbl.Size = UDim2.new(1, -M.cycleLabelGap, 1, 0)
     lbl.Font = F
     lbl.TextSize = M.rowFont
-    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.TextTruncate = Enum.TextTruncate.None
     lbl.TextColor3 = T.Tx2; pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(lbl, label, label, false)
@@ -5213,7 +5259,10 @@ end
 
 local skyPaths = {}
 for _, sky in ipairs(CustomAssets.Skyboxes) do
-    table.insert(skyPaths, sky)
+    local faces = sky and sky.Files
+    if faces and faces.Bk and faces.Dn and faces.Ft and faces.Lf and faces.Rt and faces.Up then
+        table.insert(skyPaths, sky)
+    end
 end
 
 local bgPaths = {}
@@ -5265,7 +5314,11 @@ end
 -- card being duplicated.
 S._CustomsSections = S._CustomsSections or {}
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
-    mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
+    mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v)
+        S.CustomCrosshair = v
+        if rebuildCrosshair then pcall(rebuildCrosshair) end
+        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
+    end, 1)
     
     -- Picking one of the downloaded cursors / 19 skyboxes / 44 sounds by dragging a numeric slider gave no
     -- idea what you were selecting. All three now open the searchable picker with thumbnails.
@@ -5336,9 +5389,13 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                     if fetchedId ~= "" then
                         S.CrosshairAssetId = fetchedId
                     else
-                        Notify("Cursor", "Could not download " .. cursorNames[pick], 3)
+                        S.CrosshairAssetId = CustomCrosshairs[1]
+                        Notify("Cursor", "Could not download " .. cursorNames[pick] .. "; using fallback", 3)
                     end
+                    pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
                 end)
+            else
+                pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
             end
         end, { previews = cursorPreviews })
     end, 2)
@@ -5360,6 +5417,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     -- render as a box with seams. Verified live by applying it and looking at the sky, because
     -- ContentProvider/IsLoaded cannot be trusted for this.
     local SKY_LIB = {
+        { Name = "Purple Nebula", Bk = 159454299, Dn = 159454296, Ft = 159454293, Lf = 159454286, Rt = 159454300, Up = 159454288 },
+        { Name = "Night Sky", Bk = 12064107, Dn = 12064152, Ft = 12064121, Lf = 12063984, Rt = 12064115, Up = 12064131 },
+        { Name = "Pink Daylight", Bk = 271042516, Dn = 271077243, Ft = 271042556, Lf = 271042310, Rt = 271042467, Up = 271077958 },
+        { Name = "Morning Glow", Bk = 1417494030, Dn = 1417494146, Ft = 1417494253, Lf = 1417494402, Rt = 1417494499, Up = 1417494643 },
+        { Name = "Setting Sun", Bk = 626460377, Dn = 626460216, Ft = 626460513, Lf = 626473032, Rt = 626458639, Up = 626460625 },
+        { Name = "Fade Blue", Bk = 153695414, Dn = 153695352, Ft = 153695452, Lf = 153695320, Rt = 153695383, Up = 153695471 },
+        { Name = "Elegant Morning", Bk = 153767241, Dn = 153767216, Ft = 153767266, Lf = 153767200, Rt = 153767231, Up = 153767288 },
+        { Name = "Neptune", Bk = 218955819, Dn = 218953419, Ft = 218954524, Lf = 218958493, Rt = 218957134, Up = 218950090 },
+        { Name = "Redshift", Bk = 401664839, Dn = 401664862, Ft = 401664960, Lf = 401664881, Rt = 401664901, Up = 401664936 },
         { Name = "Sunset Clouds",
           Bk = 92464172, Dn = 92464250, Ft = 92464217,
           Lf = 92464234, Rt = 92464189, Up = 92464157 },
@@ -5420,6 +5486,10 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 local lf = fetchCustomAsset(sky.Files.Lf, "skyboxes")
                 local rt = fetchCustomAsset(sky.Files.Rt, "skyboxes")
                 local up = fetchCustomAsset(sky.Files.Up, "skyboxes")
+                if bk == "" or dn == "" or ft == "" or lf == "" or rt == "" or up == "" then
+                    Notify("Skybox", "Some sky faces failed to load", 3)
+                    return
+                end
                 
                 local lighting = game:GetService("Lighting")
                 local skyboxObj = lighting:FindFirstChild("CustomSkyboxUI")
@@ -5519,7 +5589,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         s.SoundId = id
         s.Volume = 1.5
         s.Parent = SoundService
-        s:Play()
+        playLocalSoundObject(s)
         game:GetService("Debris"):AddItem(s, 5)
     end
     local function auditionGunSound(index)
@@ -5534,7 +5604,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         s.SoundId = id
         s.Volume = 1.5
         s.Parent = SoundService
-        s:Play()
+        playLocalSoundObject(s)
         game:GetService("Debris"):AddItem(s, 5)
     end
 
@@ -5598,14 +5668,14 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             s.SoundId = S.CustomGunSoundId
             s.Volume = 1.5
             s.Parent = workspace
-            s:Play()
+            playLocalSoundObject(s)
             game.Debris:AddItem(s, 3)
         else
             local s = Instance.new("Sound")
             s.SoundId = "rbxassetid://342080352"
             s.Volume = 1
             s.Parent = workspace
-            s:Play()
+            playLocalSoundObject(s)
             game.Debris:AddItem(s, 3)
         end
     end, 4.1)
@@ -5652,7 +5722,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         s.SoundId = id
         s.Volume = math.clamp((tonumber(S.KillSoundVolume) or 70) / 100, 0, 1)
         s.Parent = SoundService
-        s:Play()
+        playLocalSoundObject(s)
         game:GetService("Debris"):AddItem(s, 6)
     end
     S._PlayKillSound = playKillSound
@@ -6224,17 +6294,16 @@ end, 6)
         -- pivot, so the built-in numbers can only ever be an average. These three expose the same
         -- knobs the code already used internally: the size cap, and the torso-relative Y and Z of
         -- the anchor. Percent/hundredths because mkSlider is integer-only.
-        mkSlider(secWings, "Wing Size (%)", 40, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
-        mkSlider(secWings, "Wing Height", -60, 60, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
-        mkSlider(secWings, "Wing Back Offset", -40, 90, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
-        mkCycle(secWings, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
-        -- Aura tuning. Each rebuilds so the change is visible immediately; "Preset" leaves the
-        -- style's own colour alone.
-        mkCycle(secWings, "Aura Color",
-            { "Preset", "White", "Red", "Green", "Yellow", "Cyan", "Purple", "Orange", "Pink" },
-            "Preset", function(v) S.AuraColor = v; rebuild() end, 9.1)
-        mkSlider(secWings, "Aura Density (%)", 20, 300, 100, function(v) S.AuraDensity = v; rebuild() end, 9.2)
-        mkSlider(secWings, "Aura Particle Size (%)", 40, 250, 100, function(v) S.AuraSize = v; rebuild() end, 9.3)
+        -- Ranges widened downward: the old floors (-60 height, -40 back, 40% size) were not low
+        -- enough to tuck a wing in tight against the torso on the assets that sit too far out.
+        mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
+        mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
+        mkSlider(secWings, "Wing Back Offset", -150, 150, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
+        -- VFX Aura and its three tuning controls are gone, on request. The marketplace aura models
+        -- it pulled were unreliable to load and never looked right; S.VFXAura is pinned "Off" below
+        -- so every remaining reference to it -- the rebuild path, the config keys, an old saved
+        -- config -- stays valid without needing to be chased down.
+        S.VFXAura = "Off"
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
@@ -6501,57 +6570,18 @@ end, 6)
         end)
     end
 
-    local sec1 = mkSection(Pages.Visuals, "Chams", 1)
-    mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 2)
-    mkSlider(sec1, "Chams Opacity", 0, 100, 50, function(v) S.ChamsOpacity = v end, 3)
-    mkToggle(sec1, "Gun Chams", false, function(v) S.GunHeldChams = v; S.GunChams = v end, 4)
-    mkCycle(sec1, "Gun Chams Mode", {"Highlight", "Outline", "Solid", "ForceField", "Neon", "Glass", "Maze", "Mirror"}, "Highlight", function(v) S.ItemChamsMode = v end, 5)
-    -- Full palette, kept in sync with ITEM_CHAM_COLORS further down. Written out here rather than
-    -- referenced because that table is built later in the file than this control.
-    local CHAM_COLOR_NAMES = {
-        "White", "Black", "Gray", "Red", "Crimson", "Rose", "Pink", "Magenta",
-        "Orange", "Peach", "Gold", "Yellow", "Lime", "Green", "Mint", "Teal",
-        "Cyan", "Sky", "Blue", "Indigo", "Purple", "Lavender",
-    }
-    mkCycle(sec1, "Gun Chams Color", CHAM_COLOR_NAMES, "Cyan", function(v) S.ItemChamsColor = v end, 6)
-    mkToggle(sec1, "Gun Chams Rainbow", false, function(v) S.ItemChamsRainbow = v end, 7)
-    -- Self Chams: the same Highlight treatment pointed at your own character. Kept in this section
-    -- next to the item version so both palettes and modes read the same way.
-    mkToggle(sec1, "Self Chams", false, function(v)
-        S.SelfChams = v
-        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
-    end, 8)
-    mkCycle(sec1, "Self Chams Mode", {
-        "Fill", "Outline", "Solid", "Glow", "Ghost", "Neon Edge", "Shadow",
-        "Depth Fill", "Depth Outline", "Depth Solid", "Hollow",
-    }, "Fill", function(v)
-        S.SelfChamsMode = v
-        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
-    end, 9)
-    mkCycle(sec1, "Self Chams Color", CHAM_COLOR_NAMES, "Cyan", function(v)
-        S.SelfChamsColor = v
-        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
-    end, 10)
-    mkToggle(sec1, "Self Chams Rainbow", false, function(v)
-        S.SelfChamsRainbow = v
-        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
-    end, 11)
-    mkSlider(sec1, "Self Chams Opacity", 0, 100, 45, function(v)
-        S.SelfChamsOpacity = v
-        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
-    end, 12)
-
-    local sec2 = mkSection(Pages.Visuals, "Player ESP", 2)
-    mkToggle(sec2, "Name ESP", false, function(v) S.NameESP = v end, 1)
-    mkToggle(sec2, "Distance ESP", false, function(v) S.DistanceESP = v end, 2)
-    mkToggle(sec2, "Role ESP", false, function(v) S.RoleESP = v end, 3)
-    mkToggle(sec2, "Box ESP", false, function(v) S.BoxESP = v end, 4)
-    mkCycle(sec2, "Box Style", {"Full", "Corner", "3D"}, "Full", function(v) S.BoxStyle = v end, 5)
-    mkCycle(sec2, "Box Fill", {"None", "Solid", "Gradient", "Rainbow"}, "None", function(v) S.BoxFillStyle = v end, 6)
-    mkToggle(sec2, "Tracers", false, function(v) S.TracerESP = v end, 7)
-    mkToggle(sec2, "Head Dot", false, function(v) S.HeadDot = v end, 8)
-    mkCycle(sec2, "Tracer Origin", {"Bottom", "Center", "Top", "Mouse"}, "Bottom", function(v) S.TracerOrigin = v end, 9)
-    mkSlider(sec2, "ESP Max Dist", 100, 2000, 1000, function(v) S.ESPMaxDist = v end, 10)
+    local sec1 = mkSection(Pages.Visuals, "ESP", 1)
+    mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 1)
+    mkToggle(sec1, "Name ESP", false, function(v) S.NameESP = v end, 2)
+    mkToggle(sec1, "Distance ESP", false, function(v) S.DistanceESP = v end, 3)
+    mkToggle(sec1, "Role ESP", false, function(v) S.RoleESP = v end, 4)
+    mkToggle(sec1, "Box ESP", false, function(v) S.BoxESP = v end, 5)
+    mkCycle(sec1, "Box Style", {"Full", "Corner", "3D"}, "Full", function(v) S.BoxStyle = v end, 6)
+    mkCycle(sec1, "Box Fill", {"None", "Solid", "Gradient", "Rainbow"}, "None", function(v) S.BoxFillStyle = v end, 7)
+    mkToggle(sec1, "Tracers", false, function(v) S.TracerESP = v end, 8)
+    mkToggle(sec1, "Head Dot", false, function(v) S.HeadDot = v end, 9)
+    mkCycle(sec1, "Tracer Origin", {"Bottom", "Center", "Top", "Mouse"}, "Bottom", function(v) S.TracerOrigin = v end, 10)
+    mkSlider(sec1, "ESP Max Dist", 100, 2000, 1000, function(v) S.ESPMaxDist = v end, 11)
 
     local sec5 = mkSection(Pages.Visuals, "Alerts", 4)
     mkToggle(sec5, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 1)
@@ -6571,17 +6601,6 @@ end, 6)
             end
         end
     end)
-
-    local sec4 = mkSection(Pages.Visuals, "World", 6)
-    mkToggle(sec4, "Fullbright", false, function(v) S.FullBright = v end, 1)
-    mkToggle(sec4, "Force Day", false, function(v)
-        S.ForceDay = v; if v then S.ForceNight = false end
-    end, 2)
-    mkToggle(sec4, "Force Night", false, function(v)
-        S.ForceNight = v; if v then S.ForceDay = false end
-    end, 3)
-    mkToggle(sec4, "No Shadows", false, function(v) S.NoShadows = v end, 4)
-    mkSlider(sec4, "Brightness", 1, 5, 2, function(v) S.Brightness = v end, 5)
 
     local secFx = mkSection(Pages.Visuals, "Effects", 7)
     mkSlider(secFx, "Saturation", -100, 100, 0, function(v) S.Saturation = v end, 1)
@@ -6622,14 +6641,6 @@ end, 6)
         applyShader("None")
         Notify("Shaders", "All shaders disabled", 2)
     end, #SHADER_LIST + 1)
-
-    local secHandShaders = mkSection(Pages.Visuals, "Hand Shaders (Self)", 12)
-    mkToggle(secHandShaders, "Enable Hand Shader", false, function(v) S.HandShader = v end, 1)
-    mkCycle(secHandShaders, "Shader Type", {"Both", "Fill", "Outline", "Mirror", "Bloom", "Maze", "Crystal", "Chrome", "Plasma"}, "Both", function(v) S.HandShaderType = v end, 2)
-    mkCycle(secHandShaders, "Apply To", {"Full Body", "Held Item"}, "Full Body", function(v) S.HandTarget = v end, 3)
-    mkCycle(secHandShaders, "Color", CHAM_COLOR_NAMES, "Cyan", function(v) S.HandColor = v end, 4)
-    mkToggle(secHandShaders, "Rainbow", false, function(v) S.HandRainbow = v end, 5)
-    mkSlider(secHandShaders, "Fill Opacity", 0, 100, 60, function(v) S.HandFill = v end, 6)
 
     local secKnifeEffects = mkSection(Pages.Visuals, "Knife Effects", 13)
     mkToggle(secKnifeEffects, "Unlock All Knife Effects (Visual)", false, function(v)
@@ -6813,13 +6824,6 @@ do
         if S.GrabGunNow then S.GrabGunNow(false) end
     end, 2)
     mkToggle(secSurvival, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 3)
-    mkToggle(secSurvival, "Auto Evade", false, function(v) S.AutoEvade = v end, 4)
-    mkSlider(secSurvival, "Auto Evade Range", 10, 60, 25, function(v) S.AutoEvadeRange = v end, 5)
-    mkToggle(secSurvival, "Auto Dodge Knife", false, function(v) S.AutoDodgeKnife = v end, 6)
-
-    local secKnifeDodge = mkSection(Pages.Combat, "Knife Dodge", 6)
-    mkToggle(secKnifeDodge, "Enable Dodge", false, function(v) S.KnifeDodge = v end, 1, "Knife Dodge")
-    mkSlider(secKnifeDodge, "Dodge Distance", 3, 12, 6, function(v) S.KnifeDodgeDistance = v end, 2)
 
     local activeSubTab = "Sheriff"
     local function updateSubTabs()
@@ -6836,7 +6840,6 @@ do
         secKnifeThrow.Parent.Visible = isMurderer
         secMurder.Parent.Visible = isMurderer
         secSurvival.Parent.Visible = isSurvivors
-        secKnifeDodge.Parent.Visible = isSurvivors
     end
     S._UpdateCombatSubtabs = updateSubTabs
 
@@ -7351,116 +7354,7 @@ do
             end
         end))
     end)
-        -- Knife Dodge v2: the old version just nudged you 3.5 studs straight away from the knife EVERY
-        -- single frame it was within range — a twitchy little shuffle, and blind to geometry (it could
-        -- just as easily shuffle you behind a barrier or into a corner as away from danger).
-        -- Now: ONE decisive juke (cooldown-gated, no more frame-by-frame twitching), in whichever
-        -- direction actually has the most open space — tried perpendicular to the knife's real travel
-        -- direction first (a proper side-step off its flight line, not just "back away from where it
-        -- currently is"), then straight-away, each raycast-checked so it can't throw you into a wall.
-        local knifeHistory = {}
-        local lastDodgeTime = 0
-        tc(RunService.Heartbeat:Connect(function()
-            if not (S.KnifeDodge and getRole(LP) ~= "Murderer") then return end
-            local c = LP.Character
-            local hrp = c and c:FindFirstChild("HumanoidRootPart")
-            local hum = c and c:FindFirstChildOfClass("Humanoid")
-            if not (hrp and hum and hum.Health > 0) then return end
-
-            local now = tick()
-            if now - lastDodgeTime < 0.6 then return end
-
-            local seen, threatPos, threatDist, threatDir = {}, nil, nil, nil
-            for _, child in ipairs(workspace:GetChildren()) do
-                if child.Name == "Knife" or child.Name == "NormalKnife" or child.Name == "ThrowingKnife" then
-                    seen[child] = true
-                    local pos
-                    if child:IsA("BasePart") then
-                        pos = child.Position
-                    elseif child:IsA("Model") then
-                        local ok, cf = pcall(function() return child:GetPivot() end)
-                        pos = ok and cf.Position or nil
-                    end
-                    if pos then
-                        local dist = (hrp.Position - pos).Magnitude
-                        if dist < 45 and (not threatDist or dist < threatDist) then
-                            local hist = knifeHistory[child]
-                            threatDir = nil
-                            if hist and (now - hist.time) > 0 then
-                                local delta = pos - hist.pos
-                                if delta.Magnitude > 0.05 then threatDir = delta.Unit end
-                            end
-                            threatPos, threatDist = pos, dist
-                        end
-                        local hist = knifeHistory[child]
-                        if not hist then hist = {}; knifeHistory[child] = hist end
-                        hist.pos, hist.time = pos, now
-                    end
-                end
-            end
-            for k in pairs(knifeHistory) do if not seen[k] then knifeHistory[k] = nil end end
-
-            local meleeThreat = false
-            if not threatPos then
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= LP and p.Character and getRole(p) == "Murderer" then
-                        local mhrp = p.Character:FindFirstChild("HumanoidRootPart")
-                        local mhum = p.Character:FindFirstChildOfClass("Humanoid")
-                        local hasKnife = p.Character:FindFirstChild("Knife") or p.Character:FindFirstChild("KnifeServer")
-                        if mhrp and mhum and mhum.Health > 0 and hasKnife then
-                            local dist = (hrp.Position - mhrp.Position).Magnitude
-                            if dist < 18 then
-                                threatPos = mhrp.Position
-                                threatDist = dist
-                                threatDir = (hrp.Position - mhrp.Position).Unit
-                                meleeThreat = true
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-
-            if not threatPos then return end
-
-            local away = hrp.Position - threatPos
-            away = Vector3.new(away.X, 0, away.Z)
-            if away.Magnitude < 0.05 then away = hrp.CFrame.LookVector end
-            away = away.Unit
-
-            local candidates = { away }
-            if threatDir then
-                local flat = Vector3.new(threatDir.X, 0, threatDir.Z)
-                if flat.Magnitude > 0.05 then
-                    flat = flat.Unit
-                    local perp = Vector3.new(-flat.Z, 0, flat.X)
-                    table.insert(candidates, 1, perp)
-                    table.insert(candidates, 2, -perp)
-                end
-            end
-
-            local rp = RaycastParams.new()
-            rp.FilterType = Enum.RaycastFilterType.Exclude
-            rp.FilterDescendantsInstances = { c }
-
-            local DODGE_DIST = S.KnifeDodgeDistance or 8
-            if DODGE_DIST < 8 then DODGE_DIST = 8 end
-            local bestDir, bestClear = nil, -1
-            for _, dir in ipairs(candidates) do
-                local hit = workspace:Raycast(hrp.Position, dir * DODGE_DIST, rp)
-                local clear = hit and hit.Distance or DODGE_DIST
-                if clear > bestClear then bestDir, bestClear = dir, clear end
-            end
-            bestDir = bestDir or away
-
-            lastDodgeTime = now
-            local travel = math.clamp(bestClear - 1.5, 3.5, DODGE_DIST)
-            local newPos = hrp.Position + bestDir * travel
-            local groundHit = workspace:Raycast(newPos + Vector3.new(0, 3, 0), Vector3.new(0, -6, 0), rp)
-            local landY = groundHit and (groundHit.Position.Y + 3) or hrp.Position.Y
-            hrp.CFrame = CFrame.new(newPos.X, landY, newPos.Z) * (hrp.CFrame - hrp.CFrame.Position)
-            Notify("Knife Dodge", "Evaded threat! (" .. math.floor(travel) .. " studs)", 1.5)
-        end))
+        -- Knife Dodge removed.
     end
 
     -- Subtab bar (same pattern as Combat): splits Misc's many sections into 3 groups.
@@ -7556,7 +7450,6 @@ do
     mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
 
     local sec5 = mkSection(Pages.Teleport, "Actions", 4)
-    mkAction(sec5, "Reset Character", function() respawnChar() end, 1)
     mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 2)
     mkAction(sec5, "Server Hop", function() serverHop() end, 3)
 
@@ -7765,36 +7658,6 @@ do
         get = function() return S.AIChatProvider end,
         set = function(v) S.AIChatProvider = tostring(v) end,
     })
-    table.insert(ConfigControls, {
-        id = "Misc/AIChat/ResponseChance",
-        get = function() return S.AIChatResponseChance end,
-        set = function(v) S.AIChatResponseChance = tonumber(v) or 100 end,
-    })
-    table.insert(ConfigControls, {
-        id = "Misc/AIChat/RespondToAll",
-        get = function() return S.AIChatRespondToAll end,
-        set = function(v) S.AIChatRespondToAll = (v == true) end,
-    })
-
-    mkToggle(secAIChat, "Respond to All Messages", false, function(v)
-        S.AIChatRespondToAll = v
-        if v then
-            S.AIChatTriggerMode = "All Messages"
-            S.AIChatLiveMode = "All Messages"
-        elseif S.AIChatLiveMode == "All Messages" then
-            S.AIChatLiveMode = "Contextual"
-            S.AIChatTriggerMode = "Contextual"
-        end
-        pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
-    end, 2.5)
-
-    mkCycle(secAIChat, "Live Chat Mode", {"Watch", "Contextual", "Mention", "Question Only", "All Messages"}, "Contextual", function(v)
-        S.AIChatTriggerMode = v
-        S.AIChatLiveMode = v
-        S.AIChatRespondToAll = (v == "All Messages")
-        pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
-    end, 3)
-
     local aiLiveStatus = Instance.new("TextLabel")
     aiLiveStatus.Name = "AIChatLiveStatus"
     aiLiveStatus.Parent = secAIChat
@@ -7816,30 +7679,14 @@ do
         if aiLiveStatus and aiLiveStatus.Parent then aiLiveStatus.Text = tostring(text or "") end
     end
 
-    mkSlider(secAIChat, "AI Cooldown", 0, 30, 10, function(v) S.AIChatCooldown = v end, 4)
     mkCycle(secAIChat, "AI Chat Style", {"Casual", "Troll", "Kawaii Anime", "Nerd", "Chill", "Competitive", "Short & Direct"}, "Casual", function(v)
         S.AIChatPersonality = v
         S.AIChatStyleRevision = (tonumber(S.AIChatStyleRevision) or 0) + 1
         pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
     end, 5)
-    mkToggle(secAIChat, "Max Humanizer", false, function(v)
-        S.AIChatMaxHumanizer = v
-        S.AIChatStyleRevision = (tonumber(S.AIChatStyleRevision) or 0) + 1
-        pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
-    end, 5.5)
-    mkSlider(secAIChat, "Troll Chance (%)", 0, 100, 25, function(v)
-        S.AIChatTrollChance = v
-        S.AIChatStyleRevision = (tonumber(S.AIChatStyleRevision) or 0) + 1
-    end, 5.75)
-    mkSlider(secAIChat, "AI Response Chance (%)", 0, 100, 100, function(v) S.AIChatResponseChance = v end, 6)
-    mkSlider(secAIChat, "AI Max Response Tokens", 60, 400, 220, function(v) S.AIChatMaxTokens = v end, 7)
-    mkSlider(secAIChat, "AI Memory Messages", 4, 30, 18, function(v)
-        S.AIChatHistoryLimit = v
-        pcall(function() S._TrimAIChatHistory() end)
-    end, 8)
-    mkAction(secAIChat, "Clear AI Chat Memory", function()
+    mkAction(secAIChat, "Clear Chat Memory", function()
         pcall(function() if S._ClearAIChatHistory then S._ClearAIChatHistory() end end)
-    end, 8.5)
+    end, 6)
 
     -- AI Chat Logic
     do
@@ -8516,42 +8363,6 @@ do
         -- Custom sound controls + Ambient Music: removed
     end
 
-    -- ===== Kill Effects (visual) =====
-    -- Strips the particle / trail / beam / smoke effects that spawn (and linger) when someone is
-    -- killed. New effects are disabled the instant they appear; existing ones are swept once when you
-    -- turn it on. Turning it off just stops enforcing (already-disabled emitters stay off until they
-    -- respawn). Broad by design — MM2 has little decorative particle ambiance to lose.
-    do
-        local FX_CLASSES = { ParticleEmitter = true, Trail = true, Beam = true, Smoke = true, Fire = true, Sparkles = true }
-        local function killFX(v)
-            if not S.HideKillFX then return end
-            if FX_CLASSES[v.ClassName] then
-                pcall(function() v.Enabled = false end)
-            elseif v:IsA("Explosion") then
-                pcall(function() v.Visible = false; v.BlastPressure = 0; v.BlastRadius = 0 end)
-            end
-        end
-        tc(workspace.DescendantAdded:Connect(function(v) if S.HideKillFX then killFX(v) end end))
-        local swept = false
-        task.spawn(function()
-            while S.Gui and S.Gui.Parent do
-                if S.HideKillFX then
-                    if not swept then
-                        swept = true
-                        pcall(function() for _, v in ipairs(workspace:GetDescendants()) do killFX(v) end end)
-                    end
-                else
-                    swept = false
-                end
-                task.wait(0.5)
-            end
-        end)
-
-        local secKE = mkSection(Pages.Misc, "Kill Effects", 10)
-        S._RegisterMiscSection(secKE, "Utility")
-        mkToggle(secKE, "Hide Kill Effects", false, function(v) S.HideKillFX = v end, 1)
-
-    end
 end
 do
     -- Subtab bar (same pattern as Combat): Teleport / Autofarm merged into one page.
@@ -9176,24 +8987,7 @@ local function doTrip()
         root.Velocity = root.CFrame.LookVector * 30
     end
 end
--- Fake Out (TP to void and back, kills anyone attached / flinging you)
-local function doFakeOut()
-    task.spawn(function()
-        local root = getRoot(LP.Character)
-        if not root then return end
-        local oldpos = root.CFrame
-        local OrgDestroyHeight = workspace.FallenPartsDestroyHeight
-        pcall(function() workspace.FallenPartsDestroyHeight = -1e9 end)
-        root.CFrame = CFrame.new(Vector3.new(0, OrgDestroyHeight - 10000, 0))
-        task.wait(1)
-        pcall(function()
-            local currentRoot = getRoot(LP.Character)
-            if currentRoot then currentRoot.CFrame = oldpos end
-        end)
-        pcall(function() workspace.FallenPartsDestroyHeight = OrgDestroyHeight end)
-        Notify("Fake Out", "Done - attached flingers dropped", 3)
-    end)
-end
+-- Fake Out removed.
 -- Invisible (FE): REAL invisibility — swaps control to a client-side CLONE while your real body freezes
 -- on the server, so OTHER players stop seeing your movement. You CANNOT shoot/stab while it's on (the
 -- server tracks your frozen body); it's for hiding / escaping — turn it off to fight. Crash-proof:
@@ -9474,7 +9268,6 @@ do
     if S._RegisterMotionMovementSection then S._RegisterMotionMovementSection(secM) end
 
     mkAction(secM, "Trip", function() doTrip() end, 4)
-    mkAction(secM, "Fake Out (Flinger Kill)", function() doFakeOut() end, 5)
     -- startInvisibleFE/stopInvisibleFE have existed all along, but the row that drove them was
     -- deleted with the old "Camera & Body" section, leaving the whole feature unreachable and
     -- `toggleInvisible` permanently nil — which also broke Blink, since startBlink turns Invisible
@@ -9488,7 +9281,6 @@ do
     mkSlider(secTr, "Spin Speed", 5, 1000, 20, function(v) S.SpinSpeed = v end, 2)
     mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then startJerk() else stopJerk() end end, 3)
     mkToggle(secTr, "Click Fling", false, function(v) S.ClickFling = v end, 4)
-    mkToggle(secTr, "Click Menu", false, function(v) S.ClickMenu = v end, 4.05)
     -- Touch Fling is kept separate from the targeted actions. The targeted actions (All/Murderer/
     -- Sheriff/Target/Click) reuse the 'fling' spin engine as their
     -- base (the reference has no concept of "fling THIS specific player" — that targeting/homing part
@@ -9731,6 +9523,10 @@ end
 local function mkDragHUD(name, pos, size, z)
     local f = Instance.new("Frame")
     f.Name = "HUD_"..name
+    -- Registered so the glass sheen reaches HUD panels too. They are matched by name for
+    -- transparency, but the glass pass works off the registry.
+    pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(f)
     f.Parent = SG
     f.Active = true
     f.Position = pos
@@ -9848,6 +9644,8 @@ HUD.roleLbl.ZIndex = 857
 local function mkStatHUD(name, pos, w, z)
     local f = Instance.new("Frame")
     f.Name = "HUD_" .. name
+    pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(f)
     f.Parent = SG
     f.Active = true
     f.Position = pos
@@ -9916,6 +9714,10 @@ HUD.hFps, HUD.fpsLbl = mkStatHUD("FPS", UDim2.new(1, -142, 0, 290), 130, 854)
 do
     HUD.quickFrame = Instance.new("Frame")
     HUD.quickFrame.Name = "HUD_QuickStatus"
+    -- Named directly rather than through mkDragHUD, so it needs its own registration or the glass
+    -- pass never reaches it (measured: hudGlass=false while every dragged panel had one).
+    pcall(function() HUD.quickFrame:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(HUD.quickFrame)
     HUD.quickFrame.Parent = Main
     HUD.quickFrame.Position = UDim2.fromOffset(8, 410)
     -- 124 wide left the value column 60px after the 48px key gutter, which clipped every
@@ -10092,6 +9894,8 @@ local function mkWatermark()
     f.AutoButtonColor = false
     f.Text = ""
     f.Name = "HUD_Watermark"
+    pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
+    S._MarkSurface(f)
     f.Parent = SG
     f.Active = true
     f.AnchorPoint = Vector2.new(0.5, 0)
@@ -10525,7 +10329,7 @@ do
     info.TextXAlignment = Enum.TextXAlignment.Left
     info.Text = "Drag HUD elements by their header"
 end
--- ============ WORLD / LIGHTING (fullbright / no fog / force day / no shadows) ============
+-- ============ PRESENTATION / LIGHTING (shaders and safe environment restoration) ============
 local Lighting = game:GetService("Lighting")
 local savedLighting = {}
 local function saveLighting()
@@ -10939,32 +10743,6 @@ applyShader = function(name)
     if applyAtmo then pcall(applyAtmo) end
 end
 
-task.spawn(function()
-    while S.Gui and S.Gui.Parent do
-        pcall(function()
-            if S.FullBright or S.NoFog or S.ForceDay or S.ForceNight or S.NoShadows then saveLighting() end
-            if S.ActiveShader == "None" then
-                if S.FullBright then
-                    Lighting.Brightness = (S.Brightness or 2)
-                    Lighting.Ambient = Color3.fromRGB(178, 178, 178)
-                    Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
-                elseif not S.SkyEnabled and savedLighting.done then
-                    -- Custom Sky owns Ambient/OutdoorAmbient while active; don't fight it here.
-                    Lighting.Brightness = savedLighting.Brightness
-                    Lighting.Ambient = savedLighting.Ambient
-                    Lighting.OutdoorAmbient = savedLighting.OutdoorAmbient
-                end
-                if S.NoFog and not S.FogEnabled then Lighting.FogEnd = 1e9 elseif not S.FogEnabled and savedLighting.done then Lighting.FogEnd = savedLighting.FogEnd end
-                -- ClockTime: manual force > Custom Time > Custom Sky preset > saved value
-                if S.ForceDay then Lighting.ClockTime = 14
-                elseif S.ForceNight then Lighting.ClockTime = 0
-                elseif not S.SkyEnabled and not S.CustomTime and savedLighting.done then Lighting.ClockTime = savedLighting.ClockTime end
-                if S.NoShadows then Lighting.GlobalShadows = false elseif savedLighting.done then Lighting.GlobalShadows = savedLighting.GlobalShadows end
-            end
-        end)
-        task.wait(0.2)
-    end
-end)
 -- RTX Ultra animator: softly "breathes" the glow / god-rays / saturation so the preset feels alive
 -- without ever spiking into an over-bright, blown-out look. Only runs while RTX Ultra is active.
 task.spawn(function()
@@ -11133,7 +10911,7 @@ do
             if S.SkyEnabled then
                 local p = SKY_PRESETS[S.SkyPreset] or SKY_PRESETS.Day
                 removeSky(true)
-                if not (S.ForceDay or S.ForceNight or S.CustomTime) then Lighting.ClockTime = p.clock end
+                if not S.CustomTime then Lighting.ClockTime = p.clock end
                 Lighting.Ambient = p.ambient
                 Lighting.OutdoorAmbient = p.outdoor
             else
@@ -11174,6 +10952,10 @@ do
             end
         end)
     end
+
+    -- Exposed so the Custom Fog controls can repaint immediately instead of waiting up to 100ms for
+    -- the poll below to come round.
+    S._ApplyEnvironment = applyAtmo
 
     task.spawn(function()
         while S.Gui and S.Gui.Parent do
@@ -11946,38 +11728,6 @@ do
     end))
     tc(LP.CharacterAdded:Connect(function() clearDual() end))
 end
--- ============ WORLD ENVIRONMENT (merged into Visuals > Environment: time / gravity / effects) ============
-do
-    local sec2 = mkSection(Pages.Visuals, "World Environment", 13)
-    if S._RegisterVisualsEnvSection then S._RegisterVisualsEnvSection(sec2) end
-    mkToggle(sec2, "Custom Time", false, function(v) S.CustomTime = v end, 1)
-    mkSlider(sec2, "Time of Day", 0, 24, 14, function(v) S.TimeOfDay = v end, 2)
-    mkSlider(sec2, "Gravity", 10, 200, 196, function(v)
-        S.Gravity = v
-        pcall(function() workspace.Gravity = v end)
-    end, 3)
-    mkToggle(sec2, "Disable Blur", false, function(v) S.DisableBlur = v end, 5)
-
-    -- Custom time-of-day + blur removal.
-    task.spawn(function()
-        while S.Gui and S.Gui.Parent do
-            pcall(function()
-                if S.CustomTime then Lighting.ClockTime = S.TimeOfDay end
-                if S.DisableBlur then
-                    for _, e in ipairs(Lighting:GetDescendants()) do
-                        if e:IsA("BlurEffect") then e.Enabled = false end
-                    end
-                    local cam = workspace.CurrentCamera
-                    if cam then for _, e in ipairs(cam:GetChildren()) do
-                        if e:IsA("BlurEffect") then e.Enabled = false end
-                    end end
-                end
-            end)
-            task.wait(0.3)
-        end
-    end)
-end
-
 -- ============ AUTOFARM TAB (coins + fast autofarm) ============
 -- Some MM2 maps do not expose Workspace.Normal until after PlayerDataChanged has
 -- already delivered the roles. Keep a separate, server-data-backed round signal so
@@ -12104,7 +11854,6 @@ do
     -- ---------- UI ---------- (merged into Teleport > Autofarm subtab)
     local secCoins = mkSection(Pages.Teleport, "Coins", 5)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secCoins) end
-    mkToggle(secCoins, "Coin ESP", false, function(v) S.CoinESP = v end, 1)
 
     local secAuto = mkSection(Pages.Teleport, "Automated", 6)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secAuto) end
@@ -12230,171 +11979,7 @@ do
         end)
     end, 4)
 
-    -- ---------- Coin ESP (compact BillboardGui markers; avoids the Highlight instance cap) ----------
-    local function coinHost(part)
-        local p = part
-        while p and p.Parent and p.Parent ~= workspace do
-            if string.find(string.lower(p.Parent.Name), "coincontainer") then return p end
-            p = p.Parent
-        end
-        return part.Parent or part
-    end
-    local espWasOn = false
-    local espHosts = {}
-    task.spawn(function()
-        while S.Gui and S.Gui.Parent do
-            if S.CoinESP then
-                espWasOn = true
-                pcall(function()
-                    local live = {}
-                    eachCoin(function(coin)
-                        if coin.Transparency < 1 then
-                            local host = coinHost(coin)
-                            if host and not live[host] then live[host] = coin end
-                        end
-                    end)
-                    for host in pairs(espHosts) do
-                        if not live[host] or not host.Parent then
-                            local m = host and host:FindFirstChild("MM2_CoinESP")
-                            if m then m:Destroy() end
-                            espHosts[host] = nil
-                        end
-                    end
-                    for host, coin in pairs(live) do
-                        local marker = espHosts[host]
-                        if not marker or not marker.gui or not marker.gui.Parent then
-                            local stale = host:FindFirstChild("MM2_CoinESP")
-                            if stale then stale:Destroy() end
-                            local bb = Instance.new("BillboardGui")
-                            bb.Name = "MM2_CoinESP"
-                            bb.Adornee = coin
-                            bb.Size = UDim2.fromOffset(58, 38)
-                            bb.StudsOffsetWorldSpace = Vector3.new(0, 1.15, 0)
-                            bb.AlwaysOnTop = true
-                            bb.LightInfluence = 0
-                            bb.MaxDistance = 500
-                            bb.Parent = host
-
-                            -- Restrained coin token: dark surface, warm outline, tiny inset ring.
-                            local token = Instance.new("Frame")
-                            token.Name = "Token"
-                            token.AnchorPoint = Vector2.new(0.5, 0)
-                            token.Position = UDim2.new(0.5, 0, 0, 0)
-                            token.Size = UDim2.fromOffset(18, 18)
-                            token.BackgroundColor3 = Color3.fromRGB(31, 27, 18)
-                            token.BackgroundTransparency = 0.08
-                            token.BorderSizePixel = 0
-                            token.ZIndex = 2
-                            token.Parent = bb
-                            Instance.new("UICorner", token).CornerRadius = UDim.new(1, 0)
-                            local tokenStroke = Instance.new("UIStroke")
-                            tokenStroke.Color = Color3.fromRGB(245, 190, 72)
-                            tokenStroke.Thickness = 1.5
-                            tokenStroke.Transparency = 0.05
-                            tokenStroke.Parent = token
-
-                            local inset = Instance.new("Frame")
-                            inset.AnchorPoint = Vector2.new(0.5, 0.5)
-                            inset.Position = UDim2.fromScale(0.5, 0.5)
-                            inset.Size = UDim2.fromOffset(7, 7)
-                            inset.BackgroundTransparency = 1
-                            inset.BorderSizePixel = 0
-                            inset.ZIndex = 3
-                            inset.Parent = token
-                            Instance.new("UICorner", inset).CornerRadius = UDim.new(1, 0)
-                            local insetStroke = Instance.new("UIStroke")
-                            insetStroke.Color = Color3.fromRGB(255, 218, 132)
-                            insetStroke.Thickness = 1.2
-                            insetStroke.Transparency = 0.12
-                            insetStroke.Parent = inset
-
-                            local shine = Instance.new("Frame")
-                            shine.Position = UDim2.fromOffset(4, 3)
-                            shine.Size = UDim2.fromOffset(3, 3)
-                            shine.BackgroundColor3 = Color3.fromRGB(255, 239, 190)
-                            shine.BackgroundTransparency = 0.08
-                            shine.BorderSizePixel = 0
-                            shine.ZIndex = 4
-                            shine.Parent = token
-                            Instance.new("UICorner", shine).CornerRadius = UDim.new(1, 0)
-
-                            -- Distance sits in a small neutral pill instead of floating outlined text.
-                            local pill = Instance.new("Frame")
-                            pill.Name = "Distance"
-                            pill.AnchorPoint = Vector2.new(0.5, 0)
-                            pill.Position = UDim2.new(0.5, 0, 0, 22)
-                            pill.Size = UDim2.fromOffset(52, 14)
-                            pill.BackgroundColor3 = Color3.fromRGB(14, 16, 20)
-                            pill.BackgroundTransparency = 0.28
-                            pill.BorderSizePixel = 0
-                            pill.ZIndex = 2
-                            pill.Parent = bb
-                            Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-                            local pillStroke = Instance.new("UIStroke")
-                            pillStroke.Color = Color3.fromRGB(85, 75, 52)
-                            pillStroke.Thickness = 1
-                            pillStroke.Transparency = 0.45
-                            pillStroke.Parent = pill
-
-                            local distanceLabel = Instance.new("TextLabel")
-                            distanceLabel.BackgroundTransparency = 1
-                            distanceLabel.Size = UDim2.fromScale(1, 1)
-                            distanceLabel.Font = FM
-                            distanceLabel.Text = "COIN"
-                            distanceLabel.TextColor3 = Color3.fromRGB(225, 211, 174)
-                            distanceLabel.TextSize = 9
-                            distanceLabel.ZIndex = 3
-                            distanceLabel.Parent = pill
-
-                            marker = {
-                                gui = bb,
-                                token = token,
-                                tokenStroke = tokenStroke,
-                                insetStroke = insetStroke,
-                                shine = shine,
-                                pill = pill,
-                                pillStroke = pillStroke,
-                                label = distanceLabel,
-                            }
-                            espHosts[host] = marker
-                        end
-
-                        marker.gui.Adornee = coin
-                        local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                        if root then
-                            local distance = (root.Position - coin.Position).Magnitude
-                            local fade = math.clamp((distance - 120) / 380, 0, 1)
-                            marker.gui.Enabled = distance <= 500
-                            marker.label.Text = tostring(math.floor(distance + 0.5)) .. " studs"
-                            marker.token.BackgroundTransparency = 0.08 + (fade * 0.34)
-                            marker.tokenStroke.Transparency = 0.05 + (fade * 0.55)
-                            marker.insetStroke.Transparency = 0.12 + (fade * 0.58)
-                            marker.shine.BackgroundTransparency = 0.08 + (fade * 0.7)
-                            marker.pill.BackgroundTransparency = 0.28 + (fade * 0.48)
-                            marker.pillStroke.Transparency = 0.45 + (fade * 0.45)
-                            marker.label.TextTransparency = 0.05 + (fade * 0.65)
-                        else
-                            marker.gui.Enabled = true
-                            marker.label.Text = "COIN"
-                        end
-                    end
-                end)
-            elseif espWasOn then
-                espWasOn = false
-                pcall(function()
-                    for host in pairs(espHosts) do
-                        if host and host.Parent then
-                            local m = host:FindFirstChild("MM2_CoinESP")
-                            if m then m:Destroy() end
-                        end
-                    end
-                    espHosts = {}
-                end)
-            end
-            task.wait(0.4)
-        end
-    end)
-
+    -- Coin ESP removed.
     -- ---------- Fast Autofarm: ONLY collect coins (fly through walls to each). Nothing else. ----------
     task.spawn(function()
         -- Coins that refused to collect on the first pass get a short cooldown and a retry, instead
@@ -12537,9 +12122,8 @@ local function _cfgValueFromState(controlId)
             if _cfgNorm(k) == labelKey then return v end
         end
     end
-    -- Same substring fallback as the toggle resolver had, and the same bug: a control called
-    -- "Gun Chams Rainbow" would match S.GunChams and get somebody else's value written into the
-    -- config, so a saved layout came back wrong and auto-save kept persisting the mismatch.
+    -- The old substring fallback could match an unrelated persisted field and restore the wrong
+    -- control state. Only exact matches and explicit aliases count now.
     -- Only exact matches and explicit aliases count now; nil leaves the control's own value alone.
     return nil
 end
@@ -12678,7 +12262,7 @@ local function loadConfig(name)
     for _, key in ipairs({
         "FOVEnabled", "ShowFOV", "RainbowFOV", "AutoSprint", "InfiniteJump", "Freeze",
         "InstantRespawn", "AutoRespawn", "MoonGravity", "SkyEnabled", "SkyRainbow",
-        "FogEnabled", "FogRainbow", "NoFog", "FlyAnim", "FxAura", "FxAuraRainbow",
+        "FogEnabled", "FogRainbow", "FlyAnim", "FxAura", "FxAuraRainbow",
         "ThrowAura", "WalkFling",
     }) do
         S[key] = false
@@ -12793,7 +12377,6 @@ local function loadConfig(name)
     end
     
     if type(S._UpdateAvatarMods) == "function" then pcall(S._UpdateAvatarMods) end
-    if type(updateFullBright) == "function" then pcall(updateFullBright) end
     if type(applyTheme) == "function" then pcall(applyTheme) end
     if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
     -- Spawned for the same reason as the catalog refresh: this walks Database.Sync, which means
@@ -13538,12 +13121,27 @@ end
 -- Wrapped in its own do-block and hung off S (not a new top-level local) for the same reason as
 -- S._resetMyCharacter above: the main chunk was already at Luau's 200-local ceiling.
 do
+    -- Every option the "Gun Chams Mode" cycle offers needs an entry here. Five of its eight -- and
+    -- that includes Highlight, the DEFAULT -- had none, and the lookup below silently falls back to
+    -- Outline, i.e. fill = 1. So the default gun cham drew nothing but a hairline edge and read as
+    -- "Gun Chams do not work" even once the adornee was found.
     local ITEM_CHAM_TRANSPARENCY = {
-        Outline = { fill = 1,    outline = 0 },
-        Fill    = { fill = 0.35, outline = 1 },
-        Both    = { fill = 0.35, outline = 0 },
-        Maze    = { fill = 0.35, outline = 0 },
-        Mirror  = { fill = 0.15, outline = 0 },
+        Highlight  = { fill = 0.35, outline = 0 },
+        Outline    = { fill = 1,    outline = 0 },
+        Solid      = { fill = 0,    outline = 0 },
+        Fill       = { fill = 0.35, outline = 1 },
+        Both       = { fill = 0.35, outline = 0 },
+        ForceField = { fill = 0.35, outline = 0 },
+        Neon       = { fill = 0.25, outline = 0 },
+        Glass      = { fill = 0.5,  outline = 0 },
+        Maze       = { fill = 0.35, outline = 0 },
+        Mirror     = { fill = 0.15, outline = 0 },
+    }
+    -- Modes drawn by swapping the part's material rather than by adding a Highlight. On S so the
+    -- three call sites cannot drift apart; they each hardcoded `== "Maze" or == "Mirror"`, which is
+    -- why ForceField, Neon and Glass never reached the material path at all.
+    S._ItemChamMaterialModes = {
+        Maze = true, Mirror = true, ForceField = true, Neon = true, Glass = true,
     }
     local ITEM_CHAM_COLORS = {
         White   = Color3.fromRGB(245, 245, 245),
@@ -13578,21 +13176,38 @@ do
     }
     S._ChamColorMap = ITEM_CHAM_COLORS
 
+    -- materialState holds each part's PRISTINE look, captured once and never overwritten.
+    -- materialActive is the set currently wearing a cham material. Keeping them apart is the fix for
+    -- a measured bug: the two used to be one table that was cleared on every mode switch and
+    -- re-captured on the next pass, so whenever a restore had not landed yet the "original" recorded
+    -- was the PREVIOUS cham material. Every later restore then put the part back to that, and
+    -- switching material modes looked like it did nothing -- ForceField stuck through Neon, Glass,
+    -- and a Highlight baseline in between.
     local materialState = {}
+    local materialActive = {}
     local materialMode, materialColor
 
     local function restoreItemChamMaterials()
-        for part, original in pairs(materialState) do
-            pcall(function()
-                if part and part.Parent then
-                    part.Material = original.Material
-                    part.Color = original.Color
-                    part.Reflectance = original.Reflectance
-                    part.Transparency = original.Transparency
+        -- Early out when there is nothing to put back. The caller at the end of the chams loop runs
+        -- this EVERY frame whenever the gun cham toggles are off, i.e. almost always, and without
+        -- this guard that is a table walk plus a pcall per entry, sixty times a second, forever.
+        if materialMode == nil and next(materialActive) == nil then return end
+        for part in pairs(materialActive) do
+            local original = materialState[part]
+            if part and part.Parent then
+                if original then
+                    pcall(function()
+                        part.Material = original.Material
+                        part.Color = original.Color
+                        part.Reflectance = original.Reflectance
+                        part.Transparency = original.Transparency
+                    end)
                 end
-            end)
+            else
+                materialState[part] = nil -- part is gone; do not hold its pristine copy forever
+            end
         end
-        table.clear(materialState)
+        table.clear(materialActive)
         materialMode = nil
         materialColor = nil
     end
@@ -13613,7 +13228,9 @@ do
             materialColor = color
         end
         eachItemPart(adornee, function(part)
-            if not materialState[part] then
+            -- Captured once, for the lifetime of the part -- never on a later pass, when what we
+            -- would read back is our own cham rather than the part's real look.
+            if materialState[part] == nil then
                 materialState[part] = {
                     Material = part.Material,
                     Color = part.Color,
@@ -13621,15 +13238,30 @@ do
                     Transparency = part.Transparency,
                 }
             end
+            materialActive[part] = true
             part.Color = color
+            local fade = math.clamp(1 - (S.ChamsOpacity or 50) / 100, 0, 0.85)
             if mode == "Mirror" then
                 part.Material = Enum.Material.Glass
                 part.Reflectance = 0.95
                 part.Transparency = 0.12
+            elseif mode == "Glass" then
+                part.Material = Enum.Material.Glass
+                part.Reflectance = 0.25
+                part.Transparency = math.max(0.35, fade)
+            elseif mode == "Neon" then
+                -- Neon ignores transparency for the glow, so keep it solid or the effect vanishes.
+                part.Material = Enum.Material.Neon
+                part.Reflectance = 0
+                part.Transparency = 0
+            elseif mode == "ForceField" then
+                part.Material = Enum.Material.ForceField
+                part.Reflectance = 0
+                part.Transparency = 0
             else -- Maze
                 part.Material = Enum.Material.ForceField
                 part.Reflectance = 0
-                part.Transparency = math.clamp(1 - (S.ChamsOpacity or 50) / 100, 0, 0.85)
+                part.Transparency = fade
             end
         end)
     end
@@ -13642,14 +13274,20 @@ do
         local t = ITEM_CHAM_TRANSPARENCY[S.ItemChamsMode] or ITEM_CHAM_TRANSPARENCY.Outline
         return color, t.fill, t.outline, S.ItemChamsMode
     end
+    -- Exact names plus word-boundary matches, never a bare substring. The substring version matched
+    -- "Building_Brick_Burgundy" -- bur-GUN-dy contains "gun" -- so the lobby's wall bricks read as
+    -- firearms. Measured: the workspace scan returned Lobby.Lobby.Building_Brick_Burgundy, that
+    -- brick got cached as the dropped gun, and the real gun was never looked at again. That is what
+    -- "Gun Chams do not work" was: they worked, on a wall.
+    local GUN_NAMES = {
+        gun = true, gundrop = true, ["gun drop"] = true, revolver = true,
+        pistol = true, blaster = true, firearm = true,
+    }
     local function looksLikeGun(obj)
         local n = tostring(obj and obj.Name or ""):lower()
-        return n == "gun" or n == "gundrop" or n == "revolver"
-            or n:find("gun", 1, true) ~= nil
-            or n:find("revolver", 1, true) ~= nil
-            or n:find("pistol", 1, true) ~= nil
-            or n:find("blaster", 1, true) ~= nil
-            or n:find("firearm", 1, true) ~= nil
+        if GUN_NAMES[n] then return true end
+        return n:match("^gun[%s_%-]") ~= nil or n:match("[%s_%-]gun$") ~= nil
+            or n:match("^revolver[%s_%-]") ~= nil or n:match("^pistol[%s_%-]") ~= nil
     end
     S._findGunChamAdornee = function(container)
         if not container then return nil, nil end
@@ -14072,6 +13710,8 @@ local function stopIYFling()
             root.AssemblyAngularVelocity = Vector3.zero
         end)
     end
+    -- Nothing to restore any more: the engine no longer touches physical properties or noclip. Kept
+    -- as a drain in case an older saved state is still around from before that change.
     for part, state in pairs(iyPartState) do
         if part and part.Parent then
             pcall(function()
@@ -14082,7 +13722,6 @@ local function stopIYFling()
         end
     end
     iyPartState = {}
-    S.NoClip = iyNoClipWasOn
 end
 
 local function startIYFling()
@@ -14092,22 +13731,16 @@ local function startIYFling()
     local root = c and c:FindFirstChild("HumanoidRootPart")
     if not (c and hum and root and hum.Health > 0) then return false end
 
-    iyPartState = {}
-    for _, child in ipairs(c:GetDescendants()) do
-        if child:IsA("BasePart") then
-            iyPartState[child] = {
-                Props = child.CustomPhysicalProperties,
-                CanCollide = child.CanCollide,
-                Massless = child.Massless,
-            }
-            pcall(function() child.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5) end)
-        end
-    end
-
-    iyNoClipWasOn = S.NoClip == true
-    S.NoClip = true
-    task.wait(0.1)
-
+    -- No noclip and no CustomPhysicalProperties here any more, and that is the whole fix for
+    -- "Touch Fling does not fling at all".
+    --
+    -- A touch fling works by COLLISION: the one-frame velocity spike below only transfers to somebody
+    -- if your parts actually touch theirs. The old setup turned S.NoClip on first, which drops
+    -- CanCollide on the whole character -- so you passed straight through everyone and the spike had
+    -- nothing to act on. The density-100 physical properties were left over from IY's spinning
+    -- variant, which this engine no longer uses (iySpinBAV is never even created); on a
+    -- velocity-spike fling they only make your own movement heavy.
+    -- The reference implementation the user supplied does neither, and it is the one that works.
     iyFlinging = true
     iyDiedConn = tc(hum.Died:Connect(stopIYFling))
 
@@ -14364,7 +13997,15 @@ end))
 
 local _antivoidBaseHeight = workspace.FallenPartsDestroyHeight
 tc(RunService.RenderStepped:Connect(function()
-    pcall(function()
+    -- Every stage in this handler -- status labels, walk speed, anti-fling, fly, chams, gun drop --
+    -- shares ONE pcall. A throw anywhere silently kills every stage BELOW it, and if the throw is
+    -- deterministic it kills them on every frame forever. That failure mode is invisible: the
+    -- feature simply does nothing and there is no console output. Record the error so it can be read
+    -- back instead of vanishing.
+    -- xpcall with a handler rather than `local ok, err = pcall(...)`: this closure is the largest in
+    -- the file and two extra locals in it stopped the hub loading outright (measured -- the register
+    -- ceiling applies per function, not just to the main chunk). The handler needs no locals.
+    xpcall(function()
         fpsCount = fpsCount + 1
         local now = tick()
         if now - lastFpsT >= 1 then
@@ -14470,26 +14111,6 @@ tc(RunService.RenderStepped:Connect(function()
                 end
             end
         end
-        if S.AutoEvade and (tick() - (S._lastEvade or 0)) >= 1 then
-            -- If the Murderer gets within range, instantly hop yourself a safe distance directly away.
-            local c = LP.Character; local hrp = c and c:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local range = S.AutoEvadeRange or 25
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= LP and p.Character and getRole(p) == "Murderer" then
-                        local mhrp = p.Character:FindFirstChild("HumanoidRootPart")
-                        if mhrp and (mhrp.Position - hrp.Position).Magnitude < range then
-                            S._lastEvade = tick()
-                            local away = hrp.Position - mhrp.Position
-                            if away.Magnitude < 0.1 then away = Vector3.new(1, 0, 0) end
-                            S._SafeTeleportSelf(hrp.CFrame + away.Unit * 20, 0.14)
-                            Notify("Auto Evade", "Fled from Murderer!", 2)
-                            break
-                        end
-                    end
-                end
-            end
-        end
         -- Noclip logic moved to RunService.Stepped connection for physics sync
         if S.Fly then local c = LP.Character; if c and c:FindFirstChild("HumanoidRootPart") then
             local hrp = c.HumanoidRootPart; local h = c:FindFirstChildOfClass("Humanoid")
@@ -14515,21 +14136,24 @@ tc(RunService.RenderStepped:Connect(function()
 
         -- PERF: skip this whole per-player loop unless the Gun Held cham toggle is on. When it turns
         -- off we run ONE final pass to clean up leftover highlights, then stop.
-        local anyCham = S.GunHeldChams or S.GunChams or S.RoleChams
+        local anyCham = S.GunHeldChams or S.RoleChams
         if anyCham or S._chamsWereOn then
         -- PERF: chams don't need a per-frame refresh. Throttling to ~12x/sec avoids scanning every
         -- player's Character every single frame.
         if tick() - (S._chamsAt or 0) >= 0.08 then
         S._chamsAt = tick()
         S._chamsWereOn = anyCham
+        -- The local player is in this loop now. It used to be skipped outright, so the gun cham
+        -- never reached the gun in YOUR OWN hand -- only other people's. Role chams still skip you;
+        -- your own body is Self Chams' job.
         for _, pl in pairs(Players:GetPlayers()) do
-            if pl ~= LP and pl.Character then
+            if pl.Character then
                 local ch = pl.Character
                 local hum = ch:FindFirstChildOfClass("Humanoid")
                 local alive = hum and hum.Health > 0
 
                 -- Role chams (highlight whole character model)
-                if S.RoleChams then
+                if S.RoleChams and pl ~= LP then
                     local isTarget = S.ManualTargets[pl.Name] == true
                     if isTarget then
                         -- Pulsing neon magenta highlight for targets
@@ -14551,11 +14175,17 @@ tc(RunService.RenderStepped:Connect(function()
 
                 -- Gun chams (gun currently in a player's hand). MM2 skins often rename or nest the
                 -- visible handle, so use the broader detector instead of only Character.Gun.Handle.
-                local gunTool, gunPart = S._findGunChamAdornee and S._findGunChamAdornee(ch)
-                local heldGunCham = S.GunHeldChams or S.GunChams
+                -- Was `local gunTool, gunPart = S._findGunChamAdornee and S._findGunChamAdornee(ch)`.
+                -- An `and` expression is adjusted to exactly ONE value, so the second return was
+                -- discarded and gunPart was always nil -- which made the `if gunPart` below dead and
+                -- meant Gun Chams had never once applied to anybody. Measured: the detector returned
+                -- Workspace.<me>.Gun while the highlight count stayed 0.
+                local gunTool, gunPart
+                if S._findGunChamAdornee then gunTool, gunPart = S._findGunChamAdornee(ch) end
+                local heldGunCham = S.GunHeldChams
                 if gunPart and heldGunCham then
                         local color, fillT, outlineT, chamMode = S._getItemChamStyle()
-                        if chamMode == "Maze" or chamMode == "Mirror" then
+                        if S._ItemChamMaterialModes[chamMode] then
                             removeCham(gunPart, "GunHeldChams")
                             S._applyItemChamMaterial(gunTool or gunPart, color, chamMode)
                         else
@@ -14574,22 +14204,24 @@ tc(RunService.RenderStepped:Connect(function()
         end -- close the ~12x/sec throttle
         end -- close the "anyCham or S._chamsWereOn" gate
         -- PERF: throttle the GunDrop lookup to avoid recursive workspace scans every single frame.
-        local wantGunDropCham = S.GunChams or S.GunHeldChams
+        local wantGunDropCham = S.GunHeldChams
         if wantGunDropCham or S._hadGunDrop then
             local now = tick()
             if now - (S._lastGunDropScan or 0) >= 0.25 then
                 S._lastGunDropScan = now
-                S._cachedGunDrop = workspace:FindFirstChild("GunDrop") or workspace:FindFirstChild("GunDrop", true)
-                if not S._cachedGunDrop and S._findGunChamAdornee then
-                    local _, part = S._findGunChamAdornee(workspace)
-                    S._cachedGunDrop = part
-                end
+                -- Targeted name lookup only. The fallback that used to sit here called
+                -- _findGunChamAdornee(workspace), i.e. workspace:GetDescendants() with a Lua test on
+                -- each of 23035 objects: measured at 16.0 ms, four times a second, which is a
+                -- dropped frame every quarter second for a scan whose only ever result was a false
+                -- positive on a wall brick.
+                S._cachedGunDrop = workspace:FindFirstChild("GunDrop")
+                    or workspace:FindFirstChild("GunDrop", true)
             end
             local gd = S._cachedGunDrop
             if gd and gd.Parent then
                 if wantGunDropCham then
                     local color, fillT, outlineT, chamMode = S._getItemChamStyle()
-                    if chamMode == "Maze" or chamMode == "Mirror" then
+                    if S._ItemChamMaterialModes[chamMode] then
                         removeCham(gd, "GunDropChams")
                         S._applyItemChamMaterial(gd, color, chamMode)
                     else
@@ -14605,10 +14237,13 @@ tc(RunService.RenderStepped:Connect(function()
                 if gd then removeCham(gd, "GunDropChams") end
             end
         end
-        if not (S.GunHeldChams or S.GunChams)
-            or (S.ItemChamsMode ~= "Maze" and S.ItemChamsMode ~= "Mirror") then
+        if not S.GunHeldChams
+            or not S._ItemChamMaterialModes[S.ItemChamsMode] then
             S._restoreItemChamMaterials()
         end
+    end, function(e)
+        S._RSError = tostring(e)
+        S._RSErrorCount = (S._RSErrorCount or 0) + 1
     end)
 end))
 local function getNcPlat()
@@ -17539,7 +17174,7 @@ do
             s.PlaybackSpeed = pitch or 1
             s.RollOffMaxDistance = 0
             s.Parent = SoundService
-            s:Play()
+            playLocalSoundObject(s)
             s.Ended:Connect(function() pcall(function() s:Destroy() end) end)
         end) end)
     end
@@ -17618,8 +17253,21 @@ do
         watchGunSound(instance)
     end
     tc(workspace.DescendantAdded:Connect(watchGunSound))
+    local function watchSoundContainer(container)
+        if not container then return end
+        for _, instance in ipairs(container:GetDescendants()) do
+            watchGunSound(instance)
+        end
+        tc(container.DescendantAdded:Connect(watchGunSound))
+    end
+    watchSoundContainer(LP.Character)
+    watchSoundContainer(LP:FindFirstChildOfClass("Backpack"))
+    tc(LP.ChildAdded:Connect(function(child)
+        if child:IsA("Backpack") then watchSoundContainer(child) end
+    end))
     tc(LP.CharacterAdded:Connect(function()
         task.defer(function()
+            watchSoundContainer(LP.Character)
             for _, instance in ipairs(LP.Character and LP.Character:GetDescendants() or {}) do
                 watchGunSound(instance)
             end
@@ -17889,268 +17537,8 @@ if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
 S._UIBuildReady = true
 
 
--- ============ CLICK MENU ============
--- A themed ring under every player carrying a pointer icon; clicking it opens a small animated
--- menu with Fling and Teleport. Own do-block so none of this lands in the main chunk's register
--- budget: this file sits on Luau's 200-register ceiling and silently fails to load if pushed over.
-do
-    local rings = {}          -- [player] = BillboardGui
-    local openFor = nil       -- player whose menu is currently up
-    local CULL = 220          -- studs; the BillboardGui hides itself past this
-
-    local function themeColor()
-        return T.Accent or Color3.fromRGB(216, 215, 211)
-    end
-
-    local function closeMenu()
-        if not openFor then return end
-        local bb = rings[openFor]
-        openFor = nil
-        local menu = bb and bb:FindFirstChild("Menu")
-        if not menu then return end
-        local scale = menu:FindFirstChildOfClass("UIScale")
-        if scale then
-            TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-                { Scale = 0 }):Play()
-        end
-        task.delay(0.13, function() if menu.Parent then menu.Visible = false end end)
-    end
-
-    local function buildMenu(bb, player)
-        local menu = Instance.new("Frame")
-        menu.Name = "Menu"
-        menu.AnchorPoint = Vector2.new(0.5, 1)
-        menu.Position = UDim2.new(0.5, 0, 0, -4)
-        menu.Size = UDim2.fromOffset(104, 58)
-        menu.BackgroundColor3 = T.Card
-        pcall(function() menu:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-        menu.BorderSizePixel = 0
-        menu.Visible = false
-        menu.Parent = bb
-        Corner(menu, 8)
-        Stroke(menu, T.Bd2, 1, 0.35)
-        local scale = Instance.new("UIScale")
-        scale.Scale = 0
-        scale.Parent = menu
-        local list = Instance.new("UIListLayout")
-        list.Padding = UDim.new(0, 4)
-        list.SortOrder = Enum.SortOrder.LayoutOrder
-        list.Parent = menu
-        Pad(menu, 5, 5, 5, 5)
-
-        local whitelisted = isWhitelisted(player)
-        local function row(text, order, enabled, fn)
-            local b = Instance.new("TextButton")
-            b.Parent = menu
-            b.LayoutOrder = order
-            b.Size = UDim2.new(1, 0, 0, 22)
-            b.BackgroundColor3 = T.Elev
-            pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-            b.BorderSizePixel = 0
-            b.AutoButtonColor = false
-            b.Font = FM
-            b.TextSize = 12
-            b.Text = text
-            b.TextColor3 = enabled and T.Tx or T.Tx4
-            pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", enabled and "Tx" or "Tx4") end)
-            Corner(b, 6)
-            b.MouseButton1Click:Connect(function()
-                if not enabled then
-                    Notify("Click Menu", player.Name .. " is whitelisted", 2)
-                    return
-                end
-                SFX.Click()
-                closeMenu()
-                task.spawn(function() pcall(fn) end)
-            end)
-            return b
-        end
-
-        -- Whitelisted players keep their ring and Teleport, but Fling greys out: the point of the
-        -- list is that offensive actions skip them, and a one-click fling is easy to misfire.
-        row("Fling", 1, not whitelisted, function()
-            if S._FlingPlayer then S._FlingPlayer(player) end
-        end)
-        row("Teleport", 2, true, function()
-            local char = player.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then Notify("Click Menu", "No character", 2) return end
-            -- Teleport self to them. A client cannot move somebody else's character.
-            if S._SafeTeleportSelf then
-                S._SafeTeleportSelf(hrp.CFrame * CFrame.new(0, 0, 3))
-            end
-        end)
-        return menu
-    end
-
-    local makeRing
-    local function openMenuFor(player)
-        if not (S.ClickMenu and player and player ~= LP) then return end
-        local char = player.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if not (hrp and hum and hum.Health > 0) then return end
-        local bb = rings[player]
-        if not bb or not bb.Parent then
-            bb = makeRing(player)
-            rings[player] = bb
-        end
-        bb.Adornee = hrp
-        local menu = bb:FindFirstChild("Menu")
-        if not menu then return end
-        if openFor == player then closeMenu() return end
-        closeMenu()
-        openFor = player
-        menu.Visible = true
-        local scale = menu:FindFirstChildOfClass("UIScale")
-        if scale then
-            scale.Scale = 0.7
-            TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                { Scale = 1 }):Play()
-        end
-        SFX.On()
-    end
-
-    makeRing = function(player)
-        local bb = Instance.new("BillboardGui")
-        bb.Name = "MM2_ClickRing"
-        -- Drawn above the torso: rings at the feet were often hidden by the map/floor or missed by
-        -- executor Billboard input, which made Click Menu look dead even while the toggle was on.
-        bb.AlwaysOnTop = true
-        bb.Size = UDim2.fromOffset(MOBILE and 62 or 54, MOBILE and 62 or 54)
-        bb.StudsOffsetWorldSpace = Vector3.new(0, 3.05, 0)
-        bb.MaxDistance = CULL
-        bb.ResetOnSpawn = false
-        bb.Parent = SG
-
-        local ring = Instance.new("TextButton")
-        ring.Name = "Ring"
-        ring.Parent = bb
-        ring.Size = UDim2.fromScale(1, 1)
-        ring.BackgroundTransparency = 1
-        ring.Text = ""
-        ring.AutoButtonColor = false
-
-        -- The ring is a bordered circle, so it needs no image asset and picks up the selected
-        -- theme through the same ThemeColorRole attributes every other surface uses.
-        local disc = Instance.new("Frame")
-        disc.Name = "Disc"
-        disc.Parent = ring
-        disc.Size = UDim2.fromScale(1, 1)
-        disc.BackgroundTransparency = 0.72
-        disc.BackgroundColor3 = T.Card
-        pcall(function() disc:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-        disc.BorderSizePixel = 0
-        Corner(disc, 9999)
-        local ringStroke = Stroke(disc, themeColor(), 2, 0)
-        ringStroke.Name = "RingStroke"
-
-        local icon = Instance.new("TextLabel")
-        icon.Name = "Icon"
-        icon.Parent = ring
-        icon.Size = UDim2.fromScale(1, 1)
-        icon.BackgroundTransparency = 1
-        icon.Font = FB
-        icon.TextSize = 16
-        icon.Text = "\u{261D}"
-        icon.TextColor3 = themeColor()
-
-        buildMenu(bb, player)
-
-        ring.MouseButton1Click:Connect(function()
-            openMenuFor(player)
-        end)
-        return bb
-    end
-
-    local function playerFromInput(input)
-        local hit
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mouse = LP:GetMouse()
-            hit = mouse and mouse.Target
-        elseif input.UserInputType == Enum.UserInputType.Touch then
-            local cam = workspace.CurrentCamera
-            local pos = input.Position
-            if cam and pos then
-                local ray = cam:ViewportPointToRay(pos.X, pos.Y)
-                local params = RaycastParams.new()
-                params.FilterType = Enum.RaycastFilterType.Exclude
-                params.FilterDescendantsInstances = LP.Character and { LP.Character } or {}
-                local res = workspace:Raycast(ray.Origin, ray.Direction * CULL, params)
-                hit = res and res.Instance
-            end
-        end
-        local char = hit and hit:FindFirstAncestorWhichIsA("Model")
-        local player = char and Players:GetPlayerFromCharacter(char)
-        if player and player ~= LP then return player end
-        return nil
-    end
-
-    tc(UIS.InputBegan:Connect(function(input, processed)
-        if processed or not S.ClickMenu then return end
-        if Main and Main.Visible then return end
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local player = playerFromInput(input)
-        if player then openMenuFor(player) end
-    end))
-
-    local function dropRing(player)
-        local bb = rings[player]
-        if bb then pcall(function() bb:Destroy() end) end
-        rings[player] = nil
-        if openFor == player then openFor = nil end
-    end
-
-    local function refresh()
-        if not S.ClickMenu then
-            for p in pairs(rings) do dropRing(p) end
-            return
-        end
-        local accent = themeColor()
-        for _, p in ipairs(Players:GetPlayers()) do
-            local char = p.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if p ~= LP and hrp and hum and hum.Health > 0 then
-                local bb = rings[p]
-                if not bb or not bb.Parent then
-                    bb = makeRing(p)
-                    rings[p] = bb
-                end
-                bb.Adornee = hrp
-                local disc = bb:FindFirstChild("Ring") and bb.Ring:FindFirstChild("Disc")
-                local stroke = disc and disc:FindFirstChild("RingStroke")
-                -- Whitelisted players read green so it is obvious before you click.
-                local col = isWhitelisted(p) and Color3.fromRGB(96, 220, 128) or accent
-                if stroke then stroke.Color = col end
-                local ico = bb:FindFirstChild("Ring") and bb.Ring:FindFirstChild("Icon")
-                if ico then ico.TextColor3 = col end
-            elseif rings[p] then
-                dropRing(p)
-            end
-        end
-        for p in pairs(rings) do
-            if p.Parent == nil then dropRing(p) end
-        end
-    end
-
-    -- 5Hz, not per-frame. BillboardGui already tracks its adornee on the engine side every frame,
-    -- so this loop only adds/removes rings and recolours them. Always-on per-frame work is exactly
-    -- what caused this hub's long-standing lag before.
-    task.spawn(function()
-        while SG and SG.Parent do
-            pcall(refresh)
-            task.wait(0.2)
-        end
-        for p in pairs(rings) do dropRing(p) end
-    end)
-
-    tc(Players.PlayerRemoving:Connect(dropRing))
-    SG.Destroying:Connect(function()
-        for p in pairs(rings) do dropRing(p) end
-    end)
-end
-
+-- ============ CLICK MENU REMOVED ============
+-- Click Menu, its player rings, and its input handlers were removed.
 -- ============ BODY: WIWI (local ragdoll prop) + SPAWNER ============
 -- Client-side only. None of this replicates, so no other player ever sees it -- that is the
 -- platform's ceiling rather than a choice, and it is also why it is safe in a game with a young
@@ -18166,76 +17554,119 @@ do
             table.clear(attached)
         end
 
-        -- A chain of small parts hanging off anchorPart, plus two spheres at the base. Massless and
-        -- CanCollide=false so it can never shove the character, which a colliding chain does.
-        local function buildProp(anchorPart, offset, scale, stiffness, into)
+        local SKIN = Color3.fromRGB(232, 178, 160)
+        local PINK = Color3.fromRGB(236, 120, 150)
+
+        local function block(name, size, color, cf, into)
+            local p = Instance.new("Part")
+            p.Name = name
+            p.Shape = Enum.PartType.Block   -- blocky throughout, on request: no cylinders, no spheres
+            p.Size = size
+            p.Color = color
+            p.Material = Enum.Material.SmoothPlastic
+            p.CanCollide = false
+            p.CanQuery = false
+            p.CanTouch = false
+            p.Massless = true
+            p.CFrame = cf
+            p.Parent = workspace
+            pcall(function() own(p) end)
+            table.insert(into, p)
+            return p
+        end
+
+        -- Worn prop. Two things were wrong with the old one and both are geometry, not physics:
+        --  * it was cylinders and spheres, i.e. smooth, when blocky was what was asked for;
+        --  * the base spheres were displaced by `offset * CFrame.new(side * 0.17, ...)`, and `offset`
+        --    already contained the 90-degree Z rotation -- so "sideways" was applied along the ROTATED
+        --    x axis, which is the shaft's own direction. They were stacked along the shaft instead of
+        --    sitting left and right of it. That is the crookedness.
+        -- Fixed by placing them from the un-rotated base frame, so left/right means the torso's
+        -- left/right. There is also no head on the worn one, on request.
+        local function buildWorn(anchorPart, base, scale, stiffness, rigid, into)
             local segLen = 0.42 * scale
+            local w = 0.3 * scale
+            local shaft = base * CFrame.Angles(0, 0, math.rad(90))
             local prev = anchorPart
             for i = 1, 3 do
-                local seg = Instance.new("Part")
-                seg.Name = "InertiaWiwiSeg"
-                seg.Shape = Enum.PartType.Cylinder
-                seg.Size = Vector3.new(segLen, 0.34 * scale, 0.34 * scale)
-                seg.Color = Color3.fromRGB(232, 178, 160)
-                seg.Material = Enum.Material.SmoothPlastic
-                seg.CanCollide = false
-                seg.CanQuery = false
-                seg.CanTouch = false
-                seg.Massless = true
-                seg.CFrame = anchorPart.CFrame * offset * CFrame.new(0, -segLen * (i - 1), 0)
-                seg.Parent = workspace
-                pcall(function() own(seg) end)
-                table.insert(into, seg)
+                local seg = block("InertiaWiwiSeg", Vector3.new(segLen, w, w), SKIN,
+                    anchorPart.CFrame * shaft * CFrame.new(0, -segLen * (i - 1), 0), into)
 
                 local a0 = Instance.new("Attachment")
                 a0.Parent = prev
-                a0.CFrame = (prev == anchorPart) and offset or CFrame.new(-segLen / 2, 0, 0)
+                a0.CFrame = (prev == anchorPart) and shaft or CFrame.new(-segLen / 2, 0, 0)
                 local a1 = Instance.new("Attachment")
                 a1.Parent = seg
                 a1.CFrame = CFrame.new(segLen / 2, 0, 0)
 
-                local socket = Instance.new("BallSocketConstraint")
-                socket.Attachment0 = a0
-                socket.Attachment1 = a1
-                socket.LimitsEnabled = true
-                -- Physics Strength maps to the swing cone: high = stiff, low = floppy.
-                socket.UpperAngle = math.clamp(70 - stiffness * 0.55, 8, 70)
-                socket.TwistLimitsEnabled = true
-                socket.TwistLowerAngle = -20
-                socket.TwistUpperAngle = 20
-                socket.Restitution = 0
-                socket.Parent = seg
+                if rigid then
+                    -- "Straighten": a rigid weld instead of a socket, so it holds one pose and does
+                    -- not wobble at all. Physics Strength stops mattering in this mode.
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Part0 = prev
+                    weld.Part1 = seg
+                    weld.Parent = seg
+                else
+                    local socket = Instance.new("BallSocketConstraint")
+                    socket.Attachment0 = a0
+                    socket.Attachment1 = a1
+                    socket.LimitsEnabled = true
+                    -- Swing cone. Ceiling lowered from 70 to 38 degrees: at 70 the chain folded back
+                    -- on itself and read as flailing rather than swaying, which is the "too much
+                    -- physics wobble" report.
+                    socket.UpperAngle = math.clamp(38 - stiffness * 0.34, 2, 38)
+                    socket.TwistLimitsEnabled = true
+                    socket.TwistLowerAngle = -8
+                    socket.TwistUpperAngle = 8
+                    socket.Restitution = 0
+                    socket.Parent = seg
+                end
                 prev = seg
             end
+            -- Base pair, from the UN-rotated frame so sideways is really sideways.
             for side = -1, 1, 2 do
-                local ball = Instance.new("Part")
-                ball.Name = "InertiaWiwiBall"
-                ball.Shape = Enum.PartType.Ball
-                ball.Size = Vector3.new(0.3 * scale, 0.3 * scale, 0.3 * scale)
-                ball.Color = Color3.fromRGB(232, 178, 160)
-                ball.Material = Enum.Material.SmoothPlastic
-                ball.CanCollide = false
-                ball.CanQuery = false
-                ball.CanTouch = false
-                ball.Massless = true
-                ball.CFrame = anchorPart.CFrame * offset * CFrame.new(side * 0.17 * scale, 0.1 * scale, 0)
-                ball.Parent = workspace
-                pcall(function() own(ball) end)
-                table.insert(into, ball)
-
+                local bcf = anchorPart.CFrame * base * CFrame.new(side * 0.19 * scale, -0.08 * scale, 0)
+                local ball = block("InertiaWiwiBall", Vector3.new(w * 0.95, w * 0.95, w * 0.95), SKIN, bcf, into)
                 local b0 = Instance.new("Attachment")
                 b0.Parent = anchorPart
-                b0.CFrame = offset * CFrame.new(side * 0.17 * scale, 0.1 * scale, 0)
+                b0.CFrame = base * CFrame.new(side * 0.19 * scale, -0.08 * scale, 0)
                 local b1 = Instance.new("Attachment")
                 b1.Parent = ball
-                local bs = Instance.new("BallSocketConstraint")
-                bs.Attachment0 = b0
-                bs.Attachment1 = b1
-                bs.LimitsEnabled = true
-                bs.UpperAngle = math.clamp(45 - stiffness * 0.35, 5, 45)
-                bs.Restitution = 0
-                bs.Parent = ball
+                if rigid then
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Part0 = anchorPart
+                    weld.Part1 = ball
+                    weld.Parent = ball
+                else
+                    local bs = Instance.new("BallSocketConstraint")
+                    bs.Attachment0 = b0
+                    bs.Attachment1 = b1
+                    bs.LimitsEnabled = true
+                    bs.UpperAngle = math.clamp(22 - stiffness * 0.2, 2, 22)
+                    bs.Restitution = 0
+                    bs.Parent = ball
+                end
             end
+        end
+
+        -- Spawned sculpture: Minecraft-style stack, 3 blocks across the bottom, 2 centred on those,
+        -- 1 pink on top as the head. Anchored and welded to nothing -- no constraints, no velocity,
+        -- so it cannot fall over, drift, or be culled away. "They must not disappear."
+        local function buildStack(originCF, scale, into)
+            local u = 0.55 * scale                -- one block
+            local function row(count, y)
+                local start = -(count - 1) / 2
+                for i = 0, count - 1 do
+                    local p = block("InertiaWiwiBlock", Vector3.new(u, u, u), SKIN,
+                        originCF * CFrame.new((start + i) * u, y, 0), into)
+                    p.Anchored = true
+                end
+            end
+            row(3, 0)
+            row(2, u)
+            local head = block("InertiaWiwiBlock", Vector3.new(u, u, u), PINK,
+                originCF * CFrame.new(0, u * 2, 0), into)
+            head.Anchored = true
         end
 
         local function rebuildWorn()
@@ -18246,8 +17677,8 @@ do
             if not torso then return end
             local scale = math.clamp((tonumber(S.WiwiSize) or 100) / 100, 0.3, 3)
             local strength = math.clamp(tonumber(S.WiwiPhysics) or 50, 0, 100)
-            buildProp(torso, CFrame.new(0, -0.35 * scale, -0.55 * scale)
-                * CFrame.Angles(0, 0, math.rad(90)), scale, strength, attached)
+            buildWorn(torso, CFrame.new(0, -0.35 * scale, -0.55 * scale), scale, strength,
+                S.WiwiStraight == true, attached)
         end
         S._RebuildWiwi = rebuildWorn
 
@@ -18939,186 +18370,7 @@ do
     refresh()
 end
 
--- ============ SELF CHAMS + BULLET TRACERS ============
--- Both are purely local: a Highlight on your own character, and a beam drawn along a shot you can
--- already see. Nothing here replicates.
-do
-    local hl
-    local function colorFor()
-        if S.SelfChamsRainbow then
-            return Color3.fromHSV((tick() * 0.35) % 1, 0.85, 1)
-        end
-        local map = S._ChamColorMap or {}
-        return map[S.SelfChamsColor] or Color3.fromRGB(80, 220, 230)
-    end
-    local function refreshSelfChams()
-        local char = LP.Character
-        if not S.SelfChams or not char then
-            if hl then pcall(function() hl:Destroy() end) hl = nil end
-            return
-        end
-        if not hl or not hl.Parent then
-            hl = Instance.new("Highlight")
-            hl.Name = "InertiaSelfChams"
-            hl.Parent = char
-            pcall(function() own(hl) end)
-        end
-        hl.Adornee = char
-        local mode = S.SelfChamsMode or "Fill"
-        local fill = math.clamp(1 - (tonumber(S.SelfChamsOpacity) or 45) / 100, 0, 1)
-        local col = colorFor()
-        hl.FillColor = col
-        hl.OutlineColor = col
-        -- Two independent knobs make the styles: DepthMode decides whether it draws through walls,
-        -- and the fill/outline transparencies decide the look. Every combination below is a
-        -- genuinely different result rather than a renamed duplicate.
-        local through = Enum.HighlightDepthMode.AlwaysOnTop
-        local occluded = Enum.HighlightDepthMode.Occluded
-        if mode == "Outline" then
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = 1, 0
-        elseif mode == "Solid" then
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = 0, 0
-        elseif mode == "Glow" then
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = math.min(fill + 0.25, 1), 0
-        elseif mode == "Ghost" then
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = 0.85, 0.55
-        elseif mode == "Neon Edge" then
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = 0.92, 0
-        elseif mode == "Depth Fill" then
-            -- Hidden behind geometry: reads as a normal skin instead of an x-ray overlay.
-            hl.DepthMode = occluded
-            hl.FillTransparency, hl.OutlineTransparency = fill, 0.2
-        elseif mode == "Depth Outline" then
-            hl.DepthMode = occluded
-            hl.FillTransparency, hl.OutlineTransparency = 1, 0
-        elseif mode == "Depth Solid" then
-            hl.DepthMode = occluded
-            hl.FillTransparency, hl.OutlineTransparency = 0, 0
-        elseif mode == "Shadow" then
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = 0.35, 1
-        elseif mode == "Hollow" then
-            hl.DepthMode = occluded
-            hl.FillTransparency, hl.OutlineTransparency = 1, 0.4
-        else -- Fill
-            hl.DepthMode = through
-            hl.FillTransparency, hl.OutlineTransparency = fill, 0.1
-        end
-    end
-    S._RefreshSelfChams = refreshSelfChams
-
-    tc(LP.CharacterAdded:Connect(function()
-        task.delay(0.6, function() pcall(refreshSelfChams) end)
-    end))
-    -- Rainbow needs a repaint; everything else is event-driven, so this only does work when the
-    -- rainbow toggle is actually on.
-    tc(RunService.Heartbeat:Connect(function()
-        if S.SelfChams and S.SelfChamsRainbow and hl then
-            local c = colorFor()
-            hl.FillColor = c
-            hl.OutlineColor = c
-        end
-    end))
-
-    -- ---- Bullet tracers ----
-    local secTracer = mkSection(Pages.Visuals, "Bullet Tracers", 2.5)
-    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secTracer) end
-
-    local TRACER_COLORS = {
-        "Cyan", "White", "Red", "Crimson", "Pink", "Magenta", "Orange", "Gold",
-        "Yellow", "Lime", "Green", "Mint", "Teal", "Sky", "Blue", "Indigo",
-        "Purple", "Lavender", "Rainbow",
-    }
-    local function tracerColor()
-        if S.BulletTracerColor == "Rainbow" then
-            return Color3.fromHSV((tick() * 0.4) % 1, 0.9, 1)
-        end
-        local map = S._ChamColorMap or {}
-        return map[S.BulletTracerColor] or Color3.fromRGB(80, 220, 230)
-    end
-
-    local function drawTracer(fromPos, toPos)
-        if not S.BulletTracers then return end
-        if typeof(fromPos) ~= "Vector3" or typeof(toPos) ~= "Vector3" then return end
-        local style = S.BulletTracerStyle or "Beam"
-        local life = math.clamp(tonumber(S.BulletTracerLife) or 15, 1, 100) / 10
-        local width = math.clamp(tonumber(S.BulletTracerWidth) or 12, 1, 60) / 40
-        local col = tracerColor()
-
-        local dist = (toPos - fromPos).Magnitude
-        if dist < 0.5 then return end
-
-        local part = Instance.new("Part")
-        part.Name = "InertiaTracer"
-        part.Anchored = true
-        part.CanCollide = false
-        part.CanQuery = false
-        part.CanTouch = false
-        part.CastShadow = false
-        part.Material = (style == "Laser") and Enum.Material.Neon or Enum.Material.SmoothPlastic
-        part.Color = col
-        part.Transparency = (style == "Ghost") and 0.6 or 0.15
-        part.Size = Vector3.new(width, width, dist)
-        part.CFrame = CFrame.lookAt(fromPos:Lerp(toPos, 0.5), toPos)
-        part.Parent = workspace
-        pcall(function() own(part) end)
-
-        if style == "Beam" or style == "Laser" then
-            local box = Instance.new("SelectionBox")
-            box.Adornee = part
-            box.LineThickness = 0.02
-            box.Color3 = col
-            box.Transparency = 0.4
-            box.Parent = part
-        end
-
-        -- Fade instead of a hard pop, and clean up on its own.
-        task.spawn(function()
-            local t0 = os.clock()
-            while part.Parent and os.clock() - t0 < life do
-                local a = (os.clock() - t0) / life
-                part.Transparency = math.clamp(0.15 + a * 0.85, 0, 1)
-                if S.BulletTracerColor == "Rainbow" then part.Color = tracerColor() end
-                RunService.RenderStepped:Wait()
-            end
-            pcall(function() part:Destroy() end)
-        end)
-    end
-    S._DrawBulletTracer = drawTracer
-
-    mkToggle(secTracer, "Bullet Tracers", false, function(v) S.BulletTracers = v end, 1)
-    mkCycle(secTracer, "Tracer Style", { "Beam", "Laser", "Ghost" }, "Beam", function(v)
-        S.BulletTracerStyle = v
-    end, 2)
-    mkCycle(secTracer, "Tracer Color", TRACER_COLORS, "Cyan", function(v)
-        S.BulletTracerColor = v
-    end, 3)
-    mkSlider(secTracer, "Tracer Lifetime (0.1s)", 1, 100, 15, function(v) S.BulletTracerLife = v end, 4)
-    mkSlider(secTracer, "Tracer Width", 1, 60, 12, function(v) S.BulletTracerWidth = v end, 5)
-    mkToggle(secTracer, "Trace Other Players", false, function(v) S.BulletTracerAll = v end, 6)
-
-    -- The game already broadcasts every shot to every client through this event, with the start and
-    -- end of the ray. Listening is enough -- no hook into the sheriff aim path.
-    task.spawn(function()
-        local ok, ev = pcall(function()
-            local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientServices")
-            return cs and cs:FindFirstChild("GunFired")
-        end)
-        if not (ok and ev and ev:IsA("RemoteEvent")) then return end
-        tc(ev.OnClientEvent:Connect(function(handle, startPos, endPos)
-            if not S.BulletTracers then return end
-            local mine = handle and LP.Character and handle:IsDescendantOf(LP.Character)
-            if not mine and not S.BulletTracerAll then return end
-            drawTracer(startPos, endPos)
-        end))
-    end)
-end
-
+-- Self Chams and Bullet Tracers removed.
 -- ============ DESYNC (FAKE POSITION) ============
 -- Point of the feature: the copy of you that everyone ELSE sees -- and therefore everyone else's
 -- silent aim -- should be somewhere else and moving fast, while you actually stand where you stand.
@@ -19136,23 +18388,28 @@ do
     local secDesync = mkSection(Pages.Combat, "Desync", 6.5)
     local lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
 
-    local function offsetVector()
-        local r = math.clamp(tonumber(S.DesyncRadius) or 60, 0, 400)
-        local mode = S.DesyncMode or "Blink"
-        local t = os.clock()
-        if mode == "Static" then
-            return Vector3.new(r, 0, 0)
-        elseif mode == "Up" then
-            return Vector3.new(0, r, 0)
-        elseif mode == "Spin" then
-            local a = t * 25
-            return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-        end
-        -- Blink: a fresh random point on the sphere every single frame. Nothing to lead, which is
-        -- the point -- a predictor needs a trajectory and this has none.
-        local ang = math.random() * math.pi * 2
-        local up = (math.random() - 0.5) * r
-        return Vector3.new(math.cos(ang) * r, up, math.sin(ang) * r)
+    -- No radius, no modes, no tuning. Every frame the replicated root goes to a fresh random point
+    -- with each axis anywhere in +/-7777 studs, and a fresh random orientation.
+    --
+    -- Why fixed and huge rather than an adjustable radius: a small offset is still a cloud with a
+    -- centre, and a resolver only has to average a few samples to find that centre and hit you --
+    -- which is what "I can still be hit" was. At +/-7777 on all three axes, consecutive samples are
+    -- thousands of studs apart in unrelated directions, so there is no centre to converge on and no
+    -- trajectory to lead. For everyone else you are teleporting across the whole map as fast as the
+    -- network will carry it.
+    -- Y is displaced UPWARD only. A symmetric +/-7777 on Y sends the root below
+    -- workspace.FallenPartsDestroyHeight, at which point Roblox destroys the parts out from under the
+    -- restore and the character is left stranded: measured 9054 studs of drift after a two-second
+    -- run, i.e. exactly the "I stay where I am" guarantee broken. Upward is just as unreachable and
+    -- crosses nothing.
+    local DESYNC_SPAN = 7777
+    local function offsetCFrame()
+        local rnd = math.random
+        return Vector3.new(
+            (rnd() * 2 - 1) * DESYNC_SPAN,
+            rnd() * DESYNC_SPAN,
+            (rnd() * 2 - 1) * DESYNC_SPAN
+        ), CFrame.Angles(rnd() * 6.2832, rnd() * 6.2832, rnd() * 6.2832)
     end
 
     -- AFTER physics, BEFORE replication.
@@ -19162,22 +18419,21 @@ do
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
-        -- Pause while you are actually walking. Teleporting the root every frame makes the Humanoid
-        -- treat itself as displaced and it stops integrating its own movement -- measured, walking
-        -- went from 9.3 studs per 1.5s to 0.0. Standing still is also exactly when this matters:
-        -- that is when someone else's aim is locked on you.
-        if S.DesyncOnlyStill == true and hum.MoveDirection.Magnitude > 0.05 then return end
+        -- No "only while standing" gate any more. It existed because an early version killed
+        -- movement, but that was fixed by the frame ordering below, not by pausing: measured 25.13
+        -- studs walked with this on against 25.09 with it off.
         -- Snapshot the EXACT pose and velocity, then displace. Restoring the snapshot next frame
         -- rather than subtracting the offset is what keeps this stable: subtracting let solver error
         -- accumulate frame over frame and the character wandered 259-310 studs off on its own.
         -- Heartbeat runs AFTER physics, so this snapshot already contains the movement this frame
         -- produced -- putting it back next frame therefore loses nothing and you keep walking.
-        lastOffset = offsetVector()
+        local pos, rot = offsetCFrame()
+        lastOffset = pos
         lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
         lastAng = hrp.AssemblyAngularVelocity
         applied = true
-        hrp.CFrame = lastCF + lastOffset
+        hrp.CFrame = (lastCF + pos) * rot
     end))
 
     -- Restored at the very TOP of the next frame, ahead of everything else. Doing it on Stepped left
@@ -19218,11 +18474,59 @@ do
             lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
         end
     end, 1)
-    mkCycle(secDesync, "Desync Mode", { "Blink", "Spin", "Static", "Up" }, "Blink", function(v)
-        S.DesyncMode = v
+    -- One toggle and nothing else, on request. Mode, radius, tumble and "only while standing" are
+    -- gone: every one of them was a way to make the desync weaker, and a weaker desync is one a
+    -- resolver can average out.
+end
+
+-- ============ MOVEMENT EXTRAS + CUSTOM FOG ============
+-- Own do-block: this file sits on Luau's register ceiling and the limit applies per function as well
+-- as to the main chunk, so nothing here may become a top-level local.
+do
+    local secJump = mkSection(Pages.Misc, "Movement Extras", 2.5)
+    if S._RegisterMiscSection then pcall(S._RegisterMiscSection, secJump, "Protection") end
+
+    -- Infinity Jump. S.InfiniteJump was already declared in the defaults table and listed among the
+    -- saved config keys, but no toggle and no implementation ever existed -- the flag was read by
+    -- nothing. JumpRequest fires on every jump input including a held space bar, so re-asserting the
+    -- Jumping state there is all this needs; no per-frame work while it is off.
+    tc(UIS.JumpRequest:Connect(function()
+        if not S.InfiniteJump then return end
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health > 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end))
+    mkToggle(secJump, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 1)
+
+    -- ---- Custom Fog ----
+    -- The fog ENGINE already existed and was complete: applyAtmo() reads S.FogEnabled, S.FogMode
+    -- (Classic legacy FogStart/End vs Atmosphere density haze), S.FogColorName, S.FogStart,
+    -- S.FogEnd, S.FogDensity and S.FogRainbow, parks any map Atmosphere out of the way for classic
+    -- fog, and restores everything on the way out. What never existed was a single control to set
+    -- any of those keys -- same shape of gap as Infinity Jump. So this wires the existing engine up
+    -- rather than adding a second one.
+    -- I did write a parallel implementation first; it collided on S.FogStart/S.FogEnd and applyAtmo's
+    -- own restoreFog() overwrote it every pass. Measured: FogEnd stayed at 1e9 with the slider at 450.
+    local secFog = mkSection(Pages.Visuals, "Custom Fog", 5.4)
+    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secFog) end
+
+    -- Names must match the engine's own FOG_COLORS table keys, not a new palette.
+    local function fogRefresh()
+        if S._ApplyEnvironment then pcall(S._ApplyEnvironment) end
+    end
+
+    mkToggle(secFog, "Custom Fog", false, function(v) S.FogEnabled = v; fogRefresh() end, 1)
+    mkCycle(secFog, "Fog Mode", { "Classic", "Atmosphere" }, "Classic", function(v)
+        S.FogMode = v; fogRefresh()
     end, 2)
-    -- Up to 40 now: the offset no longer touches physics, so a big radius costs nothing locally and
-    -- is exactly what makes someone else's aim miss.
-    mkSlider(secDesync, "Desync Radius", 0, 400, 60, function(v) S.DesyncRadius = v end, 3)
-    mkToggle(secDesync, "Only While Standing", false, function(v) S.DesyncOnlyStill = v end, 4)
+    mkCycle(secFog, "Fog Color",
+        { "Gray", "White", "Black", "Red", "Orange", "Green", "Cyan", "Blue", "Purple", "Pink" },
+        "Gray", function(v) S.FogColorName = v; fogRefresh() end, 3)
+    mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; fogRefresh() end, 4)
+    mkSlider(secFog, "Fog Start", 0, 1500, 0, function(v) S.FogStart = v; fogRefresh() end, 5)
+    mkSlider(secFog, "Fog End", 10, 3000, 500, function(v) S.FogEnd = v; fogRefresh() end, 6)
+    -- Only meaningful in Atmosphere mode.
+    mkSlider(secFog, "Fog Density (%)", 0, 100, 40, function(v) S.FogDensity = v; fogRefresh() end, 7)
 end
