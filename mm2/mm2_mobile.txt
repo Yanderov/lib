@@ -67,7 +67,7 @@ local S = {
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
-    Desync = false, DesyncMode = "Blink", DesyncRadius = 12, DesyncOnlyStill = true,
+    Desync = false, DesyncMode = "Blink", DesyncRadius = 60, DesyncOnlyStill = false,
     KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
     NoBlackout = false, SelfChams = false, SelfChamsMode = "Fill", SelfChamsColor = "Cyan",
     SelfChamsRainbow = false, SelfChamsOpacity = 45,
@@ -615,55 +615,6 @@ local function updateGuiTransparency()
     end
 end
 S._UpdateGuiTransparency = updateGuiTransparency
-
--- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
--- Main itself and not a child frame -- an opaque child would square off the window's rounded
--- corners, because UICorner does not clip descendants.
-S._ApplyGlass = function()
-    local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
-    pcall(function()
-        local g = Main:FindFirstChild("GlassSheen")
-        if amount <= 0.01 then
-            if g then g:Destroy() end
-            return
-        end
-        if not g then
-            g = Instance.new("UIGradient")
-            g.Name = "GlassSheen"
-            g.Rotation = 90
-            g.Parent = Main
-        end
-        g.Color = ColorSequence.new(
-            Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
-            Color3.new(0, 0, 0))
-        g.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
-            NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-    end)
-end
-
--- Background blur, applied only while the window is on screen so closing the menu always gives the
--- game back its own picture.
-do
-    local blurFx
-    tc(RunService.RenderStepped:Connect(function()
-        local want = math.clamp(tonumber(S.UIBlur) or 0, 0, 24)
-        local on = want > 0 and Main and Main.Parent and Main.Visible
-        if on then
-            if not blurFx or not blurFx.Parent then
-                blurFx = Instance.new("BlurEffect")
-                blurFx.Name = "InertiaUIBlur"
-                blurFx.Parent = game:GetService("Lighting")
-            end
-            blurFx.Size = want
-        elseif blurFx then
-            blurFx:Destroy()
-            blurFx = nil
-        end
-    end))
-end
 
 local function applyTheme(themeName)
     local theme = Themes[themeName]
@@ -1548,6 +1499,59 @@ Main.Size = expandedSize
 Main.ClipsDescendants = true
 Corner(Main, MOBILE and 18 or 12)
 Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
+-- Placed here, AFTER Main exists. It used to sit ~900 lines earlier, where `Main` was still an
+-- undeclared global: the glass gradient indexed nil inside a pcall and did nothing, and the
+-- blur's `Main and Main.Parent` was always nil so the effect was never created. Both features
+-- were dead on arrival for that one reason.
+-- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
+-- Main itself and not a child frame -- an opaque child would square off the window's rounded
+-- corners, because UICorner does not clip descendants.
+S._ApplyGlass = function()
+    local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
+    pcall(function()
+        local g = Main:FindFirstChild("GlassSheen")
+        if amount <= 0.01 then
+            if g then g:Destroy() end
+            return
+        end
+        if not g then
+            g = Instance.new("UIGradient")
+            g.Name = "GlassSheen"
+            g.Rotation = 90
+            g.Parent = Main
+        end
+        g.Color = ColorSequence.new(
+            Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
+            Color3.new(0, 0, 0))
+        g.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
+            NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+    end)
+end
+
+-- Background blur. Deliberately NOT gated on the menu being open: you set it to look at the game
+-- through it, and tying it to Main.Visible meant closing the menu removed the very thing you had
+-- just turned on.
+do
+    local blurFx
+    tc(RunService.RenderStepped:Connect(function()
+        local want = math.clamp(tonumber(S.UIBlur) or 0, 0, 24)
+        local on = want > 0 and Main and Main.Parent
+        if on then
+            if not blurFx or not blurFx.Parent then
+                blurFx = Instance.new("BlurEffect")
+                blurFx.Name = "InertiaUIBlur"
+                blurFx.Parent = game:GetService("Lighting")
+            end
+            blurFx.Size = want
+        elseif blurFx then
+            blurFx:Destroy()
+            blurFx = nil
+        end
+    end))
+end
 -- Mobile shows/hides the window as a droplet that is swallowed by the Dynamic
 -- Island and spat back out of it; desktop keeps the plain instant toggle.
 -- Everything that opens or closes the menu goes through here so the animation
@@ -19137,7 +19141,7 @@ do
     local lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
 
     local function offsetVector()
-        local r = math.clamp(tonumber(S.DesyncRadius) or 12, 0, 40)
+        local r = math.clamp(tonumber(S.DesyncRadius) or 60, 0, 400)
         local mode = S.DesyncMode or "Blink"
         local t = os.clock()
         if mode == "Static" then
@@ -19166,12 +19170,12 @@ do
         -- treat itself as displaced and it stops integrating its own movement -- measured, walking
         -- went from 9.3 studs per 1.5s to 0.0. Standing still is also exactly when this matters:
         -- that is when someone else's aim is locked on you.
-        if S.DesyncOnlyStill ~= false and hum.MoveDirection.Magnitude > 0.05 then return end
+        if S.DesyncOnlyStill == true and hum.MoveDirection.Magnitude > 0.05 then return end
         -- Snapshot the EXACT pose and velocity, then displace. Restoring the snapshot next frame
         -- rather than subtracting the offset is what keeps this stable: subtracting let solver error
         -- accumulate frame over frame and the character wandered 259-310 studs off on its own.
-        -- Nothing is lost by pinning the pose here, because the block above means this only runs
-        -- while you are standing still.
+        -- Heartbeat runs AFTER physics, so this snapshot already contains the movement this frame
+        -- produced -- putting it back next frame therefore loses nothing and you keep walking.
         lastOffset = offsetVector()
         lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
@@ -19180,9 +19184,16 @@ do
         hrp.CFrame = lastCF + lastOffset
     end))
 
-    -- Next frame, before physics runs again: take it straight back off. Between these two points no
-    -- physics step happens, so the displaced position never collides with anything.
-    tc(RunService.Stepped:Connect(function()
+    -- Restored at the very TOP of the next frame, ahead of everything else. Doing it on Stepped left
+    -- the character displaced for the whole of RenderStepped, which is where Roblox's own
+    -- ControlModule and the Humanoid read their state -- they saw themselves teleported and stopped
+    -- driving movement, which is why walking measured 0.0 studs. Nothing game-side observes the
+    -- displaced pose now: it exists only between Heartbeat and this binding, a window with no
+    -- physics step and no game logic in it.
+    -- BindToRenderStep names are a global namespace, so this one is unique per load: a stale copy
+    -- being cleaned up must not unbind the live one.
+    local restoreName = "InertiaDesyncRestore_" .. tostring(math.random(1, 1e9))
+    RunService:BindToRenderStep(restoreName, Enum.RenderPriority.First.Value - 1, function()
         if not applied then return end
         applied = false
         local char = LP.Character
@@ -19195,7 +19206,10 @@ do
             if lastAng then hrp.AssemblyAngularVelocity = lastAng end
         end
         lastOffset, lastCF, lastVel, lastAng = nil, nil, nil, nil
-    end))
+    end)
+    SG.Destroying:Connect(function()
+        pcall(function() RunService:UnbindFromRenderStep(restoreName) end)
+    end)
 
     mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
         S.Desync = v
@@ -19213,6 +19227,6 @@ do
     end, 2)
     -- Up to 40 now: the offset no longer touches physics, so a big radius costs nothing locally and
     -- is exactly what makes someone else's aim miss.
-    mkSlider(secDesync, "Desync Radius", 0, 40, 12, function(v) S.DesyncRadius = v end, 3)
-    mkToggle(secDesync, "Only While Standing", true, function(v) S.DesyncOnlyStill = v end, 4)
+    mkSlider(secDesync, "Desync Radius", 0, 400, 60, function(v) S.DesyncRadius = v end, 3)
+    mkToggle(secDesync, "Only While Standing", false, function(v) S.DesyncOnlyStill = v end, 4)
 end
