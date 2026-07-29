@@ -5254,6 +5254,12 @@ local function setGlobalOpacity(v)
     end
 end
 -- ==========================================================
+-- Collected here rather than through a register function: the Customs sections are built earlier in
+-- the file than the Visuals subtab block that owns that function, so pcall(S._Register..., sec) was
+-- calling nil and silently registering nothing. Unregistered sections are never hidden, so Kill
+-- Sounds / Avatar / Wings & Aura stayed on screen under EVERY Visuals subtab -- which reads as the
+-- card being duplicated.
+S._CustomsSections = S._CustomsSections or {}
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v) S.CustomCrosshair = v end, 1)
     
@@ -5649,7 +5655,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
 
     -- Own card: keeps the Customs page from being one giant column with an empty neighbour.
     local secKillSnd = mkSection(Pages.Visuals, "Kill Sounds", 4.5)
-    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secKillSnd) end
+    table.insert(S._CustomsSections, secKillSnd)
     local function killPicker(label, key, order)
         mkAction(secKillSnd, label, function()
             local current = 1
@@ -5722,7 +5728,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
 
 
     local secAvatar = mkSection(Pages.Visuals, "Avatar (Local)", 4.6)
-    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secAvatar) end
+    table.insert(S._CustomsSections, secAvatar)
     mkToggle(secAvatar, "Fake Headless (Local)", false, function(v)
         S.FakeHeadless = v
         S._UpdateAvatarMods()
@@ -6207,7 +6213,7 @@ end, 6)
             end)
         end))
         local secWings = mkSection(Pages.Visuals, "Wings & Aura", 4.7)
-        if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secWings) end
+        table.insert(S._CustomsSections, secWings)
         mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
         mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
         -- Wing placement is per-asset and the marketplace models disagree wildly about scale and
@@ -6645,11 +6651,10 @@ end, 6)
         if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "Environment") end
     end
     -- Customs used to be two cards: one enormous one and a single-toggle one, so the masonry had
-    -- nothing to put in the right column and left it empty. Sections built elsewhere register here
-    -- and give the layout something to balance with.
-    local extraCustomsSections = {}
+    -- nothing to put in the right column and left it empty. Sections built elsewhere join the same
+    -- S._CustomsSections list the earlier ones use, so there is exactly one list to hide.
     S._RegisterVisualsCustomsSection = function(sec)
-        table.insert(extraCustomsSections, sec)
+        table.insert(S._CustomsSections, sec)
         if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "Customs") end
     end
     local function updateVisualsSubTabs()
@@ -6674,7 +6679,7 @@ end, 6)
         for _, section in ipairs({secCustoms, secKnifeEffects}) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
         end
-        for _, section in ipairs(extraCustomsSections) do
+        for _, section in ipairs(S._CustomsSections) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
         end
         -- (Overlay subtab removed together with Custom Crosshair / Dual Wield)
