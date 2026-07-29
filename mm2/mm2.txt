@@ -5631,8 +5631,11 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end
     S._PlayKillSound = playKillSound
 
+    -- Own card: keeps the Customs page from being one giant column with an empty neighbour.
+    local secKillSnd = mkSection(Pages.Visuals, "Kill Sounds", 4.5)
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secKillSnd) end
     local function killPicker(label, key, order)
-        mkAction(secCustoms, label, function()
+        mkAction(secKillSnd, label, function()
             local current = 1
             for i, n in ipairs(killNames) do if n == (S[key] or "Off") then current = i break end end
             S._OpenOptionPicker(label, killNames, current, function(pick)
@@ -5646,7 +5649,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end
     killPicker("Murderer Kill Sound", "KillSoundMurderer", 4.2)
     killPicker("Sheriff Kill Sound", "KillSoundSheriff", 4.3)
-    mkSlider(secCustoms, "Kill Sound Volume", 0, 100, 70, function(v) S.KillSoundVolume = v end, 4.4)
+    mkSlider(secKillSnd, "Kill Sound Volume", 0, 100, 70, function(v) S.KillSoundVolume = v end, 4.4)
 
     -- Attribution. The client is never told who killed whom, so this infers it:
     --   murderer -- a knife kill has to be close, so a death within 60 studs counts (60, not melee
@@ -5702,11 +5705,13 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end
 
 
-    mkToggle(secCustoms, "Fake Headless (Local)", false, function(v)
+    local secAvatar = mkSection(Pages.Visuals, "Avatar (Local)", 4.6)
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secAvatar) end
+    mkToggle(secAvatar, "Fake Headless (Local)", false, function(v)
         S.FakeHeadless = v
         S._UpdateAvatarMods()
     end, 5)
-    mkToggle(secCustoms, "Fake Korblox (Local)", false, function(v)
+    mkToggle(secAvatar, "Fake Korblox (Local)", false, function(v)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
 end, 6)
@@ -6185,23 +6190,25 @@ end, 6)
                 if S.VFXWings or (S.VFXAura and S.VFXAura ~= "Off") then rebuild() end
             end)
         end))
-        mkToggle(secCustoms, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
-        mkCycle(secCustoms, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        local secWings = mkSection(Pages.Visuals, "Wings & Aura", 4.7)
+        if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secWings) end
+        mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
+        mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
         -- Wing placement is per-asset and the marketplace models disagree wildly about scale and
         -- pivot, so the built-in numbers can only ever be an average. These three expose the same
         -- knobs the code already used internally: the size cap, and the torso-relative Y and Z of
         -- the anchor. Percent/hundredths because mkSlider is integer-only.
-        mkSlider(secCustoms, "Wing Size (%)", 40, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
-        mkSlider(secCustoms, "Wing Height", -60, 60, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
-        mkSlider(secCustoms, "Wing Back Offset", -40, 90, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
-        mkCycle(secCustoms, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
+        mkSlider(secWings, "Wing Size (%)", 40, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
+        mkSlider(secWings, "Wing Height", -60, 60, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
+        mkSlider(secWings, "Wing Back Offset", -40, 90, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
+        mkCycle(secWings, "VFX Aura", auraNames, "Off", function(v) S.VFXAura = v; rebuild() end, 9)
         -- Aura tuning. Each rebuilds so the change is visible immediately; "Preset" leaves the
         -- style's own colour alone.
-        mkCycle(secCustoms, "Aura Color",
+        mkCycle(secWings, "Aura Color",
             { "Preset", "White", "Red", "Green", "Yellow", "Cyan", "Purple", "Orange", "Pink" },
             "Preset", function(v) S.AuraColor = v; rebuild() end, 9.1)
-        mkSlider(secCustoms, "Aura Density (%)", 20, 300, 100, function(v) S.AuraDensity = v; rebuild() end, 9.2)
-        mkSlider(secCustoms, "Aura Particle Size (%)", 40, 250, 100, function(v) S.AuraSize = v; rebuild() end, 9.3)
+        mkSlider(secWings, "Aura Density (%)", 20, 300, 100, function(v) S.AuraDensity = v; rebuild() end, 9.2)
+        mkSlider(secWings, "Aura Particle Size (%)", 40, 250, 100, function(v) S.AuraSize = v; rebuild() end, 9.3)
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
@@ -6618,6 +6625,14 @@ end, 6)
         table.insert(extraEnvSections, sec)
         if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "Environment") end
     end
+    -- Customs used to be two cards: one enormous one and a single-toggle one, so the masonry had
+    -- nothing to put in the right column and left it empty. Sections built elsewhere register here
+    -- and give the layout something to balance with.
+    local extraCustomsSections = {}
+    S._RegisterVisualsCustomsSection = function(sec)
+        table.insert(extraCustomsSections, sec)
+        if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "Customs") end
+    end
     local function updateVisualsSubTabs()
         local isESP = activeVisualsSubTab == "ESP"
         local isEnvironment = activeVisualsSubTab == "Environment"
@@ -6638,6 +6653,9 @@ end, 6)
             if section and section.Parent then section.Parent.Visible = isShaders end
         end
         for _, section in ipairs({secCustoms, secKnifeEffects}) do
+            if section and section.Parent then section.Parent.Visible = isCustoms end
+        end
+        for _, section in ipairs(extraCustomsSections) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
         end
         -- (Overlay subtab removed together with Custom Crosshair / Dual Wield)
@@ -11672,8 +11690,19 @@ do
                     actionButton.MouseButton1Click:Connect(function()
                         if SFX and SFX.Click then pcall(SFX.Click) end
                         S.ActiveVisualEffect = effect.Id
-                        applyKnifeEffect(effect.Id, effect.Data, false)
+                        local ok = applyKnifeEffect(effect.Id, effect.Data, true)
                         pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+                        if S._MarkSelectedEffect then pcall(S._MarkSelectedEffect) end
+                        -- Clicking with no knife in hand looked like nothing happened at all: the
+                        -- effect only attaches to a live Knife tool, and outside a murderer round
+                        -- there is none. Say which of the two just happened instead of staying mute.
+                        local label = tostring((effect.Data and (effect.Data.Name or effect.Data.ItemName)) or effect.Id)
+                        if ok then
+                            Notify("Knife Effect", "Applied: " .. label, 2)
+                        else
+                            Notify("Knife Effect", "Selected: " .. label ..
+                                " - applies as soon as you hold a knife.", 4)
+                        end
                     end)
                 end
                 local amount = card:FindFirstChild("Amount", true)
@@ -11682,6 +11711,29 @@ do
             end)
         end
         catalogContainer, catalogCount = container, #effects
+        if S._MarkSelectedEffect then pcall(S._MarkSelectedEffect) end
+    end
+
+    -- Outline the card that is currently selected. Without it there is no way to tell which of the
+    -- 47 you picked, which is most of why selecting one felt like it did nothing.
+    S._MarkSelectedEffect = function()
+        local container = getCatalogContainer()
+        if not container then return end
+        for _, card in ipairs(container:GetChildren()) do
+            if card:GetAttribute("MM2LocalVisualEffect") == true then
+                local chosen = tostring(card:GetAttribute("MM2LocalEffectId")) == tostring(S.ActiveVisualEffect)
+                local mark = card:FindFirstChild("MM2_FX_Selected")
+                if chosen and not mark then
+                    mark = Instance.new("UIStroke")
+                    mark.Name = "MM2_FX_Selected"
+                    mark.Color = Color3.fromRGB(120, 240, 255)
+                    mark.Thickness = 2
+                    mark.Parent = card
+                elseif not chosen and mark then
+                    mark:Destroy()
+                end
+            end
+        end
     end
 
     local function refreshCatalog()
