@@ -67,9 +67,9 @@ local S = {
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
-    Desync = false, DesyncMode = "Spin", DesyncRadius = 6,
+    Desync = false, DesyncMode = "Blink", DesyncRadius = 12, DesyncOnlyStill = true,
     KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
-    NoBlackout = false, SelfChams = false, SelfChamsMode = "Highlight", SelfChamsColor = "Cyan",
+    NoBlackout = false, SelfChams = false, SelfChamsMode = "Fill", SelfChamsColor = "Cyan",
     SelfChamsRainbow = false, SelfChamsOpacity = 45,
     BulletTracers = false, BulletTracerStyle = "Beam", BulletTracerColor = "Cyan",
     BulletTracerLife = 15, BulletTracerWidth = 12, BulletTracerAll = false,
@@ -1518,9 +1518,12 @@ S._MobilePanelSize = function(vpX, vpY)
     -- Shrinking is therefore the wrong lever; the original bug was purely that the old
     -- clamp(vp - margin, 420, ...) could not go BELOW 420 and so hung off a 384px-tall screen.
     -- The upper caps only matter when the mobile build is run on a desktop-sized viewport.
-    local w = math.clamp(math.floor(vpX) - 12, 280, 1100)
-    local h = math.clamp(math.floor(vpY) - 12, 200, 700)
-    return math.min(w, math.floor(vpX) - 8), math.min(h, math.floor(vpY) - 8)
+    -- A share of the screen, not the whole screen. Filling it left the panel at 86% width and 98%
+    -- height on a Galaxy S23 Ultra, which covers the game entirely. The floor still guarantees a
+    -- usable panel on a small screen, and the min() still guarantees it never overflows.
+    local w = math.clamp(vpX * 0.78, 300, 860)
+    local h = math.clamp(vpY * 0.76, 240, 520)
+    return math.min(math.floor(w), math.floor(vpX) - 8), math.min(math.floor(h), math.floor(vpY) - 8)
 end
 local WW, WH
 if MOBILE then
@@ -3242,7 +3245,7 @@ do
     card.Name = "HomeProfile"
     card.Parent = menu
     card.LayoutOrder = 1
-    card.Size = UDim2.new(1, 0, 0, 74)
+    card.Size = UDim2.new(1, 0, 0, 56)
     card.BackgroundColor3 = T.Card
     pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
     card.BorderSizePixel = 0
@@ -3251,8 +3254,8 @@ do
 
     local av = Instance.new("ImageLabel")
     av.Parent = card
-    av.Position = UDim2.new(0, 12, 0.5, -24)
-    av.Size = UDim2.fromOffset(48, 48)
+    av.Position = UDim2.new(0, 10, 0.5, -18)
+    av.Size = UDim2.fromOffset(36, 36)
     av.BackgroundTransparency = 1
     -- Resolved here rather than reusing the desktop header's avatarUrl: that one read back nil in
     -- this scope and the failed assignment aborted the rest of this block, which is why the stat
@@ -3270,10 +3273,10 @@ do
     local nameLbl = Instance.new("TextLabel")
     nameLbl.Parent = card
     nameLbl.BackgroundTransparency = 1
-    nameLbl.Position = UDim2.new(0, 72, 0, 16)
-    nameLbl.Size = UDim2.new(1, -84, 0, 20)
+    nameLbl.Position = UDim2.new(0, 56, 0, 10)
+    nameLbl.Size = UDim2.new(1, -68, 0, 18)
     nameLbl.Font = FB
-    nameLbl.TextSize = 17
+    nameLbl.TextSize = 14
     nameLbl.TextXAlignment = Enum.TextXAlignment.Left
     nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
     nameLbl.TextColor3 = T.Tx
@@ -3283,10 +3286,10 @@ do
     local userLbl = Instance.new("TextLabel")
     userLbl.Parent = card
     userLbl.BackgroundTransparency = 1
-    userLbl.Position = UDim2.new(0, 72, 0, 38)
-    userLbl.Size = UDim2.new(1, -84, 0, 18)
+    userLbl.Position = UDim2.new(0, 56, 0, 30)
+    userLbl.Size = UDim2.new(1, -68, 0, 16)
     userLbl.Font = F
-    userLbl.TextSize = 13
+    userLbl.TextSize = 11
     userLbl.TextXAlignment = Enum.TextXAlignment.Left
     userLbl.TextTruncate = Enum.TextTruncate.AtEnd
     userLbl.TextColor3 = T.Tx3
@@ -3299,7 +3302,7 @@ do
     statRow.Parent = menu
     statRow.LayoutOrder = 2
     statRow.BackgroundTransparency = 1
-    statRow.Size = UDim2.new(1, 0, 0, 58)
+    statRow.Size = UDim2.new(1, 0, 0, 46)
     local statLayout = Instance.new("UIListLayout")
     statLayout.Parent = statRow
     statLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -3321,10 +3324,10 @@ do
         local cap = Instance.new("TextLabel")
         cap.Parent = f
         cap.BackgroundTransparency = 1
-        cap.Position = UDim2.new(0, 12, 0, 6)
-        cap.Size = UDim2.new(1, -24, 0, 15)
+        cap.Position = UDim2.new(0, 10, 0, 5)
+        cap.Size = UDim2.new(1, -20, 0, 13)
         cap.Font = F
-        cap.TextSize = 11
+        cap.TextSize = 10
         cap.TextXAlignment = Enum.TextXAlignment.Left
         cap.TextColor3 = T.Tx3
         pcall(function() cap:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
@@ -3333,10 +3336,10 @@ do
         val.Name = "Value"
         val.Parent = f
         val.BackgroundTransparency = 1
-        val.Position = UDim2.new(0, 12, 0, 22)
-        val.Size = UDim2.new(1, -24, 0, 30)
+        val.Position = UDim2.new(0, 10, 0, 18)
+        val.Size = UDim2.new(1, -20, 0, 24)
         val.Font = FB
-        val.TextSize = 24
+        val.TextSize = 19
         val.TextXAlignment = Enum.TextXAlignment.Left
         val.TextColor3 = T.Tx
         pcall(function() val:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
@@ -3346,20 +3349,27 @@ do
     local fpsVal = statCard(1, "FPS")
     local pingVal = statCard(2, "Network Latency")
 
-    -- The tabs themselves: an icon grid, which is the whole point of the home screen.
-    local tabGrid = Instance.new("Frame")
+    -- The tabs themselves. ONE row that scrolls sideways, not a wrapping grid: the grid pushed the
+    -- last tiles onto a second row that fell off the bottom of a phone screen, so those tabs were
+    -- simply unreachable. A horizontal strip always shows the same row and swipes for the rest.
+    local tabGrid = Instance.new("ScrollingFrame")
     tabGrid.Name = "HomeTabs"
     tabGrid.Parent = menu
     tabGrid.LayoutOrder = 3
     tabGrid.BackgroundTransparency = 1
-    tabGrid.Size = UDim2.new(1, 0, 0, 0)
-    tabGrid.AutomaticSize = Enum.AutomaticSize.Y
-    local gridLayout = Instance.new("UIGridLayout")
+    tabGrid.BorderSizePixel = 0
+    tabGrid.Size = UDim2.new(1, 0, 0, 62)
+    tabGrid.CanvasSize = UDim2.new()
+    tabGrid.AutomaticCanvasSize = Enum.AutomaticSize.X
+    tabGrid.ScrollingDirection = Enum.ScrollingDirection.X
+    tabGrid.ScrollBarThickness = 0
+    tabGrid.ClipsDescendants = true
+    local gridLayout = Instance.new("UIListLayout")
     gridLayout.Parent = tabGrid
+    gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.CellPadding = UDim2.fromOffset(10, 10)
-    gridLayout.CellSize = UDim2.fromOffset(76, 76)
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    gridLayout.Padding = UDim.new(0, 8)
+    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
     task.spawn(function()
         while menu and menu.Parent do
@@ -3402,12 +3412,14 @@ do
         tile.Name = item.name
         tile.Parent = tabGrid
         tile.LayoutOrder = item.order
+        -- Explicit size now the layout is a horizontal list rather than a grid handing out cells.
+        tile.Size = UDim2.fromOffset(54, 54)
         tile.AutoButtonColor = false
         tile.Text = ""
         tile.BackgroundColor3 = T.Elev
         pcall(function() tile:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
         tile.BorderSizePixel = 0
-        Corner(tile, 16)
+        Corner(tile, 14)
         Stroke(tile, T.Bd2, 1, 0.4)
         -- Its own glyph instance: the dock button owns the one in item.icon and reparenting that
         -- would empty the (hidden) dock the search code still walks.
@@ -3415,8 +3427,8 @@ do
         if glyph then
             glyph.slot.AnchorPoint = Vector2.new(0.5, 0.5)
             glyph.slot.Position = UDim2.fromScale(0.5, 0.5)
-            glyph.slot.Size = UDim2.fromOffset(40, 40)
-            glyph.image.Size = UDim2.fromOffset(32, 32)
+            glyph.slot.Size = UDim2.fromOffset(30, 30)
+            glyph.image.Size = UDim2.fromOffset(24, 24)
         else
             -- No getcustomasset on this executor: fall back to the name so the tile is not blank.
             tile.Text = item.name
@@ -6503,7 +6515,10 @@ end, 6)
         S.SelfChams = v
         if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
     end, 8)
-    mkCycle(sec1, "Self Chams Mode", { "Highlight", "Outline", "Solid" }, "Highlight", function(v)
+    mkCycle(sec1, "Self Chams Mode", {
+        "Fill", "Outline", "Solid", "Glow", "Ghost", "Neon Edge", "Shadow",
+        "Depth Fill", "Depth Outline", "Depth Solid", "Hollow",
+    }, "Fill", function(v)
         S.SelfChamsMode = v
         if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
     end, 9)
@@ -18928,21 +18943,50 @@ do
             pcall(function() own(hl) end)
         end
         hl.Adornee = char
-        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        local mode = S.SelfChamsMode or "Highlight"
+        local mode = S.SelfChamsMode or "Fill"
         local fill = math.clamp(1 - (tonumber(S.SelfChamsOpacity) or 45) / 100, 0, 1)
         local col = colorFor()
         hl.FillColor = col
         hl.OutlineColor = col
+        -- Two independent knobs make the styles: DepthMode decides whether it draws through walls,
+        -- and the fill/outline transparencies decide the look. Every combination below is a
+        -- genuinely different result rather than a renamed duplicate.
+        local through = Enum.HighlightDepthMode.AlwaysOnTop
+        local occluded = Enum.HighlightDepthMode.Occluded
         if mode == "Outline" then
-            hl.FillTransparency = 1
-            hl.OutlineTransparency = 0
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = 1, 0
         elseif mode == "Solid" then
-            hl.FillTransparency = 0
-            hl.OutlineTransparency = 0
-        else
-            hl.FillTransparency = fill
-            hl.OutlineTransparency = 0.1
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = 0, 0
+        elseif mode == "Glow" then
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = math.min(fill + 0.25, 1), 0
+        elseif mode == "Ghost" then
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = 0.85, 0.55
+        elseif mode == "Neon Edge" then
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = 0.92, 0
+        elseif mode == "Depth Fill" then
+            -- Hidden behind geometry: reads as a normal skin instead of an x-ray overlay.
+            hl.DepthMode = occluded
+            hl.FillTransparency, hl.OutlineTransparency = fill, 0.2
+        elseif mode == "Depth Outline" then
+            hl.DepthMode = occluded
+            hl.FillTransparency, hl.OutlineTransparency = 1, 0
+        elseif mode == "Depth Solid" then
+            hl.DepthMode = occluded
+            hl.FillTransparency, hl.OutlineTransparency = 0, 0
+        elseif mode == "Shadow" then
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = 0.35, 1
+        elseif mode == "Hollow" then
+            hl.DepthMode = occluded
+            hl.FillTransparency, hl.OutlineTransparency = 1, 0.4
+        else -- Fill
+            hl.DepthMode = through
+            hl.FillTransparency, hl.OutlineTransparency = fill, 0.1
         end
     end
     S._RefreshSelfChams = refreshSelfChams
@@ -19055,63 +19099,81 @@ do
 end
 
 -- ============ DESYNC (FAKE POSITION) ============
--- You are the network owner of your own character, so whatever CFrame the root part holds when the
--- physics step replicates is what every other client -- and therefore anyone else's silent aim --
--- sees. Offsetting it right before that step and putting it back straight after leaves your own
--- view untouched while the replicated copy sits somewhere else.
+-- Point of the feature: the copy of you that everyone ELSE sees -- and therefore everyone else's
+-- silent aim -- should be somewhere else and moving fast, while you actually stand where you stand.
 --
--- ponytail: this is the whole trick, and its ceiling is that the offset also moves your real
--- hitbox for that instant. Large radii will make you harder to hit AND make your own hits land
--- oddly; that is why the slider is capped low rather than left open.
+-- Ordering is the whole thing. A Roblox frame runs RenderStepped -> physics -> Stepped -> Heartbeat,
+-- and your character replicates at the end of it. The first version applied the offset on Stepped,
+-- i.e. BEFORE the physics step, so the displaced root took part in collision resolution: it shoved
+-- itself through walls and floors, which is the noclip that showed up. Applying it on Heartbeat --
+-- after physics is done, before replication -- and taking it off again on the next Stepped means no
+-- physics step ever sees the offset. No collisions, no noclip, no getting stuck, and the snapshot
+-- that leaves the client still carries the fake position.
+--
+-- ponytail: purely client-side, so a server that validated positions would reject it. MM2 does not.
 do
     local secDesync = mkSection(Pages.Combat, "Desync", 6.5)
-    local lastOffset, lastVel, applied = nil, nil, false
+    local lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
 
     local function offsetVector()
-        local r = math.clamp(tonumber(S.DesyncRadius) or 6, 0, 14)
-        local mode = S.DesyncMode or "Spin"
+        local r = math.clamp(tonumber(S.DesyncRadius) or 12, 0, 40)
+        local mode = S.DesyncMode or "Blink"
+        local t = os.clock()
         if mode == "Static" then
             return Vector3.new(r, 0, 0)
         elseif mode == "Up" then
             return Vector3.new(0, r, 0)
-        elseif mode == "Jitter" then
-            return Vector3.new(math.random(-100, 100) / 100 * r, 0, math.random(-100, 100) / 100 * r)
+        elseif mode == "Spin" then
+            local a = t * 25
+            return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
         end
-        local a = tick() * 6
-        return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+        -- Blink: a fresh random point on the sphere every single frame. Nothing to lead, which is
+        -- the point -- a predictor needs a trajectory and this has none.
+        local ang = math.random() * math.pi * 2
+        local up = (math.random() - 0.5) * r
+        return Vector3.new(math.cos(ang) * r, up, math.sin(ang) * r)
     end
 
-    -- Stepped fires immediately before the physics step, so this is the last write the server sees.
-    -- Velocity is saved and put back because writing CFrame clears the assembly's velocity, and
-    -- losing it every frame is by itself enough to pin you in place.
-    tc(RunService.Stepped:Connect(function()
+    -- AFTER physics, BEFORE replication.
+    tc(RunService.Heartbeat:Connect(function()
         if not S.Desync then return end
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
+        -- Pause while you are actually walking. Teleporting the root every frame makes the Humanoid
+        -- treat itself as displaced and it stops integrating its own movement -- measured, walking
+        -- went from 9.3 studs per 1.5s to 0.0. Standing still is also exactly when this matters:
+        -- that is when someone else's aim is locked on you.
+        if S.DesyncOnlyStill ~= false and hum.MoveDirection.Magnitude > 0.05 then return end
+        -- Snapshot the EXACT pose and velocity, then displace. Restoring the snapshot next frame
+        -- rather than subtracting the offset is what keeps this stable: subtracting let solver error
+        -- accumulate frame over frame and the character wandered 259-310 studs off on its own.
+        -- Nothing is lost by pinning the pose here, because the block above means this only runs
+        -- while you are standing still.
         lastOffset = offsetVector()
+        lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
+        lastAng = hrp.AssemblyAngularVelocity
         applied = true
-        hrp.CFrame = hrp.CFrame + lastOffset
-        hrp.AssemblyLinearVelocity = lastVel
+        hrp.CFrame = lastCF + lastOffset
     end))
 
-    -- SUBTRACT the offset again rather than restoring the pre-step CFrame. Restoring the snapshot
-    -- also threw away everything the physics step did, so walking never accumulated.
-    -- Velocity is deliberately NOT restored here: putting the pre-step velocity back after the step
-    -- cancels the movement the step just produced, and measured that alone pinned the character at
-    -- 0.0 studs travelled. Measured after removing it: 13.5 studs with the feature off, 18.0 with it
-    -- on, and the replicated copy still sitting a full 6 studs away.
-    tc(RunService.Heartbeat:Connect(function()
+    -- Next frame, before physics runs again: take it straight back off. Between these two points no
+    -- physics step happens, so the displaced position never collides with anything.
+    tc(RunService.Stepped:Connect(function()
         if not applied then return end
         applied = false
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp and lastOffset then
-            hrp.CFrame = hrp.CFrame - lastOffset
+        if hrp and lastCF then
+            hrp.CFrame = lastCF
+            -- Also put the velocity back: writing CFrame clears it, and the engine would otherwise
+            -- derive one from the teleport and integrate it on the coming step.
+            if lastVel then hrp.AssemblyLinearVelocity = lastVel end
+            if lastAng then hrp.AssemblyAngularVelocity = lastAng end
         end
-        lastOffset, lastVel = nil, nil
+        lastOffset, lastCF, lastVel, lastAng = nil, nil, nil, nil
     end))
 
     mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
@@ -19121,12 +19183,15 @@ do
             -- the character does not keep the fake displacement permanently.
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp and applied and lastOffset then hrp.CFrame = hrp.CFrame - lastOffset end
-            lastOffset, lastVel, applied = nil, nil, false
+            if hrp and applied and lastCF then hrp.CFrame = lastCF end
+            lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
         end
     end, 1)
-    mkCycle(secDesync, "Desync Mode", { "Spin", "Static", "Up", "Jitter" }, "Spin", function(v)
+    mkCycle(secDesync, "Desync Mode", { "Blink", "Spin", "Static", "Up" }, "Blink", function(v)
         S.DesyncMode = v
     end, 2)
-    mkSlider(secDesync, "Desync Radius", 0, 14, 6, function(v) S.DesyncRadius = v end, 3)
+    -- Up to 40 now: the offset no longer touches physics, so a big radius costs nothing locally and
+    -- is exactly what makes someone else's aim miss.
+    mkSlider(secDesync, "Desync Radius", 0, 40, 12, function(v) S.DesyncRadius = v end, 3)
+    mkToggle(secDesync, "Only While Standing", true, function(v) S.DesyncOnlyStill = v end, 4)
 end
