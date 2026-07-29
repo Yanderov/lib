@@ -63,6 +63,7 @@ local S = {
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
+    KillSoundMurderer = "Off", KillSoundSheriff = "Off", KillSoundVolume = 70,
     DualWield = false,
     Crosshair = false,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
@@ -5576,6 +5577,124 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             game.Debris:AddItem(s, 3)
         end
     end, 4.1)
+
+    -- ---- Kill Sounds ----
+    -- A hit/kill sound for your own kills, split per role. Local only, like everything else here:
+    -- nobody else hears it. Every id below was loaded on a live client and kept only if it reported
+    -- a TimeLength; two that loaded (Crit Hit 120s, Glass Break 30s) are left out because a kill
+    -- sound has to be short or it overlaps the next kill.
+    local KILL_SOUNDS = {
+        { "Off", 0 },
+        { "COD Hitmarker", 5952120301 },
+        { "Minecraft Hit", 5984353288 },
+        { "Minecraft Hit Alt", 8766809464 },
+        { "Classic Hit", 12222058 },
+        { "Osu Hit", 7147454322 },
+        { "Click Tick", 6534947588 },
+        { "Coin", 3779045779 },
+        { "Classic Beep", 12221967 },
+        { "Snap", 511340819 },
+        { "BONK", 130944130 },
+        { "Sword Slash", 138090596 },
+        { "Laser Zap", 607665037 },
+        { "Ding", 4590657391 },
+        { "Hyperlaser", 8561505457 },
+        { "Pop", 6026984224 },
+        { "Oof", 5943191430 },
+        { "Vine Boom", 6308606116 },
+        { "Waapp", 154146535 },
+        { "Quack", 9068554227 },
+    }
+    local killNames = {}
+    for _, e in ipairs(KILL_SOUNDS) do table.insert(killNames, e[1]) end
+    local function killSoundId(name)
+        for _, e in ipairs(KILL_SOUNDS) do
+            if e[1] == name and e[2] ~= 0 then return "rbxassetid://" .. e[2] end
+        end
+        return nil
+    end
+    local function playKillSound(name)
+        local id = killSoundId(name)
+        if not id then return end
+        local s = Instance.new("Sound")
+        s.SoundId = id
+        s.Volume = math.clamp((tonumber(S.KillSoundVolume) or 70) / 100, 0, 1)
+        s.Parent = SoundService
+        s:Play()
+        game:GetService("Debris"):AddItem(s, 6)
+    end
+    S._PlayKillSound = playKillSound
+
+    local function killPicker(label, key, order)
+        mkAction(secCustoms, label, function()
+            local current = 1
+            for i, n in ipairs(killNames) do if n == (S[key] or "Off") then current = i break end end
+            S._OpenOptionPicker(label, killNames, current, function(pick)
+                S[key] = killNames[pick]
+                Notify("Kill Sound", label .. ": " .. tostring(killNames[pick]), 2)
+            end, {
+                keepOpen = true,
+                action = { label = "PLAY", fn = function(pick) playKillSound(killNames[pick]) end },
+            })
+        end, order)
+    end
+    killPicker("Murderer Kill Sound", "KillSoundMurderer", 4.2)
+    killPicker("Sheriff Kill Sound", "KillSoundSheriff", 4.3)
+    mkSlider(secCustoms, "Kill Sound Volume", 0, 100, 70, function(v) S.KillSoundVolume = v end, 4.4)
+
+    -- Attribution. The client is never told who killed whom, so this infers it:
+    --   murderer -- a knife kill has to be close, so a death within 60 studs counts (60, not melee
+    --               range, because a thrown knife travels);
+    --   sheriff  -- gate on the local player actually having fired in the last 2s, read off the
+    --               game's own GunFired event. This only LISTENS; it does not touch the sheriff
+    --               aim path.
+    -- ponytail: heuristic, not ground truth. A death that happens near you while you did nothing
+    -- can still trigger it. Exact attribution would need a server signal the client does not get.
+    do
+        local lastShot = 0
+        task.spawn(function()
+            local ok, ev = pcall(function()
+                local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientServices")
+                return cs and cs:FindFirstChild("GunFired")
+            end)
+            if ok and ev and ev:IsA("RemoteEvent") then
+                tc(ev.OnClientEvent:Connect(function(handle)
+                    local char = LP.Character
+                    if handle and char and handle:IsDescendantOf(char) then lastShot = os.clock() end
+                end))
+            end
+        end)
+
+        local function watch(p)
+            if p == LP then return end
+            local function hook(char)
+                local hum = char:WaitForChild("Humanoid", 5)
+                if not hum then return end
+                tc(hum.Died:Connect(function()
+                    if not isRoundActive() then return end
+                    local myRole = getRole(LP)
+                    local myChar = LP.Character
+                    local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    local theirHrp = char:FindFirstChild("HumanoidRootPart")
+                    if myRole == "Murderer" then
+                        if myHrp and theirHrp
+                            and (myHrp.Position - theirHrp.Position).Magnitude <= 60 then
+                            playKillSound(S.KillSoundMurderer)
+                        end
+                    elseif myRole == "Sheriff" or myRole == "Hero" then
+                        if os.clock() - lastShot <= 2 then
+                            playKillSound(S.KillSoundSheriff)
+                        end
+                    end
+                end))
+            end
+            if p.Character then hook(p.Character) end
+            tc(p.CharacterAdded:Connect(hook))
+        end
+        for _, p in ipairs(Players:GetPlayers()) do watch(p) end
+        tc(Players.PlayerAdded:Connect(watch))
+    end
+
 
     mkToggle(secCustoms, "Fake Headless (Local)", false, function(v)
         S.FakeHeadless = v
