@@ -67,6 +67,12 @@ local S = {
     AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
+    Desync = false, DesyncMode = "Spin", DesyncRadius = 6,
+    KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
+    NoBlackout = false, SelfChams = false, SelfChamsMode = "Highlight", SelfChamsColor = "Cyan",
+    SelfChamsRainbow = false, SelfChamsOpacity = 45,
+    BulletTracers = false, BulletTracerStyle = "Beam", BulletTracerColor = "Cyan",
+    BulletTracerLife = 15, BulletTracerWidth = 12, BulletTracerAll = false,
     KillSoundMurderer = "Off", KillSoundSheriff = "Off", KillSoundVolume = 70,
     DualWield = false,
     Crosshair = false,
@@ -5778,36 +5784,47 @@ end, 6)
         -- One list, but grouped under readable section names instead of raw colour prefixes.
         -- The old "White/Black/Red NN ..." keys stay in WINGS as aliases, so a config saved before
         -- this rename still resolves and nobody loses their selected pair of wings.
-        local WING_SECTIONS = { White = "Angel", Black = "Demon", Red = "Blood" }
+        -- Three wings, not twenty-six. Most of the old list was near-duplicate marketplace rigs with
+        -- long unreadable names, and the picker was a wall of "Red 08 Adurite Alt". One clean choice
+        -- per look; the source keys stay in WINGS as aliases so an old saved config still resolves.
         local wingNames = {}
         do
-            local order = {
-                "White 02 Angel Rig", "White 03 Soft Angel", "White 04 Sparkling", "White 05 Flutter",
-                "White 06 Clean Angel", "White 07 Animated", "White 08 Small Wings",
-                "White 09 Bright Wings", "White 10 Glowing",
-                "Black 01 Classic", "Black 03 Floating", "Black 04 Feather A", "Black 05 Feather B",
-                "Black 06 Dark Clean", "Black 07 Mesh", "Black 08 Metallic", "Black 09 Bone",
-                "Red 01 Crimson", "Red 02 Crimson Clean", "Red 03 Crimson Dark", "Red 04 Cartoon",
-                "Red 05 Bat", "Red 06 Galaxy", "Red 07 Adurite", "Red 08 Adurite Alt",
-                "Red 09 Spark Adurite",
+            local picks = {
+                { display = "Angel",       key = "White 02 Angel Rig" },
+                { display = "Demon",       key = "Red 05 Bat" },
+                { display = "Black Wings", key = "Black 01 Classic" },
             }
-            for _, key in ipairs(order) do
-                local colour, rest = key:match("^(%a+)%s+%d+%s+(.+)$")
-                local section = colour and WING_SECTIONS[colour]
-                local display = section and (section .. " - " .. rest) or key
-                if WINGS[key] and display ~= key then WINGS[display] = WINGS[key] end
-                table.insert(wingNames, display)
+            for _, p in ipairs(picks) do
+                if WINGS[p.key] then WINGS[p.display] = WINGS[p.key] end
+                table.insert(wingNames, p.display)
             end
         end
+        -- Trimmed from 31 to the ones that actually read as an effect on a character. Most of the
+        -- rest were either barely visible, a near-duplicate of a neighbour, or named so vaguely
+        -- ("Red 05 Testing") that nobody could tell what they were picking. The dropped keys stay
+        -- in AURAS, so a config that selected one still resolves instead of falling back to Off.
         local auraNames = {
             "Off",
-            "White 01 Angelic", "White 02 Angel Glow", "White 03 One Winged", "White 04 Divine Light", "White 05 Holy Light",
-            "White 06 Holy Justice", "White 07 Holy Mind", "White 08 Holy Ground", "White 09 Divine Energy", "White 10 APG Aura",
-            "Black 01 Shadow", "Black 02 Dark Aura", "Black 03 Pure Darkness", "Black 04 Darkness Alt", "Black 05 Dark Spell",
-            "Black 06 Dark Star", "Black 07 Black White", "Black 08 Evil Black", "Black 09 Void Flame", "Black 10 Void Aura",
-            "Red 01 Lightning", "Red 02 God Ki", "Red 03 Simple", "Red 04 Classic", "Red 05 Testing",
-            "Red 06 Electricity", "Red 07 Electric", "Red 08 Magic", "Red 09 Fission", "Red 10 Crimson Electro", "Red 11 Mega Pie",
+            "Angelic", "Divine Light", "Holy Ground",
+            "Shadow", "Void Flame", "Dark Star",
+            "Lightning", "God Ki", "Crimson Electro",
         }
+        do
+            local alias = {
+                Angelic = "White 01 Angelic",
+                ["Divine Light"] = "White 04 Divine Light",
+                ["Holy Ground"] = "White 08 Holy Ground",
+                Shadow = "Black 01 Shadow",
+                ["Void Flame"] = "Black 09 Void Flame",
+                ["Dark Star"] = "Black 06 Dark Star",
+                Lightning = "Red 01 Lightning",
+                ["God Ki"] = "Red 02 God Ki",
+                ["Crimson Electro"] = "Red 10 Crimson Electro",
+            }
+            for display, key in pairs(alias) do
+                if AURAS[key] then AURAS[display] = AURAS[key] end
+            end
+        end
         local fx = { objects = {}, conns = {}, busy = false, ticket = 0 }
 
         local function rootPart(char)
@@ -6460,8 +6477,37 @@ end, 6)
     mkSlider(sec1, "Chams Opacity", 0, 100, 50, function(v) S.ChamsOpacity = v end, 3)
     mkToggle(sec1, "Gun Chams", false, function(v) S.GunHeldChams = v; S.GunChams = v end, 4)
     mkCycle(sec1, "Gun Chams Mode", {"Highlight", "Outline", "Solid", "ForceField", "Neon", "Glass", "Maze", "Mirror"}, "Highlight", function(v) S.ItemChamsMode = v end, 5)
-    mkCycle(sec1, "Gun Chams Color", {"White", "Red", "Green", "Blue", "Yellow", "Cyan", "Purple", "Orange", "Pink", "Black"}, "Cyan", function(v) S.ItemChamsColor = v end, 6)
+    -- Full palette, kept in sync with ITEM_CHAM_COLORS further down. Written out here rather than
+    -- referenced because that table is built later in the file than this control.
+    local CHAM_COLOR_NAMES = {
+        "White", "Black", "Gray", "Red", "Crimson", "Rose", "Pink", "Magenta",
+        "Orange", "Peach", "Gold", "Yellow", "Lime", "Green", "Mint", "Teal",
+        "Cyan", "Sky", "Blue", "Indigo", "Purple", "Lavender",
+    }
+    mkCycle(sec1, "Gun Chams Color", CHAM_COLOR_NAMES, "Cyan", function(v) S.ItemChamsColor = v end, 6)
     mkToggle(sec1, "Gun Chams Rainbow", false, function(v) S.ItemChamsRainbow = v end, 7)
+    -- Self Chams: the same Highlight treatment pointed at your own character. Kept in this section
+    -- next to the item version so both palettes and modes read the same way.
+    mkToggle(sec1, "Self Chams", false, function(v)
+        S.SelfChams = v
+        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
+    end, 8)
+    mkCycle(sec1, "Self Chams Mode", { "Highlight", "Outline", "Solid" }, "Highlight", function(v)
+        S.SelfChamsMode = v
+        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
+    end, 9)
+    mkCycle(sec1, "Self Chams Color", CHAM_COLOR_NAMES, "Cyan", function(v)
+        S.SelfChamsColor = v
+        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
+    end, 10)
+    mkToggle(sec1, "Self Chams Rainbow", false, function(v)
+        S.SelfChamsRainbow = v
+        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
+    end, 11)
+    mkSlider(sec1, "Self Chams Opacity", 0, 100, 45, function(v)
+        S.SelfChamsOpacity = v
+        if S._RefreshSelfChams then pcall(S._RefreshSelfChams) end
+    end, 12)
 
     local sec2 = mkSection(Pages.Visuals, "Player ESP", 2)
     mkToggle(sec2, "Name ESP", false, function(v) S.NameESP = v end, 1)
@@ -6549,7 +6595,7 @@ end, 6)
     mkToggle(secHandShaders, "Enable Hand Shader", false, function(v) S.HandShader = v end, 1)
     mkCycle(secHandShaders, "Shader Type", {"Both", "Fill", "Outline", "Mirror", "Bloom", "Maze", "Crystal", "Chrome", "Plasma"}, "Both", function(v) S.HandShaderType = v end, 2)
     mkCycle(secHandShaders, "Apply To", {"Full Body", "Held Item"}, "Full Body", function(v) S.HandTarget = v end, 3)
-    mkCycle(secHandShaders, "Color", {"Cyan", "White", "Red", "Green", "Blue", "Yellow", "Purple", "Orange", "Pink", "Black"}, "Cyan", function(v) S.HandColor = v end, 4)
+    mkCycle(secHandShaders, "Color", CHAM_COLOR_NAMES, "Cyan", function(v) S.HandColor = v end, 4)
     mkToggle(secHandShaders, "Rainbow", false, function(v) S.HandRainbow = v end, 5)
     mkSlider(secHandShaders, "Fill Opacity", 0, 100, 60, function(v) S.HandFill = v end, 6)
 
@@ -6667,6 +6713,14 @@ do
     mkToggle(secKnifeAim, "Silent Aim", false, function(v) S.KnifeSilentAim = v end, 1, "Knife Silent Aim")
     mkToggle(secKnifeAim, "Wall Check", false, function(v) S.KnifeSilentAimWallCheck = v end, 2)
     mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
+    -- Prediction controls. "Perfect" already folds in velocity, acceleration and gravity; "Adaptive"
+    -- adds a ping-jitter margin on top, which is what actually costs hits when the connection is
+    -- uneven rather than merely slow. Amount is a percentage of the computed lead, so 100 means
+    -- "trust the model", lower means "aim shorter".
+    mkCycle(secKnifeAim, "Prediction", { "Off", "Standard", "Lag Comp", "Perfect", "Adaptive" },
+        "Perfect", function(v) S.KnifePredictMode = v end, 5)
+    mkSlider(secKnifeAim, "Prediction Amount (%)", 0, 200, 100, function(v) S.KnifePredictAmount = v end, 6)
+    mkSlider(secKnifeAim, "Ping Offset (ms)", -100, 200, 0, function(v) S.KnifePingOffset = v end, 7)
 
     local secKnifeThrow = mkSection(Pages.Combat, "Knife Throw", 3)
     secKnifeThrow.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
@@ -6961,10 +7015,14 @@ do
                 or targetChar:FindFirstChild("HumanoidRootPart")
             if aimPart then
                 local speed = tonumber(S.KnifeFlightSpeed) or 120
+                -- The new Prediction / Amount / Ping Offset controls write KnifePredict*; the older
+                -- KnifeSilentAim* keys stay as the fallback so a config saved before them still
+                -- behaves the same.
                 local pos = getPredictedPosition(
                     targetChar, aimPart.Name,
-                    S.KnifeSilentAimPredictMode or "Perfect",
-                    S.KnifeSilentAimPrediction or 25, 0, speed)
+                    S.KnifePredictMode or S.KnifeSilentAimPredictMode or "Perfect",
+                    S.KnifePredictAmount or S.KnifeSilentAimPrediction or 100,
+                    (tonumber(S.KnifePingOffset) or 0) / 1000, speed)
                 args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
                 return args
             end
@@ -6992,12 +7050,26 @@ end
 end
 
 do
-    local MSP = {History = {}, Latency = 0}
+    local MSP = {History = {}, Latency = 0, Jitter = 0}
     S._MSP = MSP
     local function getPing()
         local ping = 0
         pcall(function() ping = LP:GetNetworkPing() * 1000 end)
         return math.clamp(ping, 50, 500)
+    end
+    -- Running spread of the ping, in seconds. A steady link is easy to lead for; one that swings is
+    -- what actually costs hits, and the fixed prediction model has no term for it. "Adaptive" adds
+    -- this on top of the raw latency.
+    local pingSamples, pingHead = {}, 0
+    local function trackJitter(pingMs)
+        pingHead = (pingHead % 40) + 1
+        pingSamples[pingHead] = pingMs
+        local lo, hi = math.huge, -math.huge
+        for _, v in pairs(pingSamples) do
+            if v < lo then lo = v end
+            if v > hi then hi = v end
+        end
+        if lo <= hi then MSP.Jitter = math.clamp((hi - lo) / 2000, 0, 0.15) end
     end
     -- One frame of knife-chams cleanup after the toggle goes off, so turning it
     -- off still removes the highlights without scanning workspace forever.
@@ -7009,7 +7081,9 @@ do
         -- which shows up as periodic stutter for everyone, aim features or not.
         -- Track only while something can consume it, and mutate the entry in place.
         if S.KnifeSilentAim then
-            MSP.Latency = getPing() / 1000
+            local pingMs = getPing()
+            MSP.Latency = pingMs / 1000
+            trackJitter(pingMs)
             local now = tick()
             for _, p in ipairs(Players:GetPlayers()) do
                 local character = p.Character
@@ -7089,6 +7163,27 @@ do
             local predictedPos = pos + vel * t + 0.5 * acc * t * t
             
             -- Apply gravity compensation if target is in the air
+            local hum = targetChar:FindFirstChildOfClass("Humanoid")
+            if hum and hum.FloorMaterial == Enum.Material.Air then
+                predictedPos = predictedPos - Vector3.new(0, 0.5 * workspace.Gravity * t * t, 0)
+            end
+            return predictedPos
+        elseif mode == "Adaptive" then
+            -- Perfect, plus a margin for how unstable the ping has been. A steady 90ms link is
+            -- easy to lead for; a link swinging between 40 and 140 is what actually drops hits,
+            -- and the fixed model has no term for that. MSP.Jitter is the running spread.
+            local acc = hist and hist.Acc or Vector3.new()
+            local accMag = acc.Magnitude
+            if accMag > 400 then acc = acc * (400 / accMag) end
+            local jitter = math.clamp(tonumber(MSP.Jitter) or 0, 0, 0.15)
+            local t = (ping + jitter + (1 / 60)) * (predAmount / 100)
+            if customBulletSpeed and customBulletSpeed > 0 then
+                local shooterHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                if shooterHrp then
+                    t = t + ((pos - shooterHrp.Position).Magnitude / customBulletSpeed)
+                end
+            end
+            local predictedPos = pos + vel * t + 0.5 * acc * t * t
             local hum = targetChar:FindFirstChildOfClass("Humanoid")
             if hum and hum.FloorMaterial == Enum.Material.Air then
                 predictedPos = predictedPos - Vector3.new(0, 0.5 * workspace.Gravity * t * t, 0)
@@ -7387,6 +7482,27 @@ do
     mkToggle(sec3, "No Camera Limit", false, function(v) S.NoCamLimit = v
         LP.CameraMaxZoomDistance = v and 100000 or _origMaxZoom
     end, 3)
+    -- The screen going black on death/respawn is PlayerGui.Fade.Frame: SharedServices.FadeService
+    -- tweens that frame's BackgroundTransparency to 0. Force it back to clear whenever it moves,
+    -- rather than disabling the ScreenGui, because the game re-enables and re-parents it -- the
+    -- property guard survives that, an Enabled=false does not.
+    mkToggle(sec3, "No Blackout", false, function(v)
+        S.NoBlackout = v
+        if not v then return end
+        task.spawn(function()
+            while S.NoBlackout do
+                pcall(function()
+                    local pg = LP:FindFirstChildOfClass("PlayerGui")
+                    local fade = pg and pg:FindFirstChild("Fade")
+                    local frame = fade and fade:FindFirstChild("Frame")
+                    if frame and frame.BackgroundTransparency < 1 then
+                        frame.BackgroundTransparency = 1
+                    end
+                end)
+                RunService.RenderStepped:Wait()
+            end
+        end)
+    end, 4)
     local sec4 = mkSection(Pages.Misc, "Protection", 4)
     S._RegisterMiscSection(sec4, "Protection")
     mkToggle(sec4, "Anti-Fling", false, function(v) S.AntiFling = v end, 1)
@@ -11105,7 +11221,12 @@ do
                         hue = (hue + 0.02) % 1
                         col = Color3.fromHSV(hue, 0.85, 1)
                     else
-                        col = (S.HandColor == "Black") and Color3.fromRGB(0, 0, 0) or (FOV_COLORS[S.HandColor] or Color3.fromRGB(0, 255, 255))
+                        -- The hand shader palette now offers the full cham colour list, which is
+                        -- wider than FOV_COLORS, so fall through to that map before the default.
+                        col = (S.HandColor == "Black") and Color3.fromRGB(0, 0, 0)
+                            or FOV_COLORS[S.HandColor]
+                            or (S._ChamColorMap and S._ChamColorMap[S.HandColor])
+                            or Color3.fromRGB(0, 255, 255)
                     end
                     local fillOpacity = math.clamp((tonumber(S.HandFill) or 60) / 100, 0, 1)
                     local fillTransparency = math.clamp(1 - fillOpacity, 0, 1)
@@ -13301,7 +13422,25 @@ do
         Purple  = Color3.fromRGB(180, 120, 255),
         Orange  = Color3.fromRGB(255, 150, 60),
         Gray    = Color3.fromRGB(145, 145, 145),
+        -- Softer shades on top of the primaries: the originals were all full-saturation and looked
+        -- harsh over a character, which is the "make the colours nicer" ask.
+        Lime    = Color3.fromRGB(170, 255, 120),
+        Mint    = Color3.fromRGB(150, 255, 210),
+        Sky     = Color3.fromRGB(150, 205, 255),
+        Lavender = Color3.fromRGB(200, 170, 255),
+        Rose    = Color3.fromRGB(255, 170, 190),
+        Peach   = Color3.fromRGB(255, 200, 160),
+        Gold    = Color3.fromRGB(255, 205, 90),
+        Teal    = Color3.fromRGB(90, 210, 200),
+        Crimson = Color3.fromRGB(200, 40, 70),
+        Indigo  = Color3.fromRGB(110, 100, 230),
     }
+    S._ChamColorNames = {
+        "White", "Black", "Gray", "Red", "Crimson", "Rose", "Pink", "Magenta",
+        "Orange", "Peach", "Gold", "Yellow", "Lime", "Green", "Mint", "Teal",
+        "Cyan", "Sky", "Blue", "Indigo", "Purple", "Lavender",
+    }
+    S._ChamColorMap = ITEM_CHAM_COLORS
 
     local materialState = {}
     local materialMode, materialColor
@@ -18656,4 +18795,219 @@ do
     scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(render)
     scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(render)
     refresh()
+end
+
+-- ============ SELF CHAMS + BULLET TRACERS ============
+-- Both are purely local: a Highlight on your own character, and a beam drawn along a shot you can
+-- already see. Nothing here replicates.
+do
+    local hl
+    local function colorFor()
+        if S.SelfChamsRainbow then
+            return Color3.fromHSV((tick() * 0.35) % 1, 0.85, 1)
+        end
+        local map = S._ChamColorMap or {}
+        return map[S.SelfChamsColor] or Color3.fromRGB(80, 220, 230)
+    end
+    local function refreshSelfChams()
+        local char = LP.Character
+        if not S.SelfChams or not char then
+            if hl then pcall(function() hl:Destroy() end) hl = nil end
+            return
+        end
+        if not hl or not hl.Parent then
+            hl = Instance.new("Highlight")
+            hl.Name = "InertiaSelfChams"
+            hl.Parent = char
+            pcall(function() own(hl) end)
+        end
+        hl.Adornee = char
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        local mode = S.SelfChamsMode or "Highlight"
+        local fill = math.clamp(1 - (tonumber(S.SelfChamsOpacity) or 45) / 100, 0, 1)
+        local col = colorFor()
+        hl.FillColor = col
+        hl.OutlineColor = col
+        if mode == "Outline" then
+            hl.FillTransparency = 1
+            hl.OutlineTransparency = 0
+        elseif mode == "Solid" then
+            hl.FillTransparency = 0
+            hl.OutlineTransparency = 0
+        else
+            hl.FillTransparency = fill
+            hl.OutlineTransparency = 0.1
+        end
+    end
+    S._RefreshSelfChams = refreshSelfChams
+
+    tc(LP.CharacterAdded:Connect(function()
+        task.delay(0.6, function() pcall(refreshSelfChams) end)
+    end))
+    -- Rainbow needs a repaint; everything else is event-driven, so this only does work when the
+    -- rainbow toggle is actually on.
+    tc(RunService.Heartbeat:Connect(function()
+        if S.SelfChams and S.SelfChamsRainbow and hl then
+            local c = colorFor()
+            hl.FillColor = c
+            hl.OutlineColor = c
+        end
+    end))
+
+    -- ---- Bullet tracers ----
+    local secTracer = mkSection(Pages.Visuals, "Bullet Tracers", 2.5)
+    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secTracer) end
+
+    local TRACER_COLORS = {
+        "Cyan", "White", "Red", "Crimson", "Pink", "Magenta", "Orange", "Gold",
+        "Yellow", "Lime", "Green", "Mint", "Teal", "Sky", "Blue", "Indigo",
+        "Purple", "Lavender", "Rainbow",
+    }
+    local function tracerColor()
+        if S.BulletTracerColor == "Rainbow" then
+            return Color3.fromHSV((tick() * 0.4) % 1, 0.9, 1)
+        end
+        local map = S._ChamColorMap or {}
+        return map[S.BulletTracerColor] or Color3.fromRGB(80, 220, 230)
+    end
+
+    local function drawTracer(fromPos, toPos)
+        if not S.BulletTracers then return end
+        if typeof(fromPos) ~= "Vector3" or typeof(toPos) ~= "Vector3" then return end
+        local style = S.BulletTracerStyle or "Beam"
+        local life = math.clamp(tonumber(S.BulletTracerLife) or 15, 1, 100) / 10
+        local width = math.clamp(tonumber(S.BulletTracerWidth) or 12, 1, 60) / 40
+        local col = tracerColor()
+
+        local dist = (toPos - fromPos).Magnitude
+        if dist < 0.5 then return end
+
+        local part = Instance.new("Part")
+        part.Name = "InertiaTracer"
+        part.Anchored = true
+        part.CanCollide = false
+        part.CanQuery = false
+        part.CanTouch = false
+        part.CastShadow = false
+        part.Material = (style == "Laser") and Enum.Material.Neon or Enum.Material.SmoothPlastic
+        part.Color = col
+        part.Transparency = (style == "Ghost") and 0.6 or 0.15
+        part.Size = Vector3.new(width, width, dist)
+        part.CFrame = CFrame.lookAt(fromPos:Lerp(toPos, 0.5), toPos)
+        part.Parent = workspace
+        pcall(function() own(part) end)
+
+        if style == "Beam" or style == "Laser" then
+            local box = Instance.new("SelectionBox")
+            box.Adornee = part
+            box.LineThickness = 0.02
+            box.Color3 = col
+            box.Transparency = 0.4
+            box.Parent = part
+        end
+
+        -- Fade instead of a hard pop, and clean up on its own.
+        task.spawn(function()
+            local t0 = os.clock()
+            while part.Parent and os.clock() - t0 < life do
+                local a = (os.clock() - t0) / life
+                part.Transparency = math.clamp(0.15 + a * 0.85, 0, 1)
+                if S.BulletTracerColor == "Rainbow" then part.Color = tracerColor() end
+                RunService.RenderStepped:Wait()
+            end
+            pcall(function() part:Destroy() end)
+        end)
+    end
+    S._DrawBulletTracer = drawTracer
+
+    mkToggle(secTracer, "Bullet Tracers", false, function(v) S.BulletTracers = v end, 1)
+    mkCycle(secTracer, "Tracer Style", { "Beam", "Laser", "Ghost" }, "Beam", function(v)
+        S.BulletTracerStyle = v
+    end, 2)
+    mkCycle(secTracer, "Tracer Color", TRACER_COLORS, "Cyan", function(v)
+        S.BulletTracerColor = v
+    end, 3)
+    mkSlider(secTracer, "Tracer Lifetime (0.1s)", 1, 100, 15, function(v) S.BulletTracerLife = v end, 4)
+    mkSlider(secTracer, "Tracer Width", 1, 60, 12, function(v) S.BulletTracerWidth = v end, 5)
+    mkToggle(secTracer, "Trace Other Players", false, function(v) S.BulletTracerAll = v end, 6)
+
+    -- The game already broadcasts every shot to every client through this event, with the start and
+    -- end of the ray. Listening is enough -- no hook into the sheriff aim path.
+    task.spawn(function()
+        local ok, ev = pcall(function()
+            local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientServices")
+            return cs and cs:FindFirstChild("GunFired")
+        end)
+        if not (ok and ev and ev:IsA("RemoteEvent")) then return end
+        tc(ev.OnClientEvent:Connect(function(handle, startPos, endPos)
+            if not S.BulletTracers then return end
+            local mine = handle and LP.Character and handle:IsDescendantOf(LP.Character)
+            if not mine and not S.BulletTracerAll then return end
+            drawTracer(startPos, endPos)
+        end))
+    end)
+end
+
+-- ============ DESYNC (FAKE POSITION) ============
+-- You are the network owner of your own character, so whatever CFrame the root part holds when the
+-- physics step replicates is what every other client -- and therefore anyone else's silent aim --
+-- sees. Offsetting it right before that step and putting it back straight after leaves your own
+-- view untouched while the replicated copy sits somewhere else.
+--
+-- ponytail: this is the whole trick, and its ceiling is that the offset also moves your real
+-- hitbox for that instant. Large radii will make you harder to hit AND make your own hits land
+-- oddly; that is why the slider is capped low rather than left open.
+do
+    local secDesync = mkSection(Pages.Combat, "Desync", 6.5)
+    local realCF, applied = nil, false
+
+    local function offsetVector()
+        local r = math.clamp(tonumber(S.DesyncRadius) or 6, 0, 14)
+        local mode = S.DesyncMode or "Spin"
+        if mode == "Static" then
+            return Vector3.new(r, 0, 0)
+        elseif mode == "Up" then
+            return Vector3.new(0, r, 0)
+        elseif mode == "Jitter" then
+            return Vector3.new(math.random(-100, 100) / 100 * r, 0, math.random(-100, 100) / 100 * r)
+        end
+        local a = tick() * 6
+        return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+    end
+
+    -- Stepped fires immediately before the physics step, so this is the last write the server sees.
+    tc(RunService.Stepped:Connect(function()
+        if not S.Desync then return end
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then return end
+        realCF = hrp.CFrame
+        applied = true
+        hrp.CFrame = realCF + offsetVector()
+    end))
+
+    -- Heartbeat runs after the step: put the real position back before anything local reads it.
+    tc(RunService.Heartbeat:Connect(function()
+        if not applied then return end
+        applied = false
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp and realCF then hrp.CFrame = realCF end
+        realCF = nil
+    end))
+
+    mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
+        S.Desync = v
+        if not v then
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp and realCF then hrp.CFrame = realCF end
+            realCF, applied = nil, false
+        end
+    end, 1)
+    mkCycle(secDesync, "Desync Mode", { "Spin", "Static", "Up", "Jitter" }, "Spin", function(v)
+        S.DesyncMode = v
+    end, 2)
+    mkSlider(secDesync, "Desync Radius", 0, 14, 6, function(v) S.DesyncRadius = v end, 3)
 end
