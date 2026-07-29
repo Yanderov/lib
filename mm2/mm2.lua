@@ -6587,11 +6587,6 @@ end, 6)
     mkToggle(sec5, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 1)
 
 
-    -- Environment components
-    local secCam = mkSection(Pages.Visuals, "Camera", 5.5)
-    mkToggle(secCam, "Stretch Resolution", false, function(v) S.StretchEnabled = v end, 1)
-    mkSlider(secCam, "Stretch Amount", 10, 100, 75, function(v) S.StretchAmount = v / 100 end, 2)
-
     RunService.RenderStepped:Connect(function()
         if S.StretchEnabled then
             local cam = workspace.CurrentCamera
@@ -6605,6 +6600,8 @@ end, 6)
     local secFx = mkSection(Pages.Visuals, "Effects", 7)
     mkSlider(secFx, "Saturation", -100, 100, 0, function(v) S.Saturation = v end, 1)
     mkSlider(secFx, "Contrast", -100, 100, 0, function(v) S.Contrast = v end, 2)
+    mkToggle(secFx, "Stretch Resolution", false, function(v) S.StretchEnabled = v end, 3)
+    mkSlider(secFx, "Stretch Amount", 10, 100, 75, function(v) S.StretchAmount = v / 100 end, 4)
     -- Camera FOV control removed.
 
     -- Custom Crosshair: removed
@@ -6685,7 +6682,7 @@ end, 6)
         for _, section in ipairs({sec1, sec2, sec5}) do
             if section and section.Parent then section.Parent.Visible = isESP end
         end
-        for _, section in ipairs({secCam, sec4, secFx}) do
+        for _, section in ipairs({sec4, secFx}) do
             if section and section.Parent then section.Parent.Visible = isEnvironment end
         end
         for _, section in ipairs({secShaders, secHandShaders}) do
@@ -12412,7 +12409,7 @@ local function listConfigs()
 end
 do
     if not FILE_OK then
-        local sec = mkSection(Pages.Config, "Configs", 1)
+        local sec = mkSection(Pages.Config, "Config Notice", 1)
         pcall(function() sec.Parent:SetAttribute("ForceFullWidth", true) end)
         local warn = Instance.new("TextLabel")
         warn.Parent = sec; warn.LayoutOrder = 1; warn.BackgroundTransparency = 1
