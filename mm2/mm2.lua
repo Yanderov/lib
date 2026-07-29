@@ -12557,16 +12557,30 @@ local function buildConfig()
         -- KeyCode/EnumItem values are not JSON values. Persist the stable name and rebuild the
         -- Enum.KeyCode on restore; the old b.key field was never populated, so binds silently
         -- disappeared from every autoload snapshot.
-        data.binds[b.id] = {
-            state = b.state,
-            key = b.bindKey and b.bindKey.Name or nil,
-        }
+        -- The key is b.cfgId. No bind entry has ever had an `id` field -- mkToggle and mkAction both
+        -- name it cfgId -- so this read nil, and `data.binds[nil] = ...` is a hard error in Lua. It
+        -- threw on the FIRST bind every single time, which aborted buildConfig before it reached
+        -- data.tables and data.floatPos. That is why the whitelist, manual targets, floating-button
+        -- positions and every keybind were missing from saves.
+        if b.cfgId then
+            data.binds[b.cfgId] = {
+                state = b.state,
+                key = b.bindKey and b.bindKey.Name or nil,
+            }
+        end
     end
     for name, enabled in pairs(S.Whitelist or {}) do
         if type(name) == "string" and enabled == true then data.tables.Whitelist = data.tables.Whitelist or {}; data.tables.Whitelist[name] = true end
     end
     for name, enabled in pairs(S.ManualTargets or {}) do
         if type(name) == "string" and enabled == true then data.tables.ManualTargets = data.tables.ManualTargets or {}; data.tables.ManualTargets[name] = true end
+    end
+    -- Music favourites are a table, so the scalar-only S snapshot above skips them.
+    for id, on in pairs(S.MusicFavs or {}) do
+        if type(id) == "string" and on == true then
+            data.tables.MusicFavs = data.tables.MusicFavs or {}
+            data.tables.MusicFavs[id] = true
+        end
     end
     for id, pos in pairs(FloatPos or {}) do
         if type(id) == "string" and type(pos) == "table" then
@@ -12657,6 +12671,13 @@ local function loadConfig(name)
             if type(name) == "string" and enabled == true then S.ManualTargets[name] = true end
         end
     end
+    S.MusicFavs = {}
+    if type(savedTables.MusicFavs) == "table" then
+        for id, on in pairs(savedTables.MusicFavs) do
+            if type(id) == "string" and on == true then S.MusicFavs[id] = true end
+        end
+    end
+    if S._MusicRefresh then pcall(S._MusicRefresh) end
     if type(dat.floatPos) == "table" then
         if S._floatApplyMap then
             pcall(S._floatApplyMap, dat.floatPos)
@@ -12703,17 +12724,26 @@ local function loadConfig(name)
     
     if dat.binds then
         for _, b in ipairs(AllBinds) do
-            if dat.binds[b.id] then
+            -- b.cfgId, to match what buildConfig writes. Reading b.id returned nil, so
+            -- dat.binds[nil] was nil and no keybind was ever restored.
+            local saved = b.cfgId and dat.binds[b.cfgId]
+            if saved then
                 pcall(function()
-                    b.state = dat.binds[b.id].state
-                    local keyName = dat.binds[b.id].key
+                    b.state = saved.state
+                    local keyName = saved.key
                     for key, bound in pairs(BindReg) do
                         if bound == b then BindReg[key] = nil end
                     end
                     b.bindKey = nil
-                    if type(keyName) == "string" and Enum.KeyCode[keyName] then
-                        b.bindKey = Enum.KeyCode[keyName]
-                        BindReg[b.bindKey] = b
+                    -- Enum.KeyCode[bad] THROWS rather than returning nil, and this whole block is
+                    -- inside one pcall, so a stale key name would skip the visual refresh below and
+                    -- leave the toggle showing the wrong state.
+                    if type(keyName) == "string" then
+                        local okKey, code = pcall(function() return Enum.KeyCode[keyName] end)
+                        if okKey and code then
+                            b.bindKey = code
+                            BindReg[code] = b
+                        end
                     end
                     if b.btn then b.btn.Text = b.bindKey and b.bindKey.Name or "None" end
                     if b.updateVisuals then b.updateVisuals() end
@@ -18696,6 +18726,12 @@ do
 
     local scroll = S._mkListScroll(secMusic, 5, MOBILE and 300 or 260)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    -- _mkListScroll ships a UIListLayout, which overrides the manual Position on every row and
+    -- stacks the ~14 windowed rows at the top of a canvas sized for all 355 -- so scrolling down
+    -- showed nothing but empty space. Windowed lists position their own rows; drop the layout.
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("UIListLayout") then child:Destroy() end
+    end
 
     local function rebuildMatches()
         table.clear(matches)
