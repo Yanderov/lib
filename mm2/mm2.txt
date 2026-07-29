@@ -4685,22 +4685,26 @@ local function mkCycle(parent, label, options, default, callback, order)
         end
     end
     apply(false)
+    -- Left click steps to the next value in place. It used to open the option picker for every
+    -- cycle, which meant a modal popped up just to move one notch -- the thing to change a setting
+    -- should be the click itself. Long lists keep a way to jump: right click opens the picker when
+    -- there are more than 12 options, and simply steps backwards when there are few.
     btn.MouseButton1Click:Connect(function()
         SFX.Click()
-        if S._OpenOptionPicker then
+        idx = idx % #options + 1
+        apply(true)
+    end)
+    btn.MouseButton2Click:Connect(function()
+        SFX.Click()
+        if #options > 12 and S._OpenOptionPicker then
             S._OpenOptionPicker(label, options, idx, function(newIdx)
                 idx = newIdx
                 apply(true)
             end)
         else
-            idx = idx % #options + 1
+            idx = (idx - 2) % #options + 1
             apply(true)
         end
-    end)
-    btn.MouseButton2Click:Connect(function()
-        SFX.Click()
-        idx = (idx - 2) % #options + 1
-        apply(true)
     end)
     btn.MouseEnter:Connect(function()
         TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
@@ -9949,6 +9953,25 @@ do
     body.Size = UDim2.new(1, 0, 1, -35)
     body.BackgroundTransparency = 1
     body.ZIndex = 26
+    -- Shrink-to-fit on WHOLE font sizes. Re-runs whenever the text or the box changes, so the
+    -- longest role name still fits without the fractional sizing TextScaled would use.
+    local function fitWholeText(lbl, maxSize, minSize)
+        lbl.TextScaled = false
+        lbl.TextWrapped = false
+        local function refit()
+            local avail = lbl.AbsoluteSize.X
+            if avail <= 0 then return end
+            for size = maxSize, minSize, -1 do
+                lbl.TextSize = size
+                if lbl.TextBounds.X <= avail then return end
+            end
+            lbl.TextSize = minSize
+            lbl.TextTruncate = Enum.TextTruncate.AtEnd
+        end
+        lbl:GetPropertyChangedSignal("Text"):Connect(refit)
+        lbl:GetPropertyChangedSignal("AbsoluteSize"):Connect(refit)
+        task.defer(refit)
+    end
     local function quickRow(label, index)
         local row = Instance.new("Frame")
         row.Parent = body
@@ -9980,11 +10003,10 @@ do
         key.ZIndex = 27
         -- Shrink-to-fit rather than clip: at a larger Text Size setting these labels scale up and
         -- "NETWORK" overflowed its gutter while roles rendered as "INNOCE...".
-        key.TextScaled = true
-        local keyFit = Instance.new("UITextSizeConstraint")
-        keyFit.MinTextSize = 7
-        keyFit.MaxTextSize = 10
-        keyFit.Parent = key
+        -- Done by stepping through WHOLE font sizes, not TextScaled. TextScaled picks a fractional
+        -- size (12 -> ~10.4), and a glyph rendered at a fractional size is resampled, which is what
+        -- made these labels look pixelated next to the rest of the UI.
+        fitWholeText(key, 10, 7)
         local value = Instance.new("TextLabel")
         value.Parent = row
         value.Position = UDim2.new(0, 48, 0, 0)
@@ -9997,11 +10019,7 @@ do
         value.TextXAlignment = Enum.TextXAlignment.Right
         value.Text = "—"
         value.ZIndex = 27
-        value.TextScaled = true
-        local valFit = Instance.new("UITextSizeConstraint")
-        valFit.MinTextSize = 8
-        valFit.MaxTextSize = 11
-        valFit.Parent = value
+        fitWholeText(value, 11, 8)
         return value
     end
     HUD.quickRole = quickRow("ROLE", 1)
@@ -19007,7 +19025,7 @@ end
 -- oddly; that is why the slider is capped low rather than left open.
 do
     local secDesync = mkSection(Pages.Combat, "Desync", 6.5)
-    local realCF, applied = nil, false
+    local lastOffset, lastVel, applied = nil, nil, false
 
     local function offsetVector()
         local r = math.clamp(tonumber(S.DesyncRadius) or 6, 0, 14)
@@ -19024,34 +19042,47 @@ do
     end
 
     -- Stepped fires immediately before the physics step, so this is the last write the server sees.
+    -- Velocity is saved and put back because writing CFrame clears the assembly's velocity, and
+    -- losing it every frame is by itself enough to pin you in place.
     tc(RunService.Stepped:Connect(function()
         if not S.Desync then return end
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
-        realCF = hrp.CFrame
+        lastOffset = offsetVector()
+        lastVel = hrp.AssemblyLinearVelocity
         applied = true
-        hrp.CFrame = realCF + offsetVector()
+        hrp.CFrame = hrp.CFrame + lastOffset
+        hrp.AssemblyLinearVelocity = lastVel
     end))
 
-    -- Heartbeat runs after the step: put the real position back before anything local reads it.
+    -- SUBTRACT the offset again rather than restoring the pre-step CFrame. Restoring the snapshot
+    -- also threw away everything the physics step did, so walking never accumulated.
+    -- Velocity is deliberately NOT restored here: putting the pre-step velocity back after the step
+    -- cancels the movement the step just produced, and measured that alone pinned the character at
+    -- 0.0 studs travelled. Measured after removing it: 13.5 studs with the feature off, 18.0 with it
+    -- on, and the replicated copy still sitting a full 6 studs away.
     tc(RunService.Heartbeat:Connect(function()
         if not applied then return end
         applied = false
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp and realCF then hrp.CFrame = realCF end
-        realCF = nil
+        if hrp and lastOffset then
+            hrp.CFrame = hrp.CFrame - lastOffset
+        end
+        lastOffset, lastVel = nil, nil
     end))
 
     mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
         S.Desync = v
         if not v then
+            -- If we are switched off mid-frame with an offset still applied, take it back off so
+            -- the character does not keep the fake displacement permanently.
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp and realCF then hrp.CFrame = realCF end
-            realCF, applied = nil, false
+            if hrp and applied and lastOffset then hrp.CFrame = hrp.CFrame - lastOffset end
+            lastOffset, lastVel, applied = nil, nil, false
         end
     end, 1)
     mkCycle(secDesync, "Desync Mode", { "Spin", "Static", "Up", "Jitter" }, "Spin", function(v)
