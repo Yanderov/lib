@@ -6551,18 +6551,21 @@ end, 6)
         styleSubTabActive(shaderBtn, shaderStroke, isShaders)
         styleSubTabActive(customBtn, customStroke, isCustoms)
 
-        for _, section in ipairs({sec1, sec2, sec5}) do
-            if section and section.Parent then section.Parent.Visible = isESP end
+        -- select("#", ...) rather than ipairs, and that is the whole fix for "cards repeat under
+        -- every subtab". Removed features left nil holes in these lists -- sec2 and sec4 no longer
+        -- exist -- and ipairs stops dead at the first nil. Everything after the hole was therefore
+        -- never assigned a visibility at all, so Alerts and Color & Stretch simply stayed on screen
+        -- under all four subtabs. One card seen four times, not four cards.
+        local function setVisible(vis, ...)
+            for i = 1, select("#", ...) do
+                local section = select(i, ...)
+                if section and section.Parent then section.Parent.Visible = vis end
+            end
         end
-        for _, section in ipairs({sec4, secFx}) do
-            if section and section.Parent then section.Parent.Visible = isEnvironment end
-        end
-        for _, section in ipairs({secShaders, secHandShaders}) do
-            if section and section.Parent then section.Parent.Visible = isShaders end
-        end
-        for _, section in ipairs({secCustoms, secKnifeEffects}) do
-            if section and section.Parent then section.Parent.Visible = isCustoms end
-        end
+        setVisible(isESP, sec1, sec2, sec5)
+        setVisible(isEnvironment, sec4, secFx)
+        setVisible(isShaders, secShaders, secHandShaders)
+        setVisible(isCustoms, secCustoms, secKnifeEffects)
         for _, section in ipairs(S._CustomsSections) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
         end
@@ -12098,6 +12101,11 @@ local function writeAutoConfig()
         lastAutoSaveEnc = enc
     end
 end
+-- Exported so a snapshot can be inspected without saving a file. Config coverage is impossible to
+-- reason about from the source alone: what matters is how many controls actually register and how
+-- many of them return a value, and both are only knowable at runtime.
+S._BuildConfig = buildConfig
+S._ConfigControls = ConfigControls
 S._RequestAutoSave = function()
     if not FILE_OK or applyingConfig or autoSaveQueued then return end
     autoSaveQueued = true
@@ -12363,6 +12371,38 @@ do
         info.TextColor3 = T.Tx4; pcall(function() info:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end); info.TextWrapped = true
         info.TextXAlignment = Enum.TextXAlignment.Left
         info.Text = "Auto Save keeps settings, keybinds, HUD visibility and HUD positions; changes are saved immediately and restored on next launch."
+
+        -- Full reset. Two clicks, because this throws away every setting in the hub and there is no
+        -- undo -- a single mis-tap next to Auto Save would be expensive.
+        local resetArmed = 0
+        mkAction(sec2, "Reset Everything", function()
+            if os.clock() - resetArmed > 4 then
+                resetArmed = os.clock()
+                Notify("Config", "Press again within 4s to wipe every setting.", 4)
+                return
+            end
+            resetArmed = 0
+            local defaults = S._ControlDefaults
+            if not defaults then
+                Notify("Config", "Defaults not captured yet, try again in a moment.", 3)
+                return
+            end
+            -- applyingConfig suppresses autosave while this runs, or each individual control change
+            -- would race a write and the half-reset state could be persisted.
+            applyingConfig = true
+            local restored = 0
+            for _, c in ipairs(ConfigControls) do
+                local want = defaults[c.id]
+                if want ~= nil and pcall(c.set, want) then restored = restored + 1 end
+            end
+            for _, tbl in ipairs({ "Whitelist", "ManualTargets", "MusicFavs" }) do
+                if type(S[tbl]) == "table" then table.clear(S[tbl]) end
+            end
+            pcall(function() delfile(CFG_DIR .. "/_autoload.json") end)
+            lastAutoSaveEnc = nil
+            applyingConfig = false
+            Notify("Config", "Reset " .. restored .. " settings to defaults.", 4)
+        end, 3)
     end
     if S._RefreshPageLayout and activePage == Pages.Config then pcall(S._RefreshPageLayout, false) end
 end
@@ -12385,6 +12425,16 @@ if FILE_OK then
             local ok, v = pcall(c.get)
             if ok and boot[c.id] ~= nil and v ~= boot[c.id] then skip[c.id] = true end
         end
+        -- Defaults are captured HERE, after every page has registered its controls but before the
+        -- saved config is applied. There is no defaults table to read back from -- S is mutated in
+        -- place -- so this window is the only moment the untouched values exist, and Reset has
+        -- nothing to restore without it.
+        local defaults = {}
+        for _, c in ipairs(ConfigControls) do
+            local ok, v = pcall(c.get)
+            if ok then defaults[c.id] = v end
+        end
+        S._ControlDefaults = defaults
         S._cfgSkip = skip
         pcall(function() if S.LoadConfig then S.LoadConfig("_autoload") end end)
         S._cfgSkip = nil
@@ -12393,7 +12443,13 @@ if FILE_OK then
         -- allowed to replace the broken file.
         bootRestorePending = false
         configLoadedSuccessfully = true
-        pcall(writeAutoConfig)
+        -- Deliberately NOT written here. Restoring 154 controls fires their callbacks, and several
+        -- of those finish on their own threads, so a snapshot taken in this frame captures a
+        -- half-applied state and overwrites the good file with it -- every reload degrading the
+        -- config a little further. Setting configLoadedSuccessfully above is what actually stops a
+        -- broken autoload from disabling autosave; the write was redundant as well as harmful.
+        -- The 5 s loop below and the change-driven saves both cover it once things have settled.
+        task.delay(6, function() pcall(writeAutoConfig) end)
     end)
     -- Periodic fallback: immediate save requests handle normal changes, while this loop catches any
     -- state mutation that happened outside a UI callback. Unchanged configs are still a no-op.
@@ -18646,6 +18702,9 @@ end
 -- would be guesswork, and guesswork is what put four wrong fixes in this file already.
 do
     local secSkins = mkSection(Pages.Visuals, "Skins", 4.8)
+    -- Registered, or it belongs to no subtab and the switcher never hides it -- which is what made
+    -- it show up under all four at once.
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secSkins) end
     -- Grid, not a text list: the ask was to see the weapons, so each entry is its catalogue
     -- thumbnail with the name under it. Sync.Item carries an Image field per entry, which is a
     -- Roblox thumbnail URL that ImageLabel.Image accepts directly -- no asset extraction anywhere.
