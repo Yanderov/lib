@@ -18516,6 +18516,202 @@ do
 end
 
 
+-- ============ SKIN CATALOGUE ============
+-- Reads the game's own live table, ReplicatedStorage.Database.Sync.Item. Deliberately not a static
+-- dump: the same table measured 973 entries a while back and 997 today, so anything baked into this
+-- file would already be lying. Entry shape, measured: ItemName, ItemType (Knife 628 / Gun 353 /
+-- Misc 13), Rarity, Season, ItemID.
+--
+-- ponytail: catalogue and browser only. Applying a skin to the held weapon needs the structure of an
+-- equipped Tool, and no weapon was in hand when this was measured -- Resources holds only Perks, so
+-- the models are not client-side and the swap target is still unknown. Wiring Apply without that
+-- would be guesswork, and guesswork is what put four wrong fixes in this file already.
+do
+    local secSkins = mkSection(Pages.Visuals, "Skins", 4.8)
+    -- Grid, not a text list: the ask was to see the weapons, so each entry is its catalogue
+    -- thumbnail with the name under it. Sync.Item carries an Image field per entry, which is a
+    -- Roblox thumbnail URL that ImageLabel.Image accepts directly -- no asset extraction anywhere.
+    local COLS, CARD_H, VIS_ROWS = 3, 74, 4
+    local all, shown, cards = {}, {}, {}
+    local filter, query = "Knife", ""
+
+    -- Knife / Gun subtabs, using the same button helper every other subtab bar in this file uses.
+    local skinBar = Instance.new("Frame")
+    skinBar.Name = "SkinSubTabBar"
+    skinBar.Parent = secSkins
+    skinBar.LayoutOrder = 1
+    skinBar.BackgroundTransparency = 1
+    skinBar.Size = UDim2.new(1, 0, 0, 28)
+    local skinBarList = Instance.new("UIListLayout")
+    skinBarList.FillDirection = Enum.FillDirection.Horizontal
+    skinBarList.SortOrder = Enum.SortOrder.LayoutOrder
+    skinBarList.Padding = UDim.new(0, 6)
+    skinBarList.Parent = skinBar
+
+    local knifeBtn = Instance.new("TextButton")
+    local gunBtn = Instance.new("TextButton")
+    local knifeStroke = mkSubTabBtn(skinBar, knifeBtn, "Knife", 1, 1 / 2, -6)
+    local gunStroke = mkSubTabBtn(skinBar, gunBtn, "Gun", 2, 1 / 2, -6)
+
+    local list = Instance.new("ScrollingFrame")
+    list.Name = "SkinList"
+    list.Parent = secSkins
+    list.LayoutOrder = 3
+    list.Size = UDim2.new(1, 0, 0, CARD_H * VIS_ROWS)
+    list.BackgroundTransparency = 1
+    list.BorderSizePixel = 0
+    list.ScrollBarThickness = 4
+    list.CanvasSize = UDim2.new()
+
+    local count = Instance.new("TextLabel")
+    count.Parent = secSkins
+    count.LayoutOrder = 2
+    count.Size = UDim2.new(1, 0, 0, 16)
+    count.BackgroundTransparency = 1
+    count.Font = FM
+    count.TextSize = 11
+    count.TextXAlignment = Enum.TextXAlignment.Left
+    count.TextColor3 = T.Tx3
+    count.Text = "Loading catalogue..."
+
+    -- Windowed in two dimensions: only COLS * (VIS_ROWS + 1) cards ever exist, and scrolling
+    -- repositions them. A grid layout with a card per entry would be 994 instances plus 994 image
+    -- requests, which is exactly the always-on cost that makes this hub stutter.
+    local function render()
+        local w = list.AbsoluteSize.X
+        if w <= 0 then w = 300 end
+        local cardW = (w - 6 * (COLS + 1)) / COLS
+        local topRow = math.floor(list.CanvasPosition.Y / CARD_H)
+        for i = 1, #cards do
+            local card = cards[i]
+            local slot = i - 1
+            local idx = topRow * COLS + slot + 1
+            local item = shown[idx]
+            if not item then
+                card.Visible = false
+            else
+                local r = math.floor(slot / COLS)
+                local c = slot % COLS
+                card.Visible = true
+                card.Size = UDim2.fromOffset(cardW, CARD_H - 6)
+                card.Position = UDim2.fromOffset(
+                    6 + c * (cardW + 6),
+                    (topRow + r) * CARD_H
+                )
+                card.Thumb.Image = item.Image or ""
+                card.Label.Text = item.ItemName or "?"
+                card.Label.TextColor3 = item.RarityColor or T.Tx
+            end
+        end
+    end
+
+    local function refresh()
+        table.clear(shown)
+        local q = query:lower()
+        for _, it in ipairs(all) do
+            local okType = tostring(it.ItemType) == filter
+            local okName = q == "" or tostring(it.ItemName):lower():find(q, 1, true) ~= nil
+            if okType and okName then table.insert(shown, it) end
+        end
+        count.Text = string.format("%s  -  %d shown", filter, #shown)
+        local rowsNeeded = math.ceil(#shown / COLS)
+        list.CanvasSize = UDim2.new(0, 0, 0, rowsNeeded * CARD_H)
+        render()
+    end
+
+    for i = 1, COLS * (VIS_ROWS + 1) do
+        local card = Instance.new("TextButton")
+        card.Parent = list
+        card.BackgroundColor3 = T.Elev
+        card.BackgroundTransparency = 0.3
+        card.BorderSizePixel = 0
+        card.AutoButtonColor = false
+        card.Text = ""
+        card.Visible = false
+        Corner(card, 6)
+
+        local thumb = Instance.new("ImageLabel")
+        thumb.Name = "Thumb"
+        thumb.Parent = card
+        thumb.AnchorPoint = Vector2.new(0.5, 0)
+        thumb.Position = UDim2.new(0.5, 0, 0, 4)
+        thumb.Size = UDim2.fromOffset(42, 42)
+        thumb.BackgroundTransparency = 1
+        thumb.ScaleType = Enum.ScaleType.Fit
+
+        local label = Instance.new("TextLabel")
+        label.Name = "Label"
+        label.Parent = card
+        label.Position = UDim2.new(0, 2, 1, -20)
+        label.Size = UDim2.new(1, -4, 0, 16)
+        label.BackgroundTransparency = 1
+        label.Font = FM
+        label.TextSize = 10
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+        label.TextColor3 = T.Tx
+        cards[i] = card
+    end
+
+    local function setFilter(v)
+        filter = v
+        styleSubTabActive(knifeBtn, knifeStroke, v == "Knife")
+        styleSubTabActive(gunBtn, gunStroke, v == "Gun")
+        list.CanvasPosition = Vector2.new(0, 0)
+        refresh()
+    end
+    knifeBtn.MouseButton1Click:Connect(function() setFilter("Knife") end)
+    gunBtn.MouseButton1Click:Connect(function() setFilter("Gun") end)
+
+    list:GetPropertyChangedSignal("CanvasPosition"):Connect(render)
+    list:GetPropertyChangedSignal("AbsoluteSize"):Connect(render)
+
+    -- Spawned, never inline. Requiring a game ModuleScript on this thread poisons its ability to
+    -- write to the hub's own GUI -- that was the root cause of the config-restore bug.
+    task.spawn(function()
+        local ok, Sync = pcall(function()
+            return require(game:GetService("ReplicatedStorage").Database.Sync)
+        end)
+        if not (ok and Sync and Sync.Item) then
+            count.Text = "Catalogue unavailable"
+            return
+        end
+        -- ItemService exposes the game's own rarity palette, so the names read in the same colours
+        -- the real inventory uses instead of a second, invented scale.
+        local rarityColor = {}
+        pcall(function()
+            local IS = require(game:GetService("ReplicatedStorage").ClientServices.ItemService)
+            if IS and IS.GetRarityColor then
+                rarityColor = setmetatable({}, {
+                    __index = function(_, r)
+                        local okc, col = pcall(IS.GetRarityColor, r)
+                        return okc and col or nil
+                    end,
+                })
+            end
+        end)
+        for key, it in pairs(Sync.Item) do
+            if type(it) == "table" and it.ItemName then
+                table.insert(all, {
+                    Key = key,
+                    ItemName = it.ItemName,
+                    ItemType = it.ItemType,
+                    Rarity = it.Rarity,
+                    ItemID = it.ItemID,
+                    Image = it.Image,
+                    RarityColor = rarityColor[it.Rarity],
+                })
+            end
+        end
+        table.sort(all, function(a, b) return tostring(a.ItemName) < tostring(b.ItemName) end)
+        setFilter("Knife")
+    end)
+
+    S._SkinSearch = function(text)
+        query = text or ""
+        refresh()
+    end
+end
+
 -- ============ MOVEMENT EXTRAS + CUSTOM FOG ============
 -- Own do-block: this file sits on Luau's register ceiling and the limit applies per function as well
 -- as to the main chunk, so nothing here may become a top-level local.
