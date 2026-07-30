@@ -36,13 +36,19 @@ foreach ($build in $builds) {
     }
 
     $header = $strict + @(
-        "-- $($build.Name) — MOBILE BUILD (generated, do not edit by hand).",
+        "-- $($build.Name) - MOBILE BUILD (generated, do not edit by hand).",
         "-- Identical source to $($build.Source) with the build flag forced on.",
         '-- Regenerate after ANY edit to the source:   .\build_mobile.ps1',
         '_G.INERTIA_MOBILE = true'
     )
 
-    Set-Content -LiteralPath $build.Target -Value ($header + $lines) -Encoding utf8NoBOM
+    # Written through .NET rather than Set-Content -Encoding utf8NoBOM, because that value only
+    # exists in PowerShell 6+ and Windows PowerShell 5.1 fails outright on it. UTF8Encoding($false)
+    # is the BOM-less writer both editions have, and BOM-less matters: a BOM at the top of a .lua
+    # file is not a comment and the executor chokes on it.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $target = (Join-Path (Get-Location) $build.Target)
+    [System.IO.File]::WriteAllLines($target, [string[]]($header + $lines), $utf8NoBom)
     Write-Host ("{0,-34} -> {1} ({2} lines)" -f $build.Source, $build.Target, ($header.Count + $lines.Count))
 
     if ($build.SourceText) {

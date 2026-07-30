@@ -1,4 +1,4 @@
--- DEMONOLOGY — MOBILE BUILD (generated, do not edit by hand).
+-- DEMONOLOGY - MOBILE BUILD (generated, do not edit by hand).
 -- Identical source to demonology/demonology.lua with the build flag forced on.
 -- Regenerate after ANY edit to the source:   .\build_mobile.ps1
 _G.INERTIA_MOBILE = true

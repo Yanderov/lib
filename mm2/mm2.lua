@@ -18513,8 +18513,122 @@ do
             lastCF, lastVel, lastAng, applied = nil, nil, nil, false
         end
     end, 1)
+
+    -- ---- Velocity Desync ----
+    -- Attacks a different signal to the position one. Remote clients do not just draw the last
+    -- position they received, they EXTRAPOLATE from the velocity that came with it -- so a huge
+    -- replicated velocity throws their render of you far past wherever you actually are, and it keeps
+    -- doing so between packets rather than only on the frames a position landed.
+    --
+    -- Same frame ordering as above and for the same reason: written on Heartbeat, after physics and
+    -- before replication, restored at the top of the next frame. The velocity never survives into a
+    -- physics step, so it cannot launch you -- which is the difference between this and the fling
+    -- engine, where an identical spike is deliberately left in for one step.
+    do
+        local vLast, vCF, vApplied = nil, nil, false
+        local VEL_SPAN = 7777
+
+        tc(RunService.Heartbeat:Connect(function()
+            if not S.VelDesync then return end
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum or hum.Health <= 0 then return end
+            local rnd = math.random
+            -- The CFrame is snapshotted too, and that is the whole correctness of this feature.
+            -- Restoring only the velocity does NOT undo the movement the velocity already caused:
+            -- measured 8993 studs of drift over two seconds when this saved velocity alone. Position
+            -- is absolute, so putting the CFrame back erases the displacement outright, which is
+            -- exactly why the position desync above was stable and this was not.
+            vCF = hrp.CFrame
+            vLast = hrp.AssemblyLinearVelocity
+            vApplied = true
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                (rnd() * 2 - 1) * VEL_SPAN,
+                rnd() * VEL_SPAN,
+                (rnd() * 2 - 1) * VEL_SPAN
+            )
+        end))
+
+        local vName = "InertiaVelDesyncRestore_" .. tostring(math.random(1, 1e9))
+        RunService:BindToRenderStep(vName, Enum.RenderPriority.First.Value - 1, function()
+            if not vApplied then return end
+            vApplied = false
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if vCF then hrp.CFrame = vCF end
+                if vLast then hrp.AssemblyLinearVelocity = vLast end
+            end
+            vLast, vCF = nil, nil
+        end)
+        SG.Destroying:Connect(function()
+            pcall(function() RunService:UnbindFromRenderStep(vName) end)
+        end)
+
+        mkToggle(secDesync, "Velocity Desync", false, function(v)
+            S.VelDesync = v
+            if not v then
+                local char = LP.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp and vApplied then
+                    if vCF then hrp.CFrame = vCF end
+                    if vLast then hrp.AssemblyLinearVelocity = vLast end
+                end
+                vLast, vCF, vApplied = nil, nil, false
+            end
+        end, 2)
+    end
 end
 
+
+-- ============ FIELD OF VIEW + CUSTOM SKY ============
+-- Own do-block: this file sits on Luau's register ceiling, so nothing here may become a top-level
+-- local.
+do
+    -- Visuals, not Misc. Misc is split into subtabs and an unregistered section there landed under
+    -- Protection, which is nothing to do with the camera. Registered as an Environment section so it
+    -- sits beside Custom Fog, which is the other thing that changes how the world looks.
+    local secView = mkSection(Pages.Visuals, "View", 5.3)
+    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secView) end
+
+    -- FOV has to be re-asserted rather than set once. The game's own camera scripts write
+    -- FieldOfView (zoom, spectate, round transitions), so a one-shot assignment lasts until the next
+    -- time anything else touches the camera. Cheap because it only runs while enabled and only
+    -- writes when the value has actually drifted.
+    -- Restore to whatever the FOV actually was when this was switched on, not to a hardcoded 70.
+    -- Snapshotting is also what makes the restore correct if the flag is flipped from anywhere other
+    -- than the toggle, which is how the measurement caught it staying stuck at 100.
+    local fovOriginal = nil
+    tc(RunService.RenderStepped:Connect(function()
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        if not S.CustomFOV then
+            if fovOriginal then
+                cam.FieldOfView = fovOriginal
+                fovOriginal = nil
+            end
+            return
+        end
+        if not fovOriginal then fovOriginal = cam.FieldOfView end
+        local want = math.clamp(tonumber(S.FOVValue) or 70, 20, 120)
+        if math.abs(cam.FieldOfView - want) > 0.05 then cam.FieldOfView = want end
+    end))
+
+    mkToggle(secView, "Custom FOV", false, function(v) S.CustomFOV = v end, 1)
+    mkSlider(secView, "FOV", 20, 120, 70, function(v) S.FOVValue = v end, 2)
+
+    -- Custom Sky removed on request. This sweep stays: the feature is gone, so nothing would ever
+    -- take its instances back out again, and anyone who had a preset applied would be left with a
+    -- permanently altered sky.
+    do
+        local a = game:GetService("Lighting"):FindFirstChild("InertiaAtmosphere")
+        if a then a:Destroy() end
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        local c = terrain and terrain:FindFirstChild("InertiaClouds")
+        if c then c:Destroy() end
+    end
+end
 
 -- ============ SKIN CATALOGUE ============
 -- Reads the game's own live table, ReplicatedStorage.Database.Sync.Item. Deliberately not a static
@@ -18709,6 +18823,188 @@ do
     S._SkinSearch = function(text)
         query = text or ""
         refresh()
+    end
+
+    -- ---- Applying a skin ----
+    -- Measured, not guessed: a weapon's look is a SpecialMesh named "Mesh" under the Tool's Handle,
+    -- carrying MeshId and TextureId. Writing those from the client is a local property change on a
+    -- replicated instance, so it is visual only -- nobody else sees it, which is what was asked.
+    --
+    -- The catch is where a given skin's MeshId comes from. Sync.Item carries a thumbnail and nothing
+    -- else -- no MeshId, no TextureId -- so the models are handed out by the server on equip and are
+    -- not enumerable from here. Rather than guess, the hub harvests: every weapon Tool that appears
+    -- in the world, yours or anyone else's, has its mesh recorded against its ItemID. In a populated
+    -- server that fills quickly, and a skin nobody has held yet is honestly reported as unseen
+    -- instead of silently doing nothing.
+    local library = {}
+    S._SkinLibrary = library
+
+    -- Seeded from known asset ids so a skin nobody in the server happens to be holding still
+    -- applies. The harvester below keeps running and overwrites any of these with what the game
+    -- actually hands out, so a seed being stale costs nothing -- it is a floor, not a source of
+    -- truth.
+    --
+    -- Two shapes, because a weapon's look is two properties. A MESH entry changes the shape and
+    -- leaves the texture alone; a TEXTURE entry is a knife re-skin, which is the default knife mesh
+    -- with a different texture painted on it.
+    local DEFAULT_KNIFE_MESH = "rbxassetid://121946387"
+    for name, id in pairs({
+        ["Default Knife"] = 121946387, ["Revolver"] = 97885508,
+        ["Fang"] = 116693735, ["Deathshard"] = 62350856,
+        ["Saw"] = 170903610, ["Luger"] = 95354288,
+        ["Heat"] = 105351545, ["Seer"] = 156467990,
+        ["Shark"] = 118281463, ["Splitter"] = 22787189,
+        ["Shadow"] = 86494914, ["Prince"] = 71037101,
+        ["Ghost"] = 64220952, ["Laser"] = 18268645,
+        ["Blood"] = 51757162, ["Phaser"] = 69567827,
+        ["MM1 Revolver"] = 25317304, ["MM1 Knife"] = 20721924,
+    }) do
+        library[name] = { MeshId = "rbxassetid://" .. id, TextureId = nil, Seeded = true }
+    end
+    for name, id in pairs({
+        ["Plasmite"] = 161369273, ["LMFAO"] = 160971237,
+        ["Marley"] = 161576918, ["Checker"] = 160167441,
+        ["Cheesy"] = 161425686, ["Krypto"] = 155572642,
+        ["Ice"] = 161313071, ["Neon"] = 159653652,
+        ["Rainbow"] = 157019835, ["Wanwood"] = 159653725,
+        ["Doge"] = 159758190, ["Splatter"] = 144012208,
+        ["Midnight"] = 161367322, ["Predator"] = 199611278,
+        ["Dew"] = 192294097,
+    }) do
+        library[name] = {
+            MeshId = DEFAULT_KNIFE_MESH,
+            TextureId = "rbxassetid://" .. id,
+            Seeded = true,
+        }
+    end
+
+    local function harvest(tool)
+        if not (tool and tool:IsA("Tool")) then return end
+        local id = tool:GetAttribute("ItemID") or tool:GetAttribute("ItemName")
+        if not id then return end
+        local handle = tool:FindFirstChild("Handle")
+        local mesh = handle and handle:FindFirstChildOfClass("SpecialMesh")
+        if not mesh then return end
+        library[tostring(id)] = {
+            MeshId = mesh.MeshId,
+            TextureId = mesh.TextureId,
+            Scale = mesh.Scale,
+            Name = tool:GetAttribute("ItemName"),
+        }
+    end
+
+    local function scanForWeapons()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then
+                for _, t in ipairs(p.Character:GetChildren()) do harvest(t) end
+            end
+            local bp = p:FindFirstChildOfClass("Backpack")
+            if bp then
+                for _, t in ipairs(bp:GetChildren()) do harvest(t) end
+            end
+        end
+    end
+
+    -- 1 Hz, and only walking players' direct children. Weapons change hands on equip, not per frame,
+    -- so anything faster is pure cost.
+    task.spawn(function()
+        while SG and SG.Parent do
+            pcall(scanForWeapons)
+            task.wait(1)
+        end
+    end)
+
+    -- Every weapon you own, held or not. The first version only looked at the character, so it
+    -- refused with "hold a weapon first" whenever the tool was sitting in the backpack -- which in
+    -- this game is most of the time, since weapons are only in hand while actively swung.
+    local function ownedWeapons()
+        local out = {}
+        local char = LP.Character
+        if char then
+            for _, t in ipairs(char:GetChildren()) do
+                if t:IsA("Tool") and t:FindFirstChild("Handle") then table.insert(out, t) end
+            end
+        end
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        if bp then
+            for _, t in ipairs(bp:GetChildren()) do
+                if t:IsA("Tool") and t:FindFirstChild("Handle") then table.insert(out, t) end
+            end
+        end
+        return out
+    end
+
+    local function dressTool(tool, item, entry)
+        local handle = tool:FindFirstChild("Handle")
+        local mesh = handle and handle:FindFirstChildOfClass("SpecialMesh")
+        if not mesh then return false end
+        -- nil means "leave this one alone": a mesh-only seed changes the shape and keeps whatever
+        -- texture the weapon already has, which is what those entries describe.
+        if entry.MeshId then mesh.MeshId = entry.MeshId end
+        if entry.TextureId then mesh.TextureId = entry.TextureId end
+        if entry.Scale then mesh.Scale = entry.Scale end
+        pcall(function()
+            tool:SetAttribute("ItemName", item.ItemName)
+            tool:SetAttribute("Rarity", item.Rarity)
+        end)
+        return true
+    end
+
+    -- Remembered per weapon kind, so the choice survives the server handing you a fresh Tool at the
+    -- start of every round -- otherwise a skin lasted exactly until the next respawn.
+    local pending = {}
+
+    local function applySkin(item)
+        local entry = library[tostring(item.Key)] or library[tostring(item.ItemName)]
+        if not entry then
+            Notify("Skins", (item.ItemName or "?") .. ": mesh not seen yet.", 3)
+            return
+        end
+        local kind = tostring(item.ItemType)
+        pending[kind] = { item = item, entry = entry }
+        local done = 0
+        for _, tool in ipairs(ownedWeapons()) do
+            local isKnife = tool:GetAttribute("IsKnife") or tool.Name:find("Knife")
+            local toolKind = isKnife and "Knife" or "Gun"
+            if toolKind == kind and dressTool(tool, item, entry) then done = done + 1 end
+        end
+        if done > 0 then
+            Notify("Skins", "Applied " .. tostring(item.ItemName), 2)
+        else
+            Notify("Skins", "Saved: applies when you get a " .. kind:lower() .. ".", 3)
+        end
+    end
+
+    -- Re-dress anything the server gives us later.
+    local function watchFor(container)
+        if not container then return end
+        tc(container.ChildAdded:Connect(function(t)
+            if not t:IsA("Tool") then return end
+            task.wait(0.25)
+            local isKnife = t:GetAttribute("IsKnife") or t.Name:find("Knife")
+            local p = pending[isKnife and "Knife" or "Gun"]
+            if p and t.Parent then pcall(dressTool, t, p.item, p.entry) end
+        end))
+    end
+    watchFor(LP:FindFirstChildOfClass("Backpack"))
+    tc(LP.ChildAdded:Connect(function(c)
+        if c:IsA("Backpack") then watchFor(c) end
+    end))
+    tc(LP.CharacterAdded:Connect(function(char) watchFor(char) end))
+    if LP.Character then watchFor(LP.Character) end
+
+    for i = 1, #cards do
+        local card = cards[i]
+        card.MouseButton1Click:Connect(function()
+            local w = list.AbsoluteSize.X
+            if w <= 0 then return end
+            local topRow = math.floor(list.CanvasPosition.Y / CARD_H)
+            local item = shown[topRow * COLS + i]
+            if item then
+                SFX.Click()
+                applySkin(item)
+            end
+        end)
     end
 end
 
