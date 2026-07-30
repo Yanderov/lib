@@ -62,12 +62,10 @@ local S = {
     FogMode = "Classic", FogDensity = 40,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig", VFXAura = "Off",
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig",
     VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
-    AuraColor = "Preset", AuraDensity = 100, AuraSize = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
-    Desync = false, DesyncMode = "Blink", DesyncRadius = 60, DesyncOnlyStill = false,
     KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
     NoBlackout = false,
     KillSoundMurderer = "Off", KillSoundSheriff = "Off", KillSoundVolume = 70,
@@ -219,15 +217,25 @@ local function snd(id, pitch, vol)
         if not s.IsPlaying then pcall(function() s:Play() end) end
     end) end)
 end
-local function playLocalSoundObject(s)
-    if not s or not s:IsA("Sound") then return end
-    pcall(function() ContentProvider:PreloadAsync({s}) end)
-    pcall(function() SoundService:PlayLocalSound(s) end)
-    if not s.IsPlaying then pcall(function() s:Play() end) end
+S._PlaySoundSafe = function(s)
+    if not s or not s:IsA("Sound") or s.SoundId == "" then return end
+    local started = false
+    local function startPlayback()
+        if started or not s.Parent then return end
+        started = true
+        pcall(function() SoundService:PlayLocalSound(s) end)
+        if not s.IsPlaying then pcall(function() s:Play() end) end
+    end
+    task.spawn(function()
+        pcall(function() ContentProvider:PreloadAsync({ s }) end)
+        startPlayback()
+    end)
+    -- PreloadAsync can stall on a restricted asset. Do not let one bad ID make every
+    -- preview look broken; let Roblox begin streaming it after a short grace period.
+    task.delay(1.5, startPlayback)
 end
--- Notification tones. Every id here was checked on a live client (PreloadAsync + TimeLength) —
--- a candidate that failed to load was dropped rather than shipped, which is exactly how the old
--- built-in wallpaper list ended up full of assets that render nothing.
+-- Notification tones. Public asset IDs can still be restricted by Roblox ownership/privacy rules,
+-- so playback always goes through the preload-plus-fallback helper above.
 -- The rbxasset://sounds/* entries ship with the client, so they cannot be moderated away.
 S.NotifySounds = {
     { name = "Pop (default)", id = "rbxassetid://4590662766", pitch = 1.2 },
@@ -401,7 +409,7 @@ local Translations = {
         Environment = "Окружение", Overlay = "Оверлей", Emotes = "Эмоции", Animations = "Анимации",
         Servers = "Сервера", Config = "Конфиг", Settings = "Настройки",
         ["Text Size"] = "Размер текста", Language = "Язык", Theme = "Тема", Close = "Закрыть",
-        ["Notification Position"] = "Позиция уведомлений", ["Top Left"] = "Сверху слева",
+        ["Notification Position"] = "Уведомления", ["Top Left"] = "Сверху слева",
         ["Top Center"] = "Сверху по центру", ["Top Right"] = "Сверху справа",
         ["Bottom Left"] = "Снизу слева", ["Bottom Center"] = "Снизу по центру",
         ["Bottom Right"] = "Снизу справа",
@@ -415,7 +423,7 @@ local Translations = {
         Environment = "Оточення", Overlay = "Оверлей", Emotes = "Емоції", Animations = "Анімації",
         Servers = "Сервери", Config = "Конфіг", Settings = "Налаштування",
         ["Text Size"] = "Розмір тексту", Language = "Мова", Theme = "Тема", Close = "Закрити",
-        ["Notification Position"] = "Позиція сповіщень", ["Top Left"] = "Зверху ліворуч",
+        ["Notification Position"] = "Сповіщення", ["Top Left"] = "Зверху ліворуч",
         ["Top Center"] = "Зверху по центру", ["Top Right"] = "Зверху праворуч",
         ["Bottom Left"] = "Знизу ліворуч", ["Bottom Center"] = "Знизу по центру",
         ["Bottom Right"] = "Знизу праворуч",
@@ -429,7 +437,7 @@ local Translations = {
         Environment = "Entorno", Overlay = "Superposición", Emotes = "Emotes", Animations = "Animaciones",
         Servers = "Servidores", Config = "Config", Settings = "Ajustes",
         ["Text Size"] = "Tamaño de texto", Language = "Idioma", Theme = "Tema", Close = "Cerrar",
-        ["Notification Position"] = "Posición de avisos", ["Top Left"] = "Arriba izquierda",
+        ["Notification Position"] = "Avisos", ["Top Left"] = "Arriba izquierda",
         ["Top Center"] = "Arriba centro", ["Top Right"] = "Arriba derecha",
         ["Bottom Left"] = "Abajo izquierda", ["Bottom Center"] = "Abajo centro",
         ["Bottom Right"] = "Abajo derecha",
@@ -437,7 +445,45 @@ local Translations = {
         ["Theme Style"] = "Tema de color", ["Round Roles"] = "Roles de ronda",
         Murderer = "Asesino", Sheriff = "Sheriff",
     },
-    ENG = {}
+    -- Display aliases only: keep the original keys stable for configs, binds and search.
+    ENG = {
+        ["Notification Position"] = "Notify Position",
+        ["UI & HUD Transparency (%)"] = "UI/HUD Fade",
+        ["Background Blur"] = "UI Blur",
+        ["Glass Sheen (%)"] = "Glass Sheen",
+        ["Custom Assets (GitHub)"] = "Custom Assets",
+        ["Enable Custom Cursor / Crosshair"] = "Custom Cursor",
+        ["Choose Cursor / Crosshair"] = "Select Cursor",
+        ["Choose Gun Sound"] = "Gun Sound",
+        ["Preview Gun Sound"] = "Preview Sound",
+        ["Kill Sound Volume"] = "Kill Volume",
+        ["Avatar (Local)"] = "Local Avatar",
+        ["Fake Headless (Local)"] = "Local Headless",
+        ["Fake Korblox (Local)"] = "Local Korblox",
+        ["VFX Wing Style"] = "Wing Style",
+        ["Wing Size (%)"] = "Wing Size",
+        ["Wing Back Offset"] = "Wing Back",
+        ["Crosshair Size"] = "Cursor Size",
+        ["Stretch Resolution"] = "Screen Stretch",
+        ["Stretch Amount"] = "Stretch Level",
+        ["Shader Presets"] = "Shaders",
+        ["Disable Shaders"] = "Shaders Off",
+        ["Unlock All Knife Effects (Visual)"] = "All Knife FX",
+        ["Mute Gun Sound"] = "Mute Gun",
+        ["Mute Coin Sound"] = "Mute Coins",
+        ["Mute Kill Sound"] = "Mute Kills",
+        ["Mute Kill Effect Sound"] = "Mute FX Sound",
+        ["Mute Kill Notify"] = "Mute Kill Alert",
+        ["Join by Job ID"] = "Join by ID",
+        ["Browse Public Servers"] = "Public Servers",
+        ["Fetch Server List"] = "Refresh Servers",
+        ["Join Smallest Server"] = "Smallest Server",
+        ["Load All Emotes"] = "Load Emotes",
+        ["Reset To Default Animations"] = "Reset Animations",
+        ["Floating Buttons"] = "Float Buttons",
+        ["Remove All Buttons"] = "Clear Buttons",
+        ["Fog Density (%)"] = "Fog Density",
+    }
 }
 -- Navigation is built later, but theme/language callbacks need the same locals.
 local Pages = {}
@@ -450,7 +496,7 @@ S._LanguageRefreshers = {}
 local function lang(str)
     local l = S.Language or "ENG"
     local t = Translations[l]
-    return t and t[str] or str
+    return (t and t[str]) or Translations.ENG[str] or str
 end
 local function bindLocalizedText(obj, key, fallback, uppercase)
     if not obj then return end
@@ -2366,7 +2412,7 @@ editCustomBtn.BorderSizePixel = 0
 editCustomBtn.Font = F
 editCustomBtn.TextSize = 13
 editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
-editCustomBtn.Text = "Edit Custom Theme..."
+editCustomBtn.Text = "Edit Theme"
 editCustomBtn.ZIndex = 1001
 Corner(editCustomBtn, 6)
 Stroke(editCustomBtn, T.Bd, 1, 0.4)
@@ -3897,6 +3943,12 @@ do
 end
 
 local function mkSection(parent, title, order)
+    -- A section title is unique within a page. Remove a stale copy before creating a new card.
+    for _, existing in ipairs(parent:GetChildren()) do
+        if existing:IsA("Frame") and existing.Name == title then
+            existing:Destroy()
+        end
+    end
     local card = Instance.new("Frame")
     card.Name = title
     card.Parent = parent
@@ -5073,19 +5125,10 @@ end
 
 local CustomAssets = {
     Cursors = {
-        { Name = "Custom 1", Path = "1028d1c250054253/main.png" },
-        { Name = "Custom 4", Path = "32cbd02f14954ef4/main.png" },
-        { Name = "Custom 7", Path = "4f4c9a87c01e490f/roblox.png" },
-        { Name = "Custom 9", Path = "6a87bfc524424853/main.png" },
-        { Name = "Custom 10", Path = "6b7e55af48664167/main.png" },
-        { Name = "Custom 13", Path = "85f59b6a10814324/main.png" },
-        { Name = "Custom 16", Path = "97a65223a9314414/main.png" },
-        { Name = "Custom 18", Path = "9ff8471710a94f43/main.png" },
-        { Name = "Custom 19", Path = "a0b0c3bdbdd14544/main.png" },
-        { Name = "Custom 20", Path = "a72e9f78c84b4f0c/roblox.png" },
-        { Name = "Custom 21", Path = "aeff2bbd3f074fa2/main.png" },
-        { Name = "Custom 22", Path = "c2146c1049964208/main.png" },
-        { Name = "Custom 24", Path = "e0f853686555455a/main.png" },
+        { Name = "Soft Glow", Path = "32cbd02f14954ef4/main.png", Hotspot = Vector2.new(0.5, 0.5) },
+        { Name = "Precision Ring", Path = "6b7e55af48664167/main.png", Hotspot = Vector2.new(0.5, 0.5) },
+        { Name = "Pixel Sword", Path = "9ff8471710a94f43/main.png", Hotspot = Vector2.new(0.5, 0.5) },
+        { Name = "Neon Ring", Path = "e0f853686555455a/main.png", Hotspot = Vector2.new(0.5, 0.5) },
     },
     Backgrounds = {
         { Name = "Custom 1", Path = "036a6ebbf0134bb8/main.jpg" },
@@ -5173,26 +5216,9 @@ local CustomAssets = {
         { Name = "Custom 83", Path = "ff093ec6e1bb44a2/main.jpg" },
     },
     Skyboxes = {
-        { Name = "Custom 1", Folder = "01627f72ead34704", Files = { Bk = "01627f72ead34704/Bk.jpg", Dn = "01627f72ead34704/Dn.jpg", Ft = "01627f72ead34704/Ft.jpg", Lf = "01627f72ead34704/Lf.jpg", ro = "01627f72ead34704/roblox.jpg", Rt = "01627f72ead34704/Rt.jpg", Up = "01627f72ead34704/Up.jpg",  } },
-        { Name = "Custom 2", Folder = "0dd9020ea5ce41eb", Files = { Bk = "0dd9020ea5ce41eb/Bk.jpg", Dn = "0dd9020ea5ce41eb/Dn.jpg", Ft = "0dd9020ea5ce41eb/Ft.jpg", Lf = "0dd9020ea5ce41eb/Lf.jpg", ro = "0dd9020ea5ce41eb/roblox.jpg", Rt = "0dd9020ea5ce41eb/Rt.jpg", Up = "0dd9020ea5ce41eb/Up.jpg",  } },
-        { Name = "Custom 3", Folder = "16bf7e929b1f479f", Files = { Bk = "16bf7e929b1f479f/Bk.jpg", Dn = "16bf7e929b1f479f/Dn.jpg", Ft = "16bf7e929b1f479f/Ft.jpg", Lf = "16bf7e929b1f479f/Lf.jpg", ro = "16bf7e929b1f479f/roblox.jpg", Rt = "16bf7e929b1f479f/Rt.jpg", Up = "16bf7e929b1f479f/Up.jpg",  } },
-        { Name = "Custom 4", Folder = "275daccaae614e4b", Files = { Bk = "275daccaae614e4b/Bk.jpg", Dn = "275daccaae614e4b/Dn.jpg", Ft = "275daccaae614e4b/Ft.jpg", Lf = "275daccaae614e4b/Lf.jpg", ro = "275daccaae614e4b/roblox.jpg", Rt = "275daccaae614e4b/Rt.jpg", Up = "275daccaae614e4b/Up.jpg",  } },
-        { Name = "Custom 5", Folder = "3da92d7147144854", Files = { Bk = "3da92d7147144854/Bk.jpg", Dn = "3da92d7147144854/Dn.jpg", Ft = "3da92d7147144854/Ft.jpg", Lf = "3da92d7147144854/Lf.jpg", ro = "3da92d7147144854/roblox.jpg", Rt = "3da92d7147144854/Rt.jpg", Up = "3da92d7147144854/Up.jpg",  } },
-        { Name = "Custom 6", Folder = "54e348381c924e57", Files = { Bk = "54e348381c924e57/Bk.jpeg", Dn = "54e348381c924e57/Dn.jpeg", Ft = "54e348381c924e57/Ft.jpeg", Lf = "54e348381c924e57/Lf.jpeg", ro = "54e348381c924e57/roblox.jpeg", Rt = "54e348381c924e57/Rt.jpeg", Up = "54e348381c924e57/Up.jpg",  } },
-        { Name = "Custom 7", Folder = "6a84a73fb02a423b", Files = { Bk = "6a84a73fb02a423b/Bk.jpg", Dn = "6a84a73fb02a423b/Dn.jpg", Ft = "6a84a73fb02a423b/Ft.jpg", Lf = "6a84a73fb02a423b/Lf.jpg", ro = "6a84a73fb02a423b/roblox.jpg", Rt = "6a84a73fb02a423b/Rt.jpg", Up = "6a84a73fb02a423b/Up.jpg",  } },
-        { Name = "Custom 8", Folder = "7260ed3f3ca34c49", Files = { Bk = "7260ed3f3ca34c49/Bk.jpg", Dn = "7260ed3f3ca34c49/Dn.jpg", Ft = "7260ed3f3ca34c49/Ft.jpg", Lf = "7260ed3f3ca34c49/Lf.jpg", ro = "7260ed3f3ca34c49/roblox.jpg", Rt = "7260ed3f3ca34c49/Rt.jpg", Up = "7260ed3f3ca34c49/Up.jpg",  } },
-        { Name = "Custom 9", Folder = "7d52f7e2f8c046ba", Files = { Bk = "7d52f7e2f8c046ba/Bk.jpg", Dn = "7d52f7e2f8c046ba/Dn.jpg", Ft = "7d52f7e2f8c046ba/Ft.jpg", Lf = "7d52f7e2f8c046ba/Lf.jpg", ro = "7d52f7e2f8c046ba/roblox.jpg", Rt = "7d52f7e2f8c046ba/Rt.jpg", Up = "7d52f7e2f8c046ba/Up.jpg",  } },
-        { Name = "Custom 10", Folder = "83ed7fb412654941", Files = { Bk = "83ed7fb412654941/Bk.jpg", Dn = "83ed7fb412654941/Dn.jpg", Ft = "83ed7fb412654941/Ft.jpg", Lf = "83ed7fb412654941/Lf.jpg", ro = "83ed7fb412654941/roblox.jpg", Rt = "83ed7fb412654941/Rt.jpg", Up = "83ed7fb412654941/Up.jpg",  } },
-        { Name = "Custom 11", Folder = "88cfa99e41f446b2", Files = { Bk = "88cfa99e41f446b2/Bk.jpg", Dn = "88cfa99e41f446b2/Dn.jpg", Ft = "88cfa99e41f446b2/Ft.jpg", Lf = "88cfa99e41f446b2/Lf.jpg", ro = "88cfa99e41f446b2/roblox.jpg", Rt = "88cfa99e41f446b2/Rt.jpg", Up = "88cfa99e41f446b2/Up.jpg",  } },
-        { Name = "Custom 12", Folder = "9b272574df8543bb", Files = { Bk = "9b272574df8543bb/Bk.jpg", Dn = "9b272574df8543bb/Dn.jpg", Ft = "9b272574df8543bb/Ft.jpg", Lf = "9b272574df8543bb/Lf.jpg", ro = "9b272574df8543bb/roblox.jpg", Rt = "9b272574df8543bb/Rt.jpg", Up = "9b272574df8543bb/Up.jpg",  } },
-        { Name = "Custom 13", Folder = "a3e0f34d4f22491c", Files = { Bk = "a3e0f34d4f22491c/Bk.jpg", Dn = "a3e0f34d4f22491c/Dn.jpg", Ft = "a3e0f34d4f22491c/Ft.jpg", Lf = "a3e0f34d4f22491c/Lf.jpg", ro = "a3e0f34d4f22491c/roblox.jpg", Rt = "a3e0f34d4f22491c/Rt.jpg", Up = "a3e0f34d4f22491c/Up.jpg",  } },
-        { Name = "Custom 14", Folder = "a97b4e259a3d4e90", Files = { Bk = "a97b4e259a3d4e90/Bk.jpg", Dn = "a97b4e259a3d4e90/Dn.jpg", Ft = "a97b4e259a3d4e90/Ft.jpg", Lf = "a97b4e259a3d4e90/Lf.jpg", ro = "a97b4e259a3d4e90/roblox.jpg", Rt = "a97b4e259a3d4e90/Rt.jpg", Up = "a97b4e259a3d4e90/Up.jpg",  } },
-        { Name = "Custom 15", Folder = "ae15d36345fa4653", Files = { Bk = "ae15d36345fa4653/Bk.jpg", Dn = "ae15d36345fa4653/Dn.jpg", Ft = "ae15d36345fa4653/Ft.jpg", Lf = "ae15d36345fa4653/Lf.jpg", ro = "ae15d36345fa4653/roblox.jpg", Rt = "ae15d36345fa4653/Rt.jpg", Up = "ae15d36345fa4653/Up.jpg",  } },
-        { Name = "Custom 16", Folder = "ca140ecfdbe04510", Files = { Bk = "ca140ecfdbe04510/Bk.jpg", Dn = "ca140ecfdbe04510/Dn.jpg", Ft = "ca140ecfdbe04510/Ft.jpg", Lf = "ca140ecfdbe04510/Lf.jpg", ro = "ca140ecfdbe04510/roblox.jpg", Rt = "ca140ecfdbe04510/Rt.jpg", Up = "ca140ecfdbe04510/Up.jpg",  } },
-        { Name = "Custom 17", Folder = "cdb3f60ebe33479f", Files = { Bk = "cdb3f60ebe33479f/Bk.jpg", Dn = "cdb3f60ebe33479f/Dn.jpg", Ft = "cdb3f60ebe33479f/Ft.jpg", Lf = "cdb3f60ebe33479f/Lf.jpg", ro = "cdb3f60ebe33479f/roblox.jpg", Rt = "cdb3f60ebe33479f/Rt.jpg", Up = "cdb3f60ebe33479f/Up.jpg",  } },
-        { Name = "Custom 18", Folder = "e7b7faca84a04910", Files = { Bk = "e7b7faca84a04910/Bk.jpg", Dn = "e7b7faca84a04910/Dn.jpg", Ft = "e7b7faca84a04910/Ft.jpg", Lf = "e7b7faca84a04910/Lf.jpg", ro = "e7b7faca84a04910/roblox.jpg", Rt = "e7b7faca84a04910/Rt.jpg", Up = "e7b7faca84a04910/Up.jpg",  } },
-        { Name = "Custom 19", Folder = "eaf09eca595f486e", Files = { Bk = "eaf09eca595f486e/Bk.png", Dn = "eaf09eca595f486e/Dn.png", Ft = "eaf09eca595f486e/Ft.png", Lf = "eaf09eca595f486e/Lf.png", ro = "eaf09eca595f486e/roblox.png", Rt = "eaf09eca595f486e/Rt.png", Up = "eaf09eca595f486e/Up.png",  } },
-        { Name = "Custom 20", Folder = "f116b511f2044d7d", Files = { Bk = "f116b511f2044d7d/Bk.jpg", Dn = "f116b511f2044d7d/Dn.jpeg", Ft = "f116b511f2044d7d/Ft.jpeg", Lf = "f116b511f2044d7d/Lf.jpg", Rt = "f116b511f2044d7d/Rt.jpg", Up = "f116b511f2044d7d/Up.jpg",  } },
+        -- The previous list contained photos, memes, avatars and repeated single-face images.
+        -- This is the one repository entry whose six files form a real sky cubemap.
+        { Name = "Anime Violet Galaxy", Folder = "eaf09eca595f486e", Files = { Bk = "eaf09eca595f486e/Bk.png", Dn = "eaf09eca595f486e/Dn.png", Ft = "eaf09eca595f486e/Ft.png", Lf = "eaf09eca595f486e/Lf.png", Rt = "eaf09eca595f486e/Rt.png", Up = "eaf09eca595f486e/Up.png" } },
     },
     GunSounds = {
         { Name = "Custom 1", Path = "010d17ed0def4542/main.mp3" },
@@ -5320,7 +5346,7 @@ S._CustomsSections = S._CustomsSections or {}
 local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v)
         S.CustomCrosshair = v
-        if rebuildCrosshair then pcall(rebuildCrosshair) end
+        if S._RefreshCustomCursor then pcall(function() S._RefreshCustomCursor() end) end
         pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
     end, 1)
     
@@ -5335,6 +5361,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             Name = CustomAssets.Cursors[i] and CustomAssets.Cursors[i].Name or ("Cursor " .. i),
             Kind = "Asset",
             Path = path,
+            Hotspot = (CustomAssets.Cursors[i] and CustomAssets.Cursors[i].Hotspot) or Vector2.new(0.5, 0.5),
         }
     end
 
@@ -5367,6 +5394,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             Name = preset.Name,
             Kind = "Vector",
             Style = preset.Style,
+            Hotspot = Vector2.new(0.5, 0.5),
         }
     end
     S._CursorEntries = cursorEntries
@@ -5387,13 +5415,16 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             S.CrosshairIndex = pick
             S.CrosshairAssetId = nil
             S.CrosshairPreset = entry and entry.Style or nil
+            if S._RefreshCustomCursor then pcall(function() S._RefreshCustomCursor() end) end
             if entry and entry.Kind == "Asset" then
                 task.spawn(function()
                     local fetchedId = fetchCustomAsset(entry.Path, "cursors")
                     if fetchedId ~= "" then
                         S.CrosshairAssetId = fetchedId
+                        if S._RefreshCustomCursor then pcall(function() S._RefreshCustomCursor() end) end
                     else
                         S.CrosshairAssetId = CustomCrosshairs[1]
+                        if S._RefreshCustomCursor then pcall(function() S._RefreshCustomCursor() end) end
                         Notify("Cursor", "Could not download " .. cursorNames[pick] .. "; using fallback", 3)
                     end
                     pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
@@ -5418,11 +5449,10 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     skyNames[2] = "Roblox Classic (seamless)"
     -- Asset-ID cubemaps, appended after the GitHub list. Six genuinely different faces each -- the
     -- point of the exercise, since most published "skyboxes" are one image repeated on all six and
-    -- render as a box with seams. Verified live by applying it and looking at the sky, because
-    -- ContentProvider/IsLoaded cannot be trusted for this.
+    -- render as a box with seams.
     local SKY_LIB = {
         { Name = "Purple Nebula", Bk = 159454299, Dn = 159454296, Ft = 159454293, Lf = 159454286, Rt = 159454300, Up = 159454288 },
-        { Name = "Night Sky", Bk = 12064107, Dn = 12064152, Ft = 12064152, Lf = 12063984, Rt = 12064115, Up = 12064131 },
+        { Name = "Night Sky", Bk = 12064107, Dn = 12064152, Ft = 12064121, Lf = 12063984, Rt = 12064115, Up = 12064131 },
         { Name = "Pink Daylight", Bk = 271042516, Dn = 271077243, Ft = 271042556, Lf = 271042310, Rt = 271042467, Up = 271077958 },
         { Name = "Morning Glow", Bk = 1417494030, Dn = 1417494146, Ft = 1417494253, Lf = 1417494402, Rt = 1417494499, Up = 1417494643 },
         { Name = "Setting Sun", Bk = 626460377, Dn = 626460216, Ft = 626460513, Lf = 626473032, Rt = 626458639, Up = 626460625 },
@@ -5430,16 +5460,71 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         { Name = "Elegant Morning", Bk = 153767241, Dn = 153767216, Ft = 153767266, Lf = 153767200, Rt = 153767231, Up = 153767288 },
         { Name = "Neptune", Bk = 218955819, Dn = 218953419, Ft = 218954524, Lf = 218958493, Rt = 218957134, Up = 218950090 },
         { Name = "Redshift", Bk = 401664839, Dn = 401664862, Ft = 401664960, Lf = 401664881, Rt = 401664901, Up = 401664936 },
-        { Name = "Sunset Clouds",
-          Bk = 92464172, Dn = 92464250, Ft = 92464217,
-          Lf = 92464234, Rt = 92464189, Up = 92464157 },
+        { Name = "Sunset Clouds", Bk = 92464172, Dn = 92464250, Ft = 92464217, Lf = 92464234, Rt = 92464189, Up = 92464157 },
+
+        -- Stylized six-face sets collected from public GitHub sky preset lists.
+        { Name = "Dream Space Wave", Bk = 16262356578, Dn = 16262358026, Ft = 16262360469, Lf = 16262362003, Rt = 16262363873, Up = 16262366016 },
+        { Name = "Dream Space Wave II", Bk = 1233158420, Dn = 1233158838, Ft = 1233157105, Lf = 1233157640, Rt = 1233157995, Up = 1233159158 },
+        { Name = "Turquoise Dream", Bk = 47974894, Dn = 47974690, Ft = 47974821, Lf = 47974776, Rt = 47974859, Up = 47974909 },
+        { Name = "White Galaxy", Bk = 5540798456, Dn = 5540799894, Ft = 5540801779, Lf = 5540801192, Rt = 5540799108, Up = 5540800635 },
+        { Name = "Blue Galaxy", Bk = 14961495673, Dn = 14961494492, Ft = 14961492844, Lf = 14961491298, Rt = 14961490439, Up = 14961489508 },
+        { Name = "Dark Night", Bk = 6285719338, Dn = 6285721078, Ft = 6285722964, Lf = 6285724682, Rt = 6285726335, Up = 6285730635 },
+        { Name = "Tropic Day", Bk = 169210090, Dn = 169210108, Ft = 169210121, Lf = 169210133, Rt = 169210143, Up = 169210149 },
+        { Name = "Warm Cabin Sky", Bk = 162001887, Dn = 161998893, Ft = 162001897, Lf = 162001904, Rt = 162001919, Up = 162001926 },
+        { Name = "Desert Day", Bk = 1013852, Dn = 1013853, Ft = 1013850, Lf = 1013851, Rt = 1013849, Up = 1013854 },
+        { Name = "Blaze Sunset", Bk = 150939022, Dn = 150939038, Ft = 150939047, Lf = 150939056, Rt = 150939063, Up = 150939082 },
+        { Name = "Classic Day", Bk = 591058823, Dn = 591059876, Ft = 591058104, Lf = 591057861, Rt = 591057625, Up = 591059642 },
+        { Name = "Cinematic Sun", Bk = 600830446, Dn = 600831635, Ft = 600832720, Lf = 600886090, Rt = 600833862, Up = 600835177 },
+
+        -- Curated high-resolution Poly Haven cubemaps from the public GitHub index.
+        { Name = "HD Aristea Sky", Bk = 118396029149093, Dn = 111826098362543, Ft = 125878911700390, Lf = 108180008107682, Rt = 82646974866485, Up = 99378480801452, Preview = 81620584473006 },
+        { Name = "HD Autumn Sky", Bk = 81038270335946, Dn = 91366055990725, Ft = 97827117212999, Lf = 93095563563618, Rt = 82235888968584, Up = 75414237688035, Preview = 106689788838590 },
+        { Name = "HD Belfast Sunset", Bk = 118953518402828, Dn = 136500623511721, Ft = 110466941423336, Lf = 125178368292947, Rt = 124071785024779, Up = 115120284690039, Preview = 100102574761480 },
+        { Name = "HD Bell Park Dawn", Bk = 80620910467296, Dn = 106764283489039, Ft = 137587686728514, Lf = 97978270493577, Rt = 122556549691350, Up = 122534278492767, Preview = 92588332894895 },
+        { Name = "HD Blue Lagoon Night", Bk = 88965715061980, Dn = 79219751411184, Ft = 80472768701887, Lf = 102980218148582, Rt = 84811874786468, Up = 123597188598554, Preview = 127191756477794 },
+        { Name = "HD Cloud Layers", Bk = 111730003798473, Dn = 73247180501768, Ft = 89479162494020, Lf = 103056318802313, Rt = 84934428908081, Up = 114508019654462, Preview = 133478804539883 },
+        { Name = "HD Dikhololo Sunset", Bk = 91320130544197, Dn = 135196699770687, Ft = 72984794935516, Lf = 98496921484895, Rt = 131522368538760, Up = 115326253644126, Preview = 73170041375992 },
+        { Name = "HD Mountain Sky", Bk = 128810654359364, Dn = 136729162331532, Ft = 71688380200794, Lf = 73821399892899, Rt = 91259217725265, Up = 71864315311370, Preview = 77640902209526 },
+        { Name = "HD Evening Road", Bk = 92150094650694, Dn = 127391482821254, Ft = 138209850588804, Lf = 85766413363253, Rt = 88312858437940, Up = 84414974917762, Preview = 76239528317579 },
+        { Name = "HD Farm Sunset", Bk = 132371995497170, Dn = 140676814557719, Ft = 120694694849049, Lf = 125407711431315, Rt = 113678944708216, Up = 127533266971165, Preview = 113785354972468 },
+        { Name = "HD Furry Clouds", Bk = 125548006007595, Dn = 107616786013964, Ft = 124395566476611, Lf = 75783336774209, Rt = 103132648923998, Up = 107576670898008, Preview = 87942083346391 },
+        { Name = "HD Clear Day", Bk = 76907159441186, Dn = 79362551639851, Ft = 101964480263489, Lf = 133200071068111, Rt = 97804405139952, Up = 106652485008638, Preview = 127522734043383 },
+        { Name = "HD Industrial Sunset", Bk = 72282144437581, Dn = 96161849586865, Ft = 113341763865141, Lf = 114026457223249, Rt = 129096702864685, Up = 114699106657311, Preview = 88001492198523 },
+        { Name = "HD Kiara Dawn", Bk = 79322916035875, Dn = 135406371198998, Ft = 125259737244641, Lf = 109336325915351, Rt = 91340426111648, Up = 88785427398282, Preview = 97556328145586 },
+        { Name = "HD Kiara Sunset", Bk = 99239193793280, Dn = 93058774435851, Ft = 138289952891781, Lf = 123869647845736, Rt = 136990035920336, Up = 91730372450128, Preview = 128531504721736 },
+        { Name = "HD Kiara Dusk", Bk = 90020996096746, Dn = 115152482035189, Ft = 122686139629849, Lf = 73986040158317, Rt = 128438037275875, Up = 126298720105746, Preview = 73498954497768 },
+        { Name = "HD Misty Day", Bk = 78401507745642, Dn = 77034191112187, Ft = 120262569194542, Lf = 102142786963541, Rt = 82959215048542, Up = 112590471156497, Preview = 126106452604855 },
+        { Name = "HD Clear Sky", Bk = 121841162930007, Dn = 133551178726005, Ft = 93065226353325, Lf = 131625399093331, Rt = 124044884362247, Up = 97384291462386, Preview = 125773254421547 },
+        { Name = "HD Kloppenheim", Bk = 82050921510097, Dn = 140295396795782, Ft = 102267331349615, Lf = 106064350228129, Rt = 138203840934799, Up = 78142539586489, Preview = 78287395993972 },
+        { Name = "HD Lakeside Night", Bk = 129615453215712, Dn = 129320972490689, Ft = 140251661031374, Lf = 112690273087051, Rt = 121678308120100, Up = 94196245445491, Preview = 100877004466379 },
+        { Name = "HD Misty Dawn", Bk = 127774949065289, Dn = 74858436866090, Ft = 100500418408083, Lf = 78185722794171, Rt = 133915635754152, Up = 104862447987930, Preview = 114370090187230 },
+        { Name = "HD Qwantani Dawn", Bk = 136675538866231, Dn = 77844626758472, Ft = 86668801745183, Lf = 133567029184219, Rt = 134578503138333, Up = 137934564481261, Preview = 81231714061784 },
+        { Name = "HD Qwantani Dusk", Bk = 72402114618808, Dn = 94443326971107, Ft = 72631819338050, Lf = 77570807921532, Rt = 102616763827428, Up = 77743144357405, Preview = 106567573694621 },
+        { Name = "HD Moonrise", Bk = 131862519078216, Dn = 81925531200870, Ft = 139195420347571, Lf = 87297583685696, Rt = 99419356368680, Up = 101099286221813, Preview = 139746611746913 },
+        { Name = "HD Deep Night", Bk = 81475499788447, Dn = 70447530701582, Ft = 127241999452134, Lf = 121494405589428, Rt = 117029583247539, Up = 100758305400117, Preview = 126663621744579 },
+        { Name = "HD Sunrise", Bk = 133262615074304, Dn = 90996687708120, Ft = 83902205929228, Lf = 87591292142764, Rt = 115677730879533, Up = 117825417287584, Preview = 74126320532194 },
+        { Name = "HD Sunset", Bk = 126019217903679, Dn = 126485599969667, Ft = 121702102063514, Lf = 83501256794719, Rt = 126022763961149, Up = 89330237687033, Preview = 109723547839906 },
+        { Name = "HD Clear Night", Bk = 110642518560960, Dn = 133611429756153, Ft = 139322986046434, Lf = 125056334328974, Rt = 126168533785004, Up = 107058232152535, Preview = 76076105312695 },
+        { Name = "HD Moonlit Night", Bk = 70389162630477, Dn = 113173675884529, Ft = 77835381045779, Lf = 111618563863850, Rt = 74847614185603, Up = 116272859347480, Preview = 103828594699515 },
+        { Name = "HD Rosendal Sunset", Bk = 134593783312162, Dn = 78570917224185, Ft = 92071779720784, Lf = 137092654873236, Rt = 92309567720943, Up = 115729530705689, Preview = 78668927255089 },
+        { Name = "HD Snowfield", Bk = 128703007558798, Dn = 84177309474400, Ft = 85962239745822, Lf = 126555704490266, Rt = 132619611146125, Up = 100675157568013, Preview = 97465554604452 },
+        { Name = "HD Sunflower Sky", Bk = 135797503528887, Dn = 101989889392946, Ft = 119185236369094, Lf = 89725818405333, Rt = 130541977744930, Up = 90262192533927, Preview = 105470753811137 },
+        { Name = "HD Sunset Forest", Bk = 131340339858025, Dn = 70773983074064, Ft = 80343722106368, Lf = 84470110968532, Rt = 86600204968882, Up = 87507064154344, Preview = 139728317866491 },
+        { Name = "HD Twilight", Bk = 96049699666158, Dn = 84756583355105, Ft = 87322181694839, Lf = 116227815770700, Rt = 123691301389562, Up = 75966351203688, Preview = 120286323050575 },
+        { Name = "HD Venice Dawn", Bk = 117668981787815, Dn = 80982447200317, Ft = 93176201045463, Lf = 102375038640897, Rt = 130574150839680, Up = 84447068011868, Preview = 94757250271038 },
+        { Name = "HD Venice Sunset", Bk = 89759023849598, Dn = 131587609115428, Ft = 130498731443963, Lf = 71932884356542, Rt = 91381667916017, Up = 91997949227223, Preview = 105261534734024 },
+        { Name = "HD Wasteland Clouds", Bk = 94168704490428, Dn = 76654955104250, Ft = 118465994995376, Lf = 113847972802405, Rt = 83045927323967, Up = 82574182204749, Preview = 117640883174177 },
+        { Name = "HD Winter Evening", Bk = 82234479023979, Dn = 114064334894034, Ft = 123009324077969, Lf = 112270630847462, Rt = 113795347262487, Up = 114071693398705, Preview = 113609711272505 },
     }
     local skyLibBase = #skyNames
     for i, entry in ipairs(SKY_LIB) do
         skyNames[skyLibBase + i] = entry.Name
+        skyPreviews[skyLibBase + i] = "rbxassetid://" .. tostring(entry.Preview or entry.Ft)
     end
     mkAction(secCustoms, "Choose Skybox", function()
-        S._OpenOptionPicker("Skybox", skyNames, (S.SkyboxIndex or 0) + 1, function(pick)
+        local currentSky = math.clamp(tonumber(S.SkyboxPickerIndex) or ((S.SkyboxIndex or 0) + 1), 1, #skyNames)
+        S._OpenOptionPicker("Skybox", skyNames, currentSky, function(pick)
+            S.SkyboxPickerIndex = pick
             local lighting = game:GetService("Lighting")
             if pick <= 1 then
                 S.SkyboxIndex = 0
@@ -5451,12 +5536,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             end
             if pick == 2 then
                 S.SkyboxIndex = 1
+                local oldAtmo = lighting:FindFirstChild("CustomSkyboxAtmo")
+                if oldAtmo then oldAtmo:Destroy() end
                 local sky = lighting:FindFirstChild("CustomSkyboxUI")
                 if not sky then
                     sky = Instance.new("Sky")
                     sky.Name = "CustomSkyboxUI"
                     sky.Parent = lighting
                 end
+                sky.CelestialBodiesShown = true
                 for face, suffix in pairs({ SkyboxBk = "bk", SkyboxDn = "dn", SkyboxFt = "ft",
                                             SkyboxLf = "lf", SkyboxRt = "rt", SkyboxUp = "up" }) do
                     sky[face] = "rbxasset://textures/sky/sky512_" .. suffix .. ".tex"
@@ -5466,12 +5554,15 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             local libEntry = SKY_LIB[pick - skyLibBase]
             if libEntry then
                 S.SkyboxIndex = pick - 1
+                local oldAtmo = lighting:FindFirstChild("CustomSkyboxAtmo")
+                if oldAtmo then oldAtmo:Destroy() end
                 local sky = lighting:FindFirstChild("CustomSkyboxUI")
                 if not sky then
                     sky = Instance.new("Sky")
                     sky.Name = "CustomSkyboxUI"
                     sky.Parent = lighting
                 end
+                sky.CelestialBodiesShown = false
                 sky.SkyboxBk = "rbxassetid://" .. libEntry.Bk
                 sky.SkyboxDn = "rbxassetid://" .. libEntry.Dn
                 sky.SkyboxFt = "rbxassetid://" .. libEntry.Ft
@@ -5514,6 +5605,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 atmo.Haze = 0
                 atmo.Parent = lighting
             end
+                skyboxObj.CelestialBodiesShown = false
                 skyboxObj.SkyboxBk = bk
                 skyboxObj.SkyboxDn = dn
                 skyboxObj.SkyboxFt = ft
@@ -5524,27 +5616,29 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         end, { previews = skyPreviews })
     end, 3)
 
-    -- Library sounds, on top of the 44 GitHub files. Every one of these was loaded on a live client
-    -- and kept only if it reported a TimeLength; ten other candidates came back with none (private
-    -- or moderated since) and were dropped. Nothing over ~3s is here: a gun sound fires per shot,
-    -- and a long clip just overlaps itself into noise.
+    -- Library sounds complement the downloaded files. These IDs had public Creator Store metadata
+    -- when curated; Roblox can still restrict playback by experience ownership/privacy policy.
     local GUN_LIB = {
-        { "Gunshot", 6656835390 },
-        { "Revolver", 1674017283 },
-        { "Silenced Pistol", 168143115 },
-        { "Pistol Click", 130113322 },
-        { "Heavy Gun", 138084889 },
+        { "Gun Shot Classic", 213603013 },
+        { "Gun Shot Clean", 2811598570 },
+        { "9mm Gunshot", 4070504199 },
+        { "Pistol Fire", 6569844325 },
+        { "Gunshot SFX", 6656835390 },
+        { "Modern Gun Shot", 107712854920587 },
         { "Grenade Launcher", 1981976520 },
-        { "Bruh", 5044897021 },
+        { "Laser Hit", 8561505457 },
+        { "Headshot", 1255040462 },
+        { "COD Hitmarker", 5952120301 },
+        { "Cinematic Punch", 159504677 },
+        { "Big Boom", 6022120767 },
         { "Vine Boom", 6308606116 },
         { "Vine Boom Deep", 5153845714 },
-        { "Oof", 5943191430 },
-        { "Osu Hit", 7147454322 },
+        { "Metal Pipe", 6729922069 },
         { "Level Up", 2686079706 },
         { "Taco Bell", 5696182212 },
         { "Za Warudo", 5679636294 },
-        { "DBZ Sword Hit", 232210146 },
-        { "Transformers", 183000311 },
+        { "Oof", 5943191430 },
+        { "Quack", 9068554227 },
     }
     local gunSoundOptions = {"Game Default", "Use Equipped Skin Sound"}
     for _, entry in ipairs(GUN_LIB) do
@@ -5593,7 +5687,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         s.SoundId = id
         s.Volume = 1.5
         s.Parent = SoundService
-        playLocalSoundObject(s)
+        S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 5)
     end
     local function auditionGunSound(index)
@@ -5608,7 +5702,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         s.SoundId = id
         s.Volume = 1.5
         s.Parent = SoundService
-        playLocalSoundObject(s)
+        S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 5)
     end
 
@@ -5625,12 +5719,14 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
 
             if v == "Game Default" then
                 S.CustomGunSoundId = nil
+                if S._RefreshGunSounds then pcall(S._RefreshGunSounds) end
                 return
             end
             if v == "Use Equipped Skin Sound" then
                 local soundId = getEquippedSkinGunSound()
                 if soundId then
                     S.CustomGunSoundId = soundId
+                    if S._RefreshGunSounds then pcall(S._RefreshGunSounds) end
                 else
                     Notify("Gun Sound", "Equip a gun skin first, then choose this option again.", 3)
                 end
@@ -5640,6 +5736,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             local libId = libSoundId(v)
             if libId then
                 S.CustomGunSoundId = libId
+                if S._RefreshGunSounds then pcall(S._RefreshGunSounds) end
                 Notify("Gun Sound", v .. " selected", 2)
                 return
             end
@@ -5650,6 +5747,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
                 local fetchedId = fetchCustomAsset(path, "gun_sounds")
                 if requestId == gunSoundRequest and fetchedId ~= "" then
                     S.CustomGunSoundId = fetchedId
+                    if S._RefreshGunSounds then pcall(S._RefreshGunSounds) end
                     Notify("Gun Sound", v .. " selected", 2)
                 end
             end)
@@ -5667,49 +5765,57 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end
 
     mkAction(secCustoms, "Preview Gun Sound", function()
-        if S.CustomGunSoundId then
-            local s = Instance.new("Sound")
-            s.SoundId = S.CustomGunSoundId
-            s.Volume = 1.5
-            s.Parent = workspace
-            playLocalSoundObject(s)
-            game.Debris:AddItem(s, 3)
-        else
-            local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://342080352"
-            s.Volume = 1
-            s.Parent = workspace
-            playLocalSoundObject(s)
-            game.Debris:AddItem(s, 3)
-        end
+        local s = Instance.new("Sound")
+        s.SoundId = S.CustomGunSoundId or "rbxasset://sounds/electronicpingshort.wav"
+        s.Volume = 1
+        s.Parent = SoundService
+        S._PlaySoundSafe(s)
+        game:GetService("Debris"):AddItem(s, 8)
     end, 4.1)
 
     -- ---- Kill Sounds ----
     -- A hit/kill sound for your own kills, split per role. Local only, like everything else here:
-    -- nobody else hears it. Every id below was loaded on a live client and kept only if it reported
-    -- a TimeLength; two that loaded (Crit Hit 120s, Glass Break 30s) are left out because a kill
-    -- sound has to be short or it overlaps the next kill.
+    -- nobody else hears it. The list uses short public sound candidates; runtime access still
+    -- depends on Roblox ownership/privacy rules for this experience.
     local KILL_SOUNDS = {
         { "Off", 0 },
+        { "Knife Slice", 9125619840 },
+        { "Sword Slash", 935843979 },
+        { "Pixel Sword", 89085812723039 },
+        { "Classic Sword", 12222216 },
+        { "Fire Slash", 6455691350 },
+        { "Heavy Blade", 6241709963 },
+        { "Flesh Hit", 144884872 },
+        { "Cinematic Punch", 159504677 },
+        { "Glass Break", 6737582037 },
+        { "Metal Pipe", 6729922069 },
+        { "Big Boom", 6022120767 },
+        { "Vine Boom", 6308606116 },
+        { "Vine Boom Deep", 5153845714 },
         { "COD Hitmarker", 5952120301 },
+        { "Modern Hitmarker", 17724151829 },
         { "Minecraft Hit", 5984353288 },
         { "Minecraft Hit Alt", 8766809464 },
-        { "Classic Hit", 12222058 },
+        { "Classic Hit", 12222046 },
         { "Osu Hit", 7147454322 },
-        { "Click Tick", 6534947588 },
-        { "Coin", 3779045779 },
-        { "Classic Beep", 12221967 },
-        { "Snap", 511340819 },
-        { "BONK", 130944130 },
-        { "Sword Slash", 138090596 },
-        { "Laser Zap", 607665037 },
+        { "Headshot", 1255040462 },
+        { "Metal Impact", 142082170 },
+        { "Concrete Impact", 142082166 },
+        { "Wood Impact", 142082171 },
+        { "Glass Impact", 142082167 },
+        { "Level Up", 2686079706 },
         { "Ding", 4590657391 },
-        { "Hyperlaser", 8561505457 },
-        { "Pop", 6026984224 },
-        { "Oof", 5943191430 },
-        { "Vine Boom", 6308606116 },
-        { "Waapp", 154146535 },
+        { "Notification", 6026984224 },
+        { "Button Click", 6042053626 },
+        { "Click", 6052548458 },
+        { "Bonk", 130944130 },
+        { "Slap", 511340819 },
         { "Quack", 9068554227 },
+        { "Oof", 5943191430 },
+        { "Bruh", 4578740568 },
+        { "Taco Bell", 5696182212 },
+        { "Za Warudo", 5679636294 },
+        { "Laser Hit", 8561505457 },
     }
     local killNames = {}
     for _, e in ipairs(KILL_SOUNDS) do table.insert(killNames, e[1]) end
@@ -5726,7 +5832,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         s.SoundId = id
         s.Volume = math.clamp((tonumber(S.KillSoundVolume) or 70) / 100, 0, 1)
         s.Parent = SoundService
-        playLocalSoundObject(s)
+        S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 6)
     end
     S._PlayKillSound = playKillSound
@@ -5762,14 +5868,20 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     do
         local lastShot = 0
         task.spawn(function()
-            local ok, ev = pcall(function()
-                local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientServices")
-                return cs and cs:FindFirstChild("GunFired")
+            local ok, weaponService = pcall(function()
+                return game:GetService("ReplicatedStorage")
+                    :WaitForChild("ClientServices", 10)
+                    :WaitForChild("WeaponService", 10)
             end)
-            if ok and ev and ev:IsA("RemoteEvent") then
+            local ev = ok and weaponService and weaponService:FindFirstChild("GunFired")
+            if ev and ev:IsA("RemoteEvent") then
                 tc(ev.OnClientEvent:Connect(function(handle)
-                    local char = LP.Character
-                    if handle and char and handle:IsDescendantOf(char) then lastShot = os.clock() end
+                    local character = LP.Character
+                    local role = getRole(LP)
+                    if handle and character and handle:IsDescendantOf(character)
+                        and (role == "Sheriff" or role == "Hero") then
+                        lastShot = os.clock()
+                    end
                 end))
             end
         end)
@@ -5848,40 +5960,6 @@ end, 6)
             ["Red 08 Adurite Alt"] = { id = "805985601", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
             ["Red 09 Spark Adurite"] = { id = "219863148", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
         }
-        local AURAS = {
-            ["Off"] = false,
-            ["White 01 Angelic"] = { id = "2288612411", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 02 Angel Glow"] = { id = "13338204019", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 03 One Winged"] = { id = "8710799073", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 04 Divine Light"] = { id = "8667439615", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 05 Holy Light"] = { id = "8261640915", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 06 Holy Justice"] = { id = "8233834181", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 07 Holy Mind"] = { id = "9326853347", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 08 Holy Ground"] = { id = "6502475645", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 09 Divine Energy"] = { id = "10098833321", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["White 10 APG Aura"] = { id = "15170157085", cap = MOBILE and 10 or 18, tint = WHITE_VFX },
-            ["Black 01 Shadow"] = { id = "11454285957", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 02 Dark Aura"] = { id = "14649778001", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 03 Pure Darkness"] = { id = "13528802597", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 04 Darkness Alt"] = { id = "13461340546", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 05 Dark Spell"] = { id = "8378637168", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 06 Dark Star"] = { id = "9458078272", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 07 Black White"] = { id = "15296578953", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 08 Evil Black"] = { id = "14596651226", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 09 Void Flame"] = { id = "89194108265492", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Black 10 Void Aura"] = { id = "13897315722", cap = MOBILE and 12 or 22, tint = BLACK_VFX },
-            ["Red 01 Lightning"] = { id = "12276491211", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 02 God Ki"] = { id = "2941162138", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 03 Simple"] = { id = "14311905651", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 04 Classic"] = { id = "2111769371", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 05 Testing"] = { id = "5173264621", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 06 Electricity"] = { id = "3124152607", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 07 Electric"] = { id = "18202213689", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 08 Magic"] = { id = "136924291288253", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 09 Fission"] = { id = "8387525609", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 10 Crimson Electro"] = { id = "10322895157", cap = MOBILE and 12 or 22, tint = RED_VFX },
-            ["Red 11 Mega Pie"] = { id = "8991059421", cap = MOBILE and 12 or 22, tint = RED_VFX },
-        }
         -- One list, but grouped under readable section names instead of raw colour prefixes.
         -- The old "White/Black/Red NN ..." keys stay in WINGS as aliases, so a config saved before
         -- this rename still resolves and nobody loses their selected pair of wings.
@@ -5898,32 +5976,6 @@ end, 6)
             for _, p in ipairs(picks) do
                 if WINGS[p.key] then WINGS[p.display] = WINGS[p.key] end
                 table.insert(wingNames, p.display)
-            end
-        end
-        -- Trimmed from 31 to the ones that actually read as an effect on a character. Most of the
-        -- rest were either barely visible, a near-duplicate of a neighbour, or named so vaguely
-        -- ("Red 05 Testing") that nobody could tell what they were picking. The dropped keys stay
-        -- in AURAS, so a config that selected one still resolves instead of falling back to Off.
-        local auraNames = {
-            "Off",
-            "Angelic", "Divine Light", "Holy Ground",
-            "Shadow", "Void Flame", "Dark Star",
-            "Lightning", "God Ki", "Crimson Electro",
-        }
-        do
-            local alias = {
-                Angelic = "White 01 Angelic",
-                ["Divine Light"] = "White 04 Divine Light",
-                ["Holy Ground"] = "White 08 Holy Ground",
-                Shadow = "Black 01 Shadow",
-                ["Void Flame"] = "Black 09 Void Flame",
-                ["Dark Star"] = "Black 06 Dark Star",
-                Lightning = "Red 01 Lightning",
-                ["God Ki"] = "Red 02 God Ki",
-                ["Crimson Electro"] = "Red 10 Crimson Electro",
-            }
-            for display, key in pairs(alias) do
-                if AURAS[key] then AURAS[display] = AURAS[key] end
             end
         end
         local fx = { objects = {}, conns = {}, busy = false, ticket = 0 }
@@ -5962,85 +6014,19 @@ end, 6)
                 end
             end
         end
-        local function sanitize(container, aura, data)
+        -- Remove VFX left by an older script instance before creating static wings.
+        clean()
+        local function sanitize(container, data)
             data = data or {}
-            -- User overrides. Each preset ships a tint and an emission cap tuned for it; these three
-            -- ride on top so an aura can be recoloured, thinned out or made denser without editing
-            -- the table. Density scales BOTH the per-emitter rate and the cap, otherwise raising it
-            -- would just clip against the preset's own ceiling and appear to do nothing.
-            local userColor = (S.AuraColor and S.AuraColor ~= "Preset") and FOV_COLORS[S.AuraColor] or nil
-            local tint = userColor or data.tint
-            local seq = tint and ColorSequence.new(tint) or nil
-            local density = math.clamp(tonumber(S.AuraDensity) or 100, 20, 300) / 100
-            local sizeMul = math.clamp(tonumber(S.AuraSize) or 100, 40, 250) / 100
-            local baseCap = tonumber(data.cap) or (MOBILE and 10 or 20)
-            local cap = math.clamp(baseCap * density, 1, MOBILE and 60 or 140)
+            local tint = data.tint
             for _, obj in ipairs(container:GetDescendants()) do
                 if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
                     pcall(function() obj:Destroy() end)
-                elseif aura and (obj:IsA("Humanoid") or obj:IsA("Animator") or obj:IsA("Animation") or obj:IsA("HumanoidDescription")) then
+                elseif obj:IsA("Humanoid") or obj:IsA("Animator") or obj:IsA("Animation") or obj:IsA("HumanoidDescription") then
                     pcall(function() obj:Destroy() end)
-                elseif aura and obj:IsA("BasePart") then
-                    prepPart(obj, true)
                 elseif obj:IsA("BasePart") then
                     prepPart(obj, false)
                     if tint then pcall(function() obj.Color = tint end) end
-                elseif aura and obj:IsA("ParticleEmitter") then
-                    pcall(function()
-                        local rate = tonumber(obj.Rate) or 0
-                        if rate <= 0 then rate = MOBILE and 6 or 10 end
-                        obj.Rate = math.clamp(rate * density, 1, cap)
-                        local lifetime = obj.Lifetime
-                        if not lifetime or lifetime.Max <= 0 then
-                            obj.Lifetime = NumberRange.new(0.6, 1.2)
-                        end
-                        if seq then obj.Color = seq end
-                        if obj.Texture == "" then
-                            obj.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-                            obj.Size = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 0.18, 0),
-                                NumberSequenceKeypoint.new(0.5, 0.42, 0),
-                                NumberSequenceKeypoint.new(1, 0.08, 0),
-                            })
-                            obj.Transparency = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 1, 0),
-                                NumberSequenceKeypoint.new(0.15, 0.22, 0),
-                                NumberSequenceKeypoint.new(1, 1, 0),
-                            })
-                        end
-                        local visible = false
-                        for _, keypoint in ipairs(obj.Transparency.Keypoints) do
-                            if keypoint.Value < 0.95 then visible = true; break end
-                        end
-                        if not visible then
-                            obj.Transparency = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 1, 0),
-                                NumberSequenceKeypoint.new(0.12, 0.2, 0),
-                                NumberSequenceKeypoint.new(0.82, 0.28, 0),
-                                NumberSequenceKeypoint.new(1, 1, 0),
-                            })
-                        end
-                        -- Particle Size slider: rescale whatever curve the asset (or the block above)
-                        -- ended up with, rather than replacing it, so each preset keeps its shape.
-                        if math.abs(sizeMul - 1) > 0.01 then
-                            local scaled = {}
-                            for _, kp in ipairs(obj.Size.Keypoints) do
-                                scaled[#scaled + 1] = NumberSequenceKeypoint.new(
-                                    kp.Time, math.clamp(kp.Value * sizeMul, 0, 100), kp.Envelope)
-                            end
-                            if #scaled >= 2 then obj.Size = NumberSequence.new(scaled) end
-                        end
-                        obj.LightInfluence = 0
-                        obj.LightEmission = math.max(obj.LightEmission, 0.65)
-                        obj.LockedToPart = true
-                        obj.Enabled = true
-                    end)
-                elseif aura and (obj:IsA("Beam") or obj:IsA("Trail")) then
-                    pcall(function()
-                        if seq then obj.Color = seq end
-                        obj.LightEmission = math.max(obj.LightEmission, 0.55)
-                        obj.Enabled = true
-                    end)
                 end
             end
         end
@@ -6070,9 +6056,7 @@ end, 6)
             -- Wing Size slider. Applied after the safety clamp, not before, so the user can go past
             -- the conservative built-in cap on purpose ("wings are too long" cuts both ways) while
             -- an asset with no `max` of its own still starts from a sane default.
-            if not data.isAura then
-                target = target * (math.clamp(tonumber(S.VFXWingScale) or 100, 40, 200) / 100)
-            end
+            target = target * (math.clamp(tonumber(S.VFXWingScale) or 100, 40, 200) / 100)
             pcall(function()
                 local _, size = model:GetBoundingBox()
                 local biggest = math.max(size.X, size.Y, size.Z)
@@ -6081,95 +6065,41 @@ end, 6)
                 end
             end)
         end
-        local function weldModel(model, root, offset, data, mode)
+        local function weldModel(model, root, offset, data)
             local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-            if not primary and mode == "Aura" then
-                -- Some aura packages contain only Attachments/ParticleEmitters. Give them a tiny
-                -- invisible carrier so the emitters can still follow the character.
-                primary = Instance.new("Part")
-                primary.Name = "InertiaToolboxAuraAnchor"
-                primary.Size = Vector3.new(0.2, 0.2, 0.2)
-                prepPart(primary, true)
-                primary.Parent = model
-            end
             if not primary then return nil end
             model.PrimaryPart = primary
-            if mode == "Aura" then
-                local emitterCount = 0
-                for _, obj in ipairs(model:GetDescendants()) do
-                    if obj:IsA("Attachment") and obj.Parent and not (obj.Parent:IsA("BasePart") or obj.Parent:IsA("Bone")) then
-                        pcall(function() obj.Parent = primary end)
-                    elseif obj:IsA("ParticleEmitter") then
-                        emitterCount = emitterCount + 1
-                        if obj.Parent and not (obj.Parent:IsA("BasePart") or obj.Parent:IsA("Attachment")) then
-                            pcall(function() obj.Parent = primary end)
-                        end
-                    end
-                end
-                if emitterCount == 0 then
-                    local tint = data and data.tint or Color3.fromRGB(255, 255, 255)
-                    local emitter = Instance.new("ParticleEmitter")
-                    emitter.Name = "InertiaToolboxAuraFallback"
-                    emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-                    emitter.Color = ColorSequence.new(tint)
-                    emitter.Rate = MOBILE and 5 or 8
-                    emitter.Lifetime = NumberRange.new(0.65, 1.15)
-                    emitter.Speed = NumberRange.new(0.2, 0.8)
-                    emitter.Size = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, 0.18, 0),
-                        NumberSequenceKeypoint.new(0.5, 0.42, 0),
-                        NumberSequenceKeypoint.new(1, 0.08, 0),
-                    })
-                    emitter.Transparency = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, 1, 0),
-                        NumberSequenceKeypoint.new(0.15, 0.2, 0),
-                        NumberSequenceKeypoint.new(1, 1, 0),
-                    })
-                    emitter.LightInfluence = 0
-                    emitter.LightEmission = 0.8
-                    emitter.LockedToPart = true
-                    emitter.Enabled = true
-                    emitter.Parent = primary
-                end
-            end
-            if mode == "Aura" then
-                -- Keep aura placement independent from the wing-specific bounds correction.
-                -- Aura assets are authored around different origins and should stay at the torso.
-                normalizeModel(model, { max = MOBILE and 2.6 or 3.0, isAura = true })
-                model:PivotTo(root.CFrame * (offset or CFrame.new(0, 0, 0)))
-            else
-                normalizeModel(model, data)
-                -- Use one torso-relative anchor for every wing asset. The old per-asset Z offsets
-                -- were authored against unrelated pivots, which left some wings below or floating.
-                local authored = offset or CFrame.new(0, 0.12, 0.62)
-                local ox, oy, oz = authored:ToOrientation()
-                local op = authored.Position
-                -- The clamps keep an asset's own authored offset sane; the sliders are added on top
-                -- of the clamped value so the user can always pull the wings up/down or further off
-                -- the back than any preset allows. Hundredths of a stud per slider step.
-                local anchorOffset = CFrame.new(
-                    0,
-                    math.clamp(op.Y, 0.12, 0.24) + (math.clamp(tonumber(S.VFXWingHeight) or 0, -60, 60) / 100),
-                    math.clamp(op.Z, 0.42, 0.62) + (math.clamp(tonumber(S.VFXWingBack) or 0, -40, 90) / 100)
-                ) * CFrame.Angles(ox, oy, oz)
-                local target = root.CFrame * anchorOffset
-                model:PivotTo(target)
+            normalizeModel(model, data)
+            -- Use one torso-relative anchor for every wing asset. The old per-asset Z offsets
+            -- were authored against unrelated pivots, which left some wings below or floating.
+            local authored = offset or CFrame.new(0, 0.12, 0.62)
+            local ox, oy, oz = authored:ToOrientation()
+            local op = authored.Position
+            -- The clamps keep an asset's own authored offset sane; the sliders are added on top
+            -- of the clamped value so the user can always pull the wings up/down or further off
+            -- the back than any preset allows. Hundredths of a stud per slider step.
+            local anchorOffset = CFrame.new(
+                0,
+                math.clamp(op.Y, 0.12, 0.24) + (math.clamp(tonumber(S.VFXWingHeight) or 0, -60, 60) / 100),
+                math.clamp(op.Z, 0.42, 0.62) + (math.clamp(tonumber(S.VFXWingBack) or 0, -40, 90) / 100)
+            ) * CFrame.Angles(ox, oy, oz)
+            local target = root.CFrame * anchorOffset
+            model:PivotTo(target)
 
-                -- Correct wing pivots by aligning actual bounds to the torso anchor.
-                pcall(function()
-                    local pivot = model:GetPivot()
-                    local bounds = model:GetBoundingBox()
-                    local delta = target.Position - bounds.Position
-                    if delta.Magnitude > 0.001 then
-                        model:PivotTo(CFrame.fromMatrix(
-                            pivot.Position + delta,
-                            pivot.RightVector,
-                            pivot.UpVector,
-                            -pivot.LookVector
-                        ))
-                    end
-                end)
-            end
+            -- Correct wing pivots by aligning actual bounds to the torso anchor.
+            pcall(function()
+                local pivot = model:GetPivot()
+                local bounds = model:GetBoundingBox()
+                local delta = target.Position - bounds.Position
+                if delta.Magnitude > 0.001 then
+                    model:PivotTo(CFrame.fromMatrix(
+                        pivot.Position + delta,
+                        pivot.RightVector,
+                        pivot.UpVector,
+                        -pivot.LookVector
+                    ))
+                end
+            end)
             for _, part in ipairs(model:GetDescendants()) do
                 if part:IsA("BasePart") and part ~= primary then
                     pcall(function()
@@ -6191,70 +6121,12 @@ end, 6)
             own(weld)
             return weld
         end
-        local function animate(model, weld, wholeOnly, data)
-            data = data or {}
-            local motors = {}
-            for _, obj in ipairs(model:GetDescendants()) do
-                if obj:IsA("Motor6D") then
-                    local full = obj:GetFullName():lower()
-                    table.insert(motors, { m = obj, c0 = obj.C0, side = full:find("left", 1, true) and -1 or 1 })
-                end
-            end
-            local base = weld.C0
-            table.insert(fx.conns, RunService.RenderStepped:Connect(function()
-                if not ((S.VFXWings or (S.VFXAura and S.VFXAura ~= "Off")) and model and model.Parent and weld and weld.Parent) then
-                    clean()
-                    return
-                end
-                local t = tick()
-                local flap = math.sin(t * 3.35)
-                local breathe = math.sin(t * 1.75)
-                local amp = tonumber(data.flap) or 0.18
-                weld.C0 = base
-                    * CFrame.new(0, breathe * 0.055, math.cos(t * 1.25) * 0.025)
-                    * CFrame.Angles(breathe * 0.045, flap * amp, math.sin(t * 2.4) * 0.045)
-                for _, item in ipairs(motors) do
-                    if item.m and item.m.Parent then
-                        item.m.C0 = item.c0 * CFrame.Angles(0, item.side * flap * 0.42, math.abs(flap) * 0.12)
-                    end
-                end
-            end))
-        end
-        local function animateAura(model, weld)
-            local base = weld.C0
-            table.insert(fx.conns, RunService.RenderStepped:Connect(function()
-                if not (S.VFXAura and S.VFXAura ~= "Off" and model and model.Parent and weld and weld.Parent) then
-                    clean()
-                    return
-                end
-                local t = tick()
-                weld.C0 = base * CFrame.Angles(0, t * 0.28 % (math.pi * 2), 0) * CFrame.new(0, math.sin(t * 1.8) * 0.025, 0)
-            end))
-        end
-        local function attachAura(root, data, ticket)
-            local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. data.id) end)
-            if not (ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket) then
-                if ticket == fx.ticket then Notify("VFX Aura", "Asset load failed: " .. data.id, 3) end
-                return
-            end
-            local model = makeModel(loaded, "InertiaToolboxAura")
-            if not model then return end
-            sanitize(model, true, data)
-            model.Parent = LP.Character
-            local weld = weldModel(model, root, CFrame.new(0, -0.15, 0), data, "Aura")
-            if weld then
-                own(model)
-                animateAura(model, weld)
-            else
-                model:Destroy()
-            end
-        end
         local function rebuild()
             clean()
             local char, root = LP.Character, rootPart(LP.Character)
             if not (char and root) then return end
-            local wingData, auraData = WINGS[S.VFXWingStyle] or WINGS["White 02 Angel Rig"], AURAS[S.VFXAura or "Off"]
-            if not (S.VFXWings or auraData) then return end
+            local wingData = WINGS[S.VFXWingStyle] or WINGS["White 02 Angel Rig"]
+            if not S.VFXWings then return end
             local ticket = fx.ticket
             fx.busy = true
             task.spawn(function()
@@ -6264,12 +6136,11 @@ end, 6)
                     if ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket and char and root then
                         local model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
                         if model then
-                            sanitize(model, false, wingData)
+                            sanitize(model, wingData)
                             model.Parent = char
                             local weld = weldModel(model, root, wingData.offset, wingData)
                             if weld then
                                 own(model)
-                                animate(model, weld, wingData.whole, wingData)
                             else
                                 model:Destroy()
                                 Notify("VFX Wings", "Asset has no attachable parts.", 3)
@@ -6279,18 +6150,16 @@ end, 6)
                         Notify("VFX Wings", "Asset load failed: " .. wingData.id, 3)
                     end
                 end
-                char, root = LP.Character, rootPart(LP.Character)
-                if auraData and ticket == fx.ticket and char and root then attachAura(root, auraData, ticket) end
                 fx.busy = false
             end)
         end
         S._RefreshVFXWings = rebuild
         tc(LP.CharacterAdded:Connect(function()
             task.delay(0.9, function()
-                if S.VFXWings or (S.VFXAura and S.VFXAura ~= "Off") then rebuild() end
+                if S.VFXWings then rebuild() end
             end)
         end))
-        local secWings = mkSection(Pages.Visuals, "Wings & Aura", 4.7)
+        local secWings = mkSection(Pages.Visuals, "Wings", 4.7)
         table.insert(S._CustomsSections, secWings)
         mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
         mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
@@ -6303,11 +6172,8 @@ end, 6)
         mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
         mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
         mkSlider(secWings, "Wing Back Offset", -150, 150, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
-        -- VFX Aura and its three tuning controls are gone, on request. The marketplace aura models
-        -- it pulled were unreliable to load and never looked right; S.VFXAura is pinned "Off" below
-        -- so every remaining reference to it -- the rebuild path, the config keys, an old saved
-        -- config -- stays valid without needing to be chased down.
-        S.VFXAura = "Off"
+        -- Permanently discard removed aura settings so an old autoload cannot resurrect the floor FX.
+        S.VFXAura, S.AuraColor, S.AuraDensity, S.AuraSize = nil, nil, nil, nil
     end
     -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
@@ -6520,7 +6386,7 @@ end, 6)
             return loc.X - inset.X, loc.Y - inset.Y
         end
 
-        RunService.RenderStepped:Connect(function()
+        S._RefreshCustomCursor = function()
             local mouse = Players.LocalPlayer:GetMouse()
             if not S.CustomCrosshair then
                 if cursorGui.Visible or vectorCursorGui.Visible then
@@ -6554,20 +6420,22 @@ end, 6)
                 end
                 local cx, cy = cursorSpot()
                 vectorCursorGui.Position = UDim2.fromOffset(cx, cy)
-                vectorCursorGui.Visible = not menuOpen
+                vectorCursorGui.Visible = true
             else
                 vectorCursorGui.Visible = false
                 lastVectorKey = ""
                 local img = S.CrosshairAssetId or CustomCrosshairs[((idx - 1) % #CustomCrosshairs) + 1] or CustomCrosshairs[1]
                 if not img or img == "" then return end
                 cursorGui.Image = img
+                cursorGui.AnchorPoint = (entry and entry.Hotspot) or Vector2.new(0.5, 0.5)
                 cursorGui.Size = UDim2.fromOffset(size, size)
                 local cx, cy = cursorSpot()
                 cursorGui.Position = UDim2.fromOffset(cx, cy)
-                cursorGui.Visible = not menuOpen
+                cursorGui.Visible = true
             end
             UIS.MouseIconEnabled = menuOpen
-        end)
+        end
+        tc(RunService.RenderStepped:Connect(S._RefreshCustomCursor))
 
         SG.Destroying:Connect(function()
             pcall(function() UIS.MouseIconEnabled = true end)
@@ -6601,7 +6469,7 @@ end, 6)
         end
     end)
 
-    local secFx = mkSection(Pages.Visuals, "Effects", 7)
+    local secFx = mkSection(Pages.Visuals, "Color & Stretch", 7)
     mkSlider(secFx, "Saturation", -100, 100, 0, function(v) S.Saturation = v end, 1)
     mkSlider(secFx, "Contrast", -100, 100, 0, function(v) S.Contrast = v end, 2)
     mkToggle(secFx, "Stretch Resolution", false, function(v) S.StretchEnabled = v end, 3)
@@ -7450,7 +7318,7 @@ do
     S._RegisterMiscSection(sec6, "Protection")
     mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
 
-    local sec5 = mkSection(Pages.Teleport, "Actions", 4)
+    local sec5 = mkSection(Pages.Teleport, "Server Actions", 4)
     mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 2)
     mkAction(sec5, "Server Hop", function() serverHop() end, 3)
 
@@ -10065,6 +9933,7 @@ HUD.hWatermark, HUD.watermarkLbl = mkWatermark()
 -- an oversized horizontal strip.
 HUD.hPinnedEmotes = mkDragHUD("Pinned Emotes", UDim2.new(0, 230, 0, 540), UDim2.fromOffset(130, 112), 865)
 HUD.hPinnedEmotes.frame.Visible = false
+HUD.hPinnedEmotes.frame:SetAttribute("ContentDrivenVisibility", true)
 HUD.pinnedCount = Instance.new("TextLabel")
 HUD.pinnedCount.Name = "PinnedCount"
 HUD.pinnedCount.Parent = HUD.hPinnedEmotes.frame:FindFirstChild("tb")
@@ -11853,9 +11722,6 @@ do
     end
 
     -- ---------- UI ---------- (merged into Teleport > Autofarm subtab)
-    local secCoins = mkSection(Pages.Teleport, "Coins", 5)
-    if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secCoins) end
-
     local secAuto = mkSection(Pages.Teleport, "Automated", 6)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secAuto) end
     mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
@@ -12107,7 +11973,6 @@ local CFG_CONTROL_KEY_ALIASES = {
     unlockallknifeeffectsvisual = "UnlockAllKnifeEffects",
     dynamicisland = "WatermarkEnabled",
     vfxwingstyle = "VFXWingStyle",
-    vfxaura = "VFXAura",
     aiprovider = "AIChatProvider",
     respondtoallmessages = "AIChatRespondToAll",
     maxhumanizer = "AIChatMaxHumanizer",
@@ -12271,6 +12136,7 @@ local function loadConfig(name)
     -- Walk Fling was removed; discard the legacy key instead of recreating it from old configs.
     S.WalkFling = nil
     S.ThrowAuraRange = nil
+    S.VFXAura, S.AuraColor, S.AuraDensity, S.AuraSize = nil, nil, nil, nil
     S.CamFOV = 70
 
     if dat.CustomTheme then
@@ -12338,7 +12204,11 @@ local function loadConfig(name)
         for name, el in pairs(HUDEls) do
             if dat.hud[name] then
                 pcall(function()
-                    el.frame.Visible = dat.hud[name].v
+                    if el.frame:GetAttribute("ContentDrivenVisibility") == true then
+                        el.frame.Visible = false
+                    else
+                        el.frame.Visible = dat.hud[name].v
+                    end
                     local p = dat.hud[name].p
                     el.frame.Position = UDim2.new(p.xs, p.xo, p.ys, p.yo)
                     _clampHUDBounds(el.frame)
@@ -16402,39 +16272,88 @@ do
 local function buildEmotesTab()
 local secEmotes = registerPlayerSubTabSection(mkSection(Pages.Player, "Emotes", 1), "Emotes")
 local EmoteHttpService = game:GetService("HttpService")
-local EMOTES_BLOCKED_CACHE = "MM2_Configs/_blocked_emotes_v1.json"
-local blockedEmoteIds = {}
-if readfile and isfile and isfile(EMOTES_BLOCKED_CACHE) then
-    local ok, data = pcall(function() return EmoteHttpService:JSONDecode(readfile(EMOTES_BLOCKED_CACHE)) end)
-    if ok and type(data) == "table" then blockedEmoteIds = data end
-end
+local EmoteAvatarEditor = game:GetService("AvatarEditorService")
+local EMOTE_CATALOG_CACHE = "MM2_Configs/_emotes_cache_all_v3.json"
+local EMOTE_PINS_CACHE = "MM2_Configs/_pinned_emotes_v1.json"
+local EMOTE_FALLBACK_IMAGE = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LP.UserId) .. "&w=420&h=420"
 local emoteCatalog = {
-    { name = "Wave", id = 507770239 },
-    { name = "Point", id = 507770453 },
-    { name = "Cheer", id = 507770677 },
-    { name = "Laugh", id = 507770818 },
-    { name = "Dance 1", id = 507771019 },
-    { name = "Dance 2", id = 507776043 },
-    { name = "Dance 3", id = 507777268 },
-    { name = "Stadium", id = 3360686498 },
-    { name = "Tilt", id = 3360692915 },
+    { name = "Point", id = 3576823880 },
     { name = "Shrug", id = 3576968026 },
-    { name = "Salute", id = 3360689775 },
     { name = "Hello", id = 3576686446 },
-    { name = "Around Town", id = 3576747102 },
-    { name = "Fashionable", id = 3576745472 },
+    { name = "Stadium", id = 3360686498 },
+    { name = "Monkey", id = 3716636630 },
+    { name = "Salute", id = 3360689775 },
+    { name = "Curtsy", id = 4646306583 },
+    { name = "Tilt", id = 3360692915 },
     { name = "Godlike", id = 3823158750 },
-    { name = "Dolphin Dance", id = 5918726674 },
-    { name = "Applaud", id = 5911729486 },
+    { name = "Happy", id = 4849499887 },
+    { name = "Sleep", id = 4689362868 },
+    { name = "Hero Landing", id = 5104377791 },
+    { name = "Applaud", id = 5915779043 },
+    { name = "Shy", id = 3576717965 },
+    { name = "Floss Dance", id = 5917570207 },
+    { name = "Quiet Waves", id = 7466046574 },
+    { name = "Baby Dance", id = 4272484885 },
+    { name = "Top Rock", id = 3570535774 },
+    { name = "Bored", id = 5230661597 },
+    { name = "Twirl", id = 3716633898 },
+    { name = "Fashionable", id = 3576745472 },
+    { name = "Line Dance", id = 4049646104 },
+    { name = "Cower", id = 4940597758 },
+    { name = "High Wave", id = 5915776835 },
+    { name = "Dolphin Dance", id = 5938365243 },
+    { name = "Old Town Road Dance", id = 5938394742 },
+    { name = "Around Town", id = 3576747102 },
+    { name = "Celebrate", id = 3994127840 },
+    { name = "Show Dem Wrists", id = 7202898984 },
+    { name = "Side to Side", id = 3762641826 },
+    { name = "Dorky Dance", id = 4212499637 },
+    { name = "Shuffle", id = 4391208058 },
+    { name = "Dizzy", id = 3934986896 },
+    { name = "Fancy Feet", id = 3934988903 },
+    { name = "Holiday Dance", id = 5938396308 },
+    { name = "Bodybuilder", id = 3994130516 },
+    { name = "Haha", id = 4102315500 },
+    { name = "Sad", id = 4849502101 },
+    { name = "Break Dance", id = 5915773992 },
+    { name = "Samba", id = 6869813008 },
 }
-local emoteIdSet = {}
-local function rebuildEmoteIdSet()
-    table.clear(emoteIdSet)
-    for _, item in ipairs(emoteCatalog) do
-        if item and item.id then emoteIdSet[tostring(item.id)] = true end
-    end
+local curatedEmotes = table.clone(emoteCatalog)
+local function loadEmoteJson(path)
+    if not (readfile and isfile and isfile(path)) then return nil end
+    local ok, data = pcall(function() return EmoteHttpService:JSONDecode(readfile(path)) end)
+    return (ok and type(data) == "table") and data or nil
 end
-rebuildEmoteIdSet()
+local function saveEmoteJson(path, data)
+    if not (writefile and makefolder and isfolder) then return end
+    pcall(function()
+        if not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
+        writefile(path, EmoteHttpService:JSONEncode(data))
+    end)
+end
+local function mergeEmoteCatalog(extra)
+    local nextCatalog, seen = {}, {}
+    local function add(item)
+        local id = tonumber(item and (item.id or item.Id))
+        if not id or id <= 0 or seen[id] then return end
+        seen[id] = true
+        table.insert(nextCatalog, {
+            name = tostring(item.name or item.Name or ("Emote " .. tostring(id))),
+            id = id,
+        })
+    end
+    for _, item in ipairs(curatedEmotes) do add(item) end
+    if type(extra) == "table" then
+        for _, item in ipairs(extra) do add(item) end
+    end
+    emoteCatalog = nextCatalog
+end
+local function resolveEmoteThumbnail(item)
+    local id = tonumber(item and (item.thumbnailId or item.id))
+    if not id or id <= 0 then return EMOTE_FALLBACK_IMAGE end
+    return "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
+end
+mergeEmoteCatalog(loadEmoteJson(EMOTE_CATALOG_CACHE))
 local currentEmoteTrack, currentEmoteAnim
 local emoteStatus = Instance.new("TextLabel")
 emoteStatus.Name = "EmoteStatus"
@@ -16447,7 +16366,7 @@ emoteStatus.TextSize = 12
 emoteStatus.TextColor3 = T.Tx3; pcall(function() emoteStatus:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
 emoteStatus.TextXAlignment = Enum.TextXAlignment.Left
 emoteStatus.TextWrapped = true
-emoteStatus.Text = "Built-in emotes are ready. Tap Load All Emotes to load the full catalog inside Inertia."
+emoteStatus.Text = "40 built-in emotes ready. The official catalog loads automatically."
 local emoteSearch = S._mkSearchBox(secEmotes, 2, "Search emotes...")
 local emoteScroll = S._mkListScroll(secEmotes, 3, MOBILE and 440 or 420)
 for _, child in ipairs(emoteScroll:GetChildren()) do
@@ -16457,28 +16376,6 @@ emoteScroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 local emoteMatches, emoteRenderQueued, emoteRefreshRequest = {}, false, 0
 local EMOTE_ROW_H = 60
 local refreshEmbeddedEmotes
-local function saveBlockedEmotes()
-    if not (writefile and makefolder and isfolder) then return end
-    pcall(function()
-        if not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
-        writefile(EMOTES_BLOCKED_CACHE, EmoteHttpService:JSONEncode(blockedEmoteIds))
-    end)
-end
-local function markBlockedEmote(id)
-    id = tostring(id or "")
-    if id == "" or blockedEmoteIds[id] then return end
-    blockedEmoteIds[id] = true
-    saveBlockedEmotes()
-    if refreshEmbeddedEmotes then refreshEmbeddedEmotes() end
-end
-tc(game:GetService("LogService").MessageOut:Connect(function(msg, msgType)
-    if msgType ~= Enum.MessageType.MessageError then return end
-    local id = tostring(msg):match("Failed to load animation with sanitized ID rbxassetid://(%d+)")
-    if id and emoteIdSet[id] then
-        markBlockedEmote(id)
-        emoteStatus.Text = "Blocked emote hidden: " .. id
-    end
-end))
 mkToggle(secEmotes, "Loop Emote", false, function(v)
     S.LoopEmote = v
     if currentEmoteTrack then
@@ -16512,8 +16409,7 @@ local function playEmbeddedEmote(item)
     local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
     if not (ok and track) then
         pcall(function() anim:Destroy() end)
-        markBlockedEmote(id)
-        emoteStatus.Text = "This emote is blocked in this place."
+        emoteStatus.Text = "This emote cannot play in this place."
         return
     end
     currentEmoteAnim = anim
@@ -16525,9 +16421,8 @@ local function playEmbeddedEmote(item)
     task.delay(1.2, function()
         local failedAt = PackState and PackState.recentlyFailedIds and PackState.recentlyFailedIds[tostring(id)]
         if failedAt and tick() - failedAt < 3 then
-            markBlockedEmote(id)
             if currentEmoteTrack == track then stopEmbeddedEmote() end
-            emoteStatus.Text = "Blocked emote hidden: " .. tostring(item.name or id)
+            emoteStatus.Text = "Playback blocked here: " .. tostring(item.name or id)
         end
     end)
 end
@@ -16536,6 +16431,132 @@ end
 -- 20 new ones, each re-fetching its thumbnail. That is the scroll stutter. Now only rows that
 -- actually left the window are destroyed and only genuinely new indices are built.
 local emoteRows = {}
+local EMOTE_PIN_LIMIT = 8
+local pinnedEmotes, pinnedById = {}, {}
+for _, item in ipairs(loadEmoteJson(EMOTE_PINS_CACHE) or {}) do
+    local id = tonumber(item and item.id)
+    if id and id > 0 and not pinnedById[tostring(id)] and #pinnedEmotes < EMOTE_PIN_LIMIT then
+        local clean = { name = tostring(item.name or ("Emote " .. tostring(id))), id = id }
+        table.insert(pinnedEmotes, clean)
+        pinnedById[tostring(id)] = clean
+    end
+end
+local function applyEmoteThumbnail(image, item)
+    if not image then return end
+    image.Image = resolveEmoteThumbnail(item)
+    task.delay(5, function()
+        if not (image and image.Parent) then return end
+        local ok, loaded = pcall(function() return image.IsLoaded end)
+        if not ok or not loaded then image.Image = EMOTE_FALLBACK_IMAGE end
+    end)
+end
+local function syncPinnedEmotesHUDVisibility()
+    local pinnedCount = #pinnedEmotes
+    if HUD.pinnedCount then HUD.pinnedCount.Text = tostring(pinnedCount) end
+    local shouldShow = pinnedCount > 0
+    local frame = HUD.hPinnedEmotes and HUD.hPinnedEmotes.frame
+    if not frame then return end
+    if shouldShow and S._SetHUDVisible then
+        S._SetHUDVisible(HUD.hPinnedEmotes, true)
+    elseif shouldShow then
+        frame.Visible = true
+    else
+        frame:SetAttribute("HUDTargetVisible", false)
+        frame.Visible = false
+    end
+end
+local function syncEmotePinButtons()
+    for index, row in pairs(emoteRows) do
+        local item = emoteMatches[index]
+        local pin = row and row:FindFirstChild("Pin")
+        if pin and item then
+            pin.Text = pinnedById[tostring(item.id)] and "★" or "+"
+        end
+    end
+end
+local renderPinnedEmotesHUD
+local function togglePinnedEmote(item)
+    local id = tostring(item and item.id or "")
+    if id == "" then return end
+    local existing = pinnedById[id]
+    if existing then
+        for index, pinned in ipairs(pinnedEmotes) do
+            if tostring(pinned.id) == id then table.remove(pinnedEmotes, index); break end
+        end
+        pinnedById[id] = nil
+    else
+        if #pinnedEmotes >= EMOTE_PIN_LIMIT then
+            emoteStatus.Text = "Pinned emote limit: " .. tostring(EMOTE_PIN_LIMIT)
+            return
+        end
+        local clean = { name = tostring(item.name or ("Emote " .. id)), id = tonumber(item.id) }
+        table.insert(pinnedEmotes, clean)
+        pinnedById[id] = clean
+    end
+    saveEmoteJson(EMOTE_PINS_CACHE, pinnedEmotes)
+    if renderPinnedEmotesHUD then renderPinnedEmotesHUD() end
+    syncEmotePinButtons()
+end
+renderPinnedEmotesHUD = function()
+    local content = HUD.hPinnedEmotes and HUD.hPinnedEmotes.content
+    if not content then return end
+    for _, child in ipairs(content:GetChildren()) do
+        if not child:IsA("UIGridLayout") then child:Destroy() end
+    end
+    for index, item in ipairs(pinnedEmotes) do
+        local tile = Instance.new("Frame")
+        tile.Name = "PinnedEmote"
+        tile.LayoutOrder = index
+        tile.Size = UDim2.fromOffset(58, 66)
+        tile.BackgroundColor3 = T.Elev
+        tile.BorderSizePixel = 0
+        tile.Parent = content
+        Corner(tile, 7)
+        Stroke(tile, T.Bd2, 1, 0.4)
+
+        local play = Instance.new("ImageButton")
+        play.Name = "Play"
+        play.Parent = tile
+        play.AutoButtonColor = false
+        play.BackgroundTransparency = 1
+        play.Position = UDim2.fromOffset(4, 4)
+        play.Size = UDim2.fromOffset(50, 44)
+        play.ScaleType = Enum.ScaleType.Crop
+        applyEmoteThumbnail(play, item)
+        Corner(play, 6)
+
+        local title = Instance.new("TextLabel")
+        title.Parent = tile
+        title.BackgroundTransparency = 1
+        title.Position = UDim2.fromOffset(3, 49)
+        title.Size = UDim2.new(1, -6, 0, 14)
+        title.Font = F
+        title.TextSize = 9
+        title.TextColor3 = T.Tx2
+        title.TextTruncate = Enum.TextTruncate.AtEnd
+        title.Text = tostring(item.name)
+
+        local remove = Instance.new("TextButton")
+        remove.Name = "Remove"
+        remove.Parent = tile
+        remove.AnchorPoint = Vector2.new(1, 0)
+        remove.Position = UDim2.new(1, -2, 0, 2)
+        remove.Size = UDim2.fromOffset(17, 17)
+        remove.BackgroundColor3 = T.Card
+        remove.BackgroundTransparency = 0.08
+        remove.BorderSizePixel = 0
+        remove.Font = FB
+        remove.TextSize = 12
+        remove.TextColor3 = T.Tx
+        remove.Text = "×"
+        Corner(remove, 5)
+
+        play.MouseButton1Click:Connect(function() SFX.Click(); playEmbeddedEmote(item) end)
+        remove.MouseButton1Click:Connect(function() SFX.Click(); togglePinnedEmote(item) end)
+    end
+    fitPinnedEmotesHUD()
+    syncPinnedEmotesHUDVisibility()
+end
 local function clearRenderedEmotes()
     for _, ch in ipairs(emoteScroll:GetChildren()) do
         if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
@@ -16575,11 +16596,34 @@ local function renderEmbeddedEmoteWindow()
         if not emoteRows[i] then
             local item = emoteMatches[i]
             local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
-            local row = S._mkThumbRow(emoteScroll, i, tostring(item.id), name, function()
+            local row = S._mkThumbRow(emoteScroll, i, nil, name, function()
                 playEmbeddedEmote(item)
             end)
             row.Position = UDim2.fromOffset(0, (i - 1) * EMOTE_ROW_H)
             row.Size = UDim2.new(1, -12, 0, 56)
+            local thumb = row:FindFirstChild("Thumb")
+            applyEmoteThumbnail(thumb, item)
+            local title = row:FindFirstChild("Title")
+            if title then title.Size = UDim2.new(1, -102, 1, 0) end
+            local pin = Instance.new("TextButton")
+            pin.Name = "Pin"
+            pin.Parent = row
+            pin.AnchorPoint = Vector2.new(1, 0.5)
+            pin.Position = UDim2.new(1, -8, 0.5, 0)
+            pin.Size = UDim2.fromOffset(28, 28)
+            pin.BackgroundColor3 = T.Card
+            pin.BackgroundTransparency = 0.1
+            pin.BorderSizePixel = 0
+            pin.Font = FB
+            pin.TextSize = 16
+            pin.TextColor3 = T.Tx
+            pin.Text = pinnedById[tostring(item.id)] and "★" or "+"
+            Corner(pin, 7)
+            Stroke(pin, T.Bd2, 1, 0.45)
+            pin.MouseButton1Click:Connect(function()
+                SFX.Click()
+                togglePinnedEmote(item)
+            end)
             emoteRows[i] = row
         end
     end
@@ -16610,9 +16654,7 @@ refreshEmbeddedEmotes = function()
             if request ~= emoteRefreshRequest then return end
             local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
             local hay = string.lower(name .. " " .. tostring(item.id or ""))
-            local idText = tostring(item.id or "")
-            local failed = blockedEmoteIds[idText] or (PackState and PackState.recentlyFailedIds and PackState.recentlyFailedIds[idText])
-            if not failed and (q == "" or string.find(hay, q, 1, true)) then
+            if q == "" or string.find(hay, q, 1, true) then
                 found += 1
                 emoteMatches[found] = item
             end
@@ -16627,38 +16669,67 @@ refreshEmbeddedEmotes = function()
         emoteStatus.Text = "Emotes in GUI: " .. tostring(#emoteCatalog) .. " loaded, matching " .. tostring(#emoteMatches)
     end)
 end
-local function loadRemoteEmoteCatalog()
-    emoteStatus.Text = "Loading emote catalog inside Inertia..."
-    local ok, json = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/7yd7/sniper-Emote/refs/heads/test/EmoteSniper.json")
-    end)
-    if not (ok and type(json) == "string" and json ~= "") then
-        emoteStatus.Text = "Catalog HTTP blocked; using built-in emotes."
+local emoteCatalogBusy = false
+local function loadRemoteEmoteCatalog(force)
+    if emoteCatalogBusy then return end
+    local cached = loadEmoteJson(EMOTE_CATALOG_CACHE)
+    if not force and cached and #cached > 0 then
+        mergeEmoteCatalog(cached)
+        refreshEmbeddedEmotes()
+        emoteStatus.Text = "Cached emotes ready: " .. tostring(#emoteCatalog)
+    end
+    emoteCatalogBusy = true
+    emoteStatus.Text = "Loading official Roblox emotes..."
+
+    local params = CatalogSearchParams.new()
+    params.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
+    params.IncludeOffSale = true
+    params.Limit = 100
+    pcall(function() params.SortType = Enum.CatalogSortType.MostFavorited end)
+    pcall(function() params.SortAggregation = Enum.CatalogSortAggregation.AllTime end)
+
+    local pages
+    for _ = 1, 3 do
+        local ok, result = pcall(function() return EmoteAvatarEditor:SearchCatalogAsync(params) end)
+        if ok and result then pages = result; break end
+        task.wait(1)
+    end
+    if not pages then
+        emoteCatalogBusy = false
+        emoteStatus.Text = "Official catalog unavailable; showing " .. tostring(#emoteCatalog) .. " cached emotes."
         refreshEmbeddedEmotes()
         return
     end
-    local okDecode, decoded = pcall(function() return EmoteHttpService:JSONDecode(json) end)
-    local data = okDecode and decoded and decoded.data
-    if type(data) ~= "table" then
-        emoteStatus.Text = "Catalog decode failed; using built-in emotes."
-        refreshEmbeddedEmotes()
-        return
-    end
-    local nextCatalog, seen = {}, {}
-    for index, item in ipairs(data) do
-        local id = tonumber(item.id)
-        if id and id > 0 and not seen[id] then
-            seen[id] = true
-            table.insert(nextCatalog, { name = tostring(item.name or ("Emote " .. id)), id = id })
+
+    local fetched, seen = {}, {}
+    for _ = 1, 10 do
+        local ok, items = pcall(function() return pages:GetCurrentPage() end)
+        if ok and type(items) == "table" then
+            for _, item in ipairs(items) do
+                local id = tonumber(item and item.Id)
+                if id and id > 0 and not seen[id] then
+                    seen[id] = true
+                    table.insert(fetched, {
+                        name = tostring(item.Name or ("Emote " .. tostring(id))),
+                        id = id,
+                    })
+                end
+            end
         end
-        if index % 800 == 0 then
-            emoteStatus.Text = "Loading emote catalog: " .. tostring(index)
-            task.wait()
-        end
+        emoteStatus.Text = "Loading official emotes: " .. tostring(#fetched)
+        if pages.IsFinished or #fetched >= 1000 then break end
+        local advanced = pcall(function() pages:AdvanceToNextPageAsync() end)
+        if not advanced then break end
+        task.wait(0.12)
     end
-    if #nextCatalog > 0 then
-        emoteCatalog = nextCatalog
-        rebuildEmoteIdSet()
+
+    emoteCatalogBusy = false
+    if #fetched > 0 then
+        saveEmoteJson(EMOTE_CATALOG_CACHE, fetched)
+        mergeEmoteCatalog(fetched)
+        emoteStatus.Text = "Official emotes ready: " .. tostring(#emoteCatalog)
+    else
+        emoteStatus.Text = "No catalog results; showing " .. tostring(#emoteCatalog) .. " built-in emotes."
     end
     refreshEmbeddedEmotes()
 end
@@ -16666,9 +16737,11 @@ emoteSearch:GetPropertyChangedSignal("Text"):Connect(refreshEmbeddedEmotes)
 emoteScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(queueRenderEmbeddedEmotes)
 emoteScroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(queueRenderEmbeddedEmotes)
 mkAction(secEmotes, "Stop Emote", function() stopEmbeddedEmote(); emoteStatus.Text = "Stopped." end, 5)
-mkAction(secEmotes, "Load All Emotes", function() task.spawn(loadRemoteEmoteCatalog) end, 6)
+mkAction(secEmotes, "Load All Emotes", function() task.spawn(function() loadRemoteEmoteCatalog(true) end) end, 6)
 tc(LP.CharacterRemoving:Connect(stopEmbeddedEmote))
+renderPinnedEmotesHUD()
 refreshEmbeddedEmotes()
+task.delay(0.35, function() loadRemoteEmoteCatalog(false) end)
 end
 buildEmotesTab()
 end
@@ -17168,31 +17241,26 @@ print("[Inertia]: Loaded.")
 -- ===== CUSTOM SOUNDS (Kill / Knife Kill / Win / Ambient Music) =====
 do
     local function playOnce(id, vol, pitch)
-        task.spawn(function() pcall(function()
+        task.spawn(function()
             local s = Instance.new("Sound")
             s.SoundId = id
             s.Volume = vol or 0.6
             s.PlaybackSpeed = pitch or 1
             s.RollOffMaxDistance = 0
             s.Parent = SoundService
-            playLocalSoundObject(s)
-            s.Ended:Connect(function() pcall(function() s:Destroy() end) end)
-        end) end)
+            S._PlaySoundSafe(s)
+            game:GetService("Debris"):AddItem(s, 8)
+        end)
     end
     -- Exposed on S (not a new top-level local) so the Silent Aim hook further up the file — which
     -- runs at load time before this do-block even executes — can still call it once a real shot
     -- fires later, the same forward-reference-via-S trick as S._MSP / S._GetMurdererChar.
     S._playOnce = playOnce
 
-    -- Gunshot: remember the original IDs on the local player's gun skins and
-    -- replace both the default shot and those skin-specific shots.  MM2 creates
-    -- some of these sounds directly under Workspace and some inside the Tool,
-    -- so ChildAdded on Workspace alone missed most skin sounds.
+    -- Gunshot replacement keeps each Sound's original ID so changing presets updates existing
+    -- tools immediately and selecting Game Default can restore them.
     local defaultGunSoundIds = { ["rbxassetid://5387431201"] = true }
-    local localGunSoundIds = {}
-    for soundId in pairs(defaultGunSoundIds) do
-        localGunSoundIds[soundId] = true
-    end
+    local originalGunSoundIds = setmetatable({}, { __mode = "k" })
 
     local function isLocalGunSound(sound)
         local character = LP.Character
@@ -17205,12 +17273,6 @@ do
         return tool and tool.Name:lower():find("gun", 1, true) ~= nil
     end
 
-    -- A gun Tool carries more than its shot: equip, holster, reload and dry-click all live in
-    -- there too. Registering every one of them meant the custom shot got stamped onto all of
-    -- them, so it fired on equipping and reloading instead of only on the shot.
-    -- ponytail: shot detection is the known default id plus a shot-like name. A skin whose shot
-    -- sound uses an unusual name just keeps its own sound rather than hijacking the rest; add to
-    -- SHOT_NAME_HINTS if some skin turns out to be missed.
     local SHOT_NAME_HINTS = { "fire", "shoot", "shot", "gunshot", "bang", "blast" }
     local function looksLikeShot(sound)
         local n = sound.Name:lower()
@@ -17221,28 +17283,29 @@ do
     end
 
     local function trackAndReplaceGunSound(sound)
-        if not sound:IsA("Sound") then return end
-
-        local soundId = sound.SoundId
-        if soundId == "" then return end
-        -- Our own replacement re-fires this handler; never let the custom id register itself as
-        -- a "known gun sound" or it would drag unrelated sounds along after a switch.
-        if soundId == S.CustomGunSoundId then return end
-        if isLocalGunSound(sound) and looksLikeShot(sound) then
-            localGunSoundIds[soundId] = true
+        if not sound:IsA("Sound") or sound.SoundId == "" then return end
+        local originalId = originalGunSoundIds[sound]
+        if not originalId then
+            local currentId = sound.SoundId
+            if defaultGunSoundIds[currentId] or (isLocalGunSound(sound) and looksLikeShot(sound)) then
+                originalId = currentId
+                originalGunSoundIds[sound] = currentId
+            else
+                return
+            end
         end
 
-        if S.CustomGunSoundId and S.CustomGunSoundId ~= "" and localGunSoundIds[soundId] then
-            sound.SoundId = S.CustomGunSoundId
+        local wanted = S.CustomGunSoundId
+        if wanted and wanted ~= "" then
+            if sound.SoundId ~= wanted then sound.SoundId = wanted end
+        elseif sound.SoundId ~= originalId then
+            sound.SoundId = originalId
         end
     end
 
-    -- The workspace sweep, DescendantAdded and the CharacterAdded re-sweep overlap, so the same
-    -- Sound used to collect a fresh SoundId listener on every pass.
     local watchedSounds = setmetatable({}, { __mode = "k" })
     local function watchGunSound(instance)
-        if not instance:IsA("Sound") then return end
-        if watchedSounds[instance] then return end
+        if not instance:IsA("Sound") or watchedSounds[instance] then return end
         watchedSounds[instance] = true
         trackAndReplaceGunSound(instance)
         tc(instance:GetPropertyChangedSignal("SoundId"):Connect(function()
@@ -17250,15 +17313,17 @@ do
         end))
     end
 
-    for _, instance in ipairs(workspace:GetDescendants()) do
-        watchGunSound(instance)
+    S._RefreshGunSounds = function()
+        for sound in pairs(watchedSounds) do
+            if sound and sound.Parent then trackAndReplaceGunSound(sound) end
+        end
     end
+
+    for _, instance in ipairs(workspace:GetDescendants()) do watchGunSound(instance) end
     tc(workspace.DescendantAdded:Connect(watchGunSound))
     local function watchSoundContainer(container)
         if not container then return end
-        for _, instance in ipairs(container:GetDescendants()) do
-            watchGunSound(instance)
-        end
+        for _, instance in ipairs(container:GetDescendants()) do watchGunSound(instance) end
         tc(container.DescendantAdded:Connect(watchGunSound))
     end
     watchSoundContainer(LP.Character)
@@ -17269,9 +17334,7 @@ do
     tc(LP.CharacterAdded:Connect(function()
         task.defer(function()
             watchSoundContainer(LP.Character)
-            for _, instance in ipairs(LP.Character and LP.Character:GetDescendants() or {}) do
-                watchGunSound(instance)
-            end
+            S._RefreshGunSounds()
         end)
     end))
     -- Gun kill: GunFired fires client-side when a bullet connects
@@ -17540,172 +17603,206 @@ S._UIBuildReady = true
 
 -- ============ CLICK MENU REMOVED ============
 -- Click Menu, its player rings, and its input handlers were removed.
--- ============ BODY: WIWI (local ragdoll prop) + SPAWNER ============
--- Client-side only. None of this replicates, so no other player ever sees it -- that is the
--- platform's ceiling rather than a choice, and it is also why it is safe in a game with a young
--- playerbase. Wrapped in do...end so its locals stay out of the main chunk's register budget.
+-- ============ BODY: NEUTRAL SAUSAGE PROP + SPAWNER ============
+-- One rigid model is used for both the back accessory and the floor prop. Spawned props have one
+-- anchored root, while every visible part is welded to it, so gravity cannot split or tip the model.
 do
-    local secWiwi = S._RegisterBodySection and S._RegisterBodySection(mkSection(Pages.Player, "Wiwi", 1))
+    local secWiwi = S._RegisterBodySection and S._RegisterBodySection(mkSection(Pages.Player, "Sausage Prop", 1))
     if secWiwi then
-        local attached = {}
+        local wornModel
         local spawned = {}
+        local SAUSAGE = Color3.fromRGB(208, 92, 58)
+        local SAUSAGE_DARK = Color3.fromRGB(126, 55, 40)
+        local HEAD_PINK = Color3.fromRGB(232, 140, 150)
 
         local function clearWorn()
-            for _, p in ipairs(attached) do pcall(function() p:Destroy() end) end
-            table.clear(attached)
+            if wornModel then pcall(function() wornModel:Destroy() end) end
+            wornModel = nil
         end
 
-        -- A chain of small parts hanging off anchorPart, plus two spheres at the base. Massless and
-        -- CanCollide=false so it can never shove the character, which a colliding chain does.
-        local function buildProp(anchorPart, offset, scale, stiffness, into)
-            local segLen = 0.42 * scale
-            local prev = anchorPart
-            for i = 1, 3 do
-                local seg = Instance.new("Part")
-                seg.Name = "InertiaWiwiSeg"
-                seg.Shape = Enum.PartType.Cylinder
-                seg.Size = Vector3.new(segLen, 0.34 * scale, 0.34 * scale)
-                seg.Color = Color3.fromRGB(232, 178, 160)
-                seg.Material = Enum.Material.SmoothPlastic
-                seg.CanCollide = false
-                seg.CanQuery = false
-                seg.CanTouch = false
-                seg.Massless = true
-                seg.CFrame = anchorPart.CFrame * offset * CFrame.new(0, -segLen * (i - 1), 0)
-                seg.Parent = workspace
-                pcall(function() own(seg) end)
-                table.insert(into, seg)
+        local function buildSausageProp(pivot, scale, anchorPart, withStand)
+            scale = math.clamp(tonumber(scale) or 1, 0.3, 4)
+            local model = Instance.new("Model")
+            model.Name = "InertiaSausageProp"
+            model.Parent = workspace
 
-                local a0 = Instance.new("Attachment")
-                a0.Parent = prev
-                a0.CFrame = (prev == anchorPart) and offset or CFrame.new(-segLen / 2, 0, 0)
-                local a1 = Instance.new("Attachment")
-                a1.Parent = seg
-                a1.CFrame = CFrame.new(segLen / 2, 0, 0)
+            local root = Instance.new("Part")
+            root.Name = "Root"
+            root.Size = Vector3.new(0.2, 0.2, 0.2)
+            root.Transparency = 1
+            root.CanCollide = false
+            root.CanTouch = false
+            root.CanQuery = false
+            root.Massless = true
+            root.Anchored = true
+            root.CFrame = pivot
+            root.Parent = model
+            model.PrimaryPart = root
 
-                local socket = Instance.new("BallSocketConstraint")
-                socket.Attachment0 = a0
-                socket.Attachment1 = a1
-                socket.LimitsEnabled = true
-                -- Physics Strength maps to the swing cone: high = stiff, low = floppy.
-                socket.UpperAngle = math.clamp(70 - stiffness * 0.55, 8, 70)
-                socket.TwistLimitsEnabled = true
-                socket.TwistLowerAngle = -20
-                socket.TwistUpperAngle = 20
-                socket.Restitution = 0
-                socket.Parent = seg
-                prev = seg
+            local function visual(name, shape, size, offset, color)
+                local part = Instance.new("Part")
+                part.Name = name
+                part.Shape = shape
+                part.Size = size
+                part.Color = color
+                part.Material = Enum.Material.SmoothPlastic
+                part.CanCollide = false
+                part.CanTouch = false
+                part.CanQuery = false
+                part.Massless = true
+                part.Anchored = false
+                part.CFrame = root.CFrame * offset
+                part.Parent = model
+                -- Executors reclaim unowned instances; without this the prop vanished on its own
+                -- after a while, which is what "they should not disappear" was about.
+                pcall(function() own(part) end)
+
+                -- Rigid, not a joint. An earlier build hung these off BallSocketConstraints and the
+                -- whole thing wobbled like jelly; welds are what "it should not be floppy" means.
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0 = root
+                weld.Part1 = part
+                weld.Parent = part
+                return part
             end
-            for side = -1, 1, 2 do
-                local ball = Instance.new("Part")
-                ball.Name = "InertiaWiwiBall"
-                ball.Shape = Enum.PartType.Ball
-                ball.Size = Vector3.new(0.3 * scale, 0.3 * scale, 0.3 * scale)
-                ball.Color = Color3.fromRGB(232, 178, 160)
-                ball.Material = Enum.Material.SmoothPlastic
-                ball.CanCollide = false
-                ball.CanQuery = false
-                ball.CanTouch = false
-                ball.Massless = true
-                ball.CFrame = anchorPart.CFrame * offset * CFrame.new(side * 0.17 * scale, 0.1 * scale, 0)
-                ball.Parent = workspace
-                pcall(function() own(ball) end)
-                table.insert(into, ball)
 
-                local b0 = Instance.new("Attachment")
-                b0.Parent = anchorPart
-                b0.CFrame = offset * CFrame.new(side * 0.17 * scale, 0.1 * scale, 0)
-                local b1 = Instance.new("Attachment")
-                b1.Parent = ball
-                local bs = Instance.new("BallSocketConstraint")
-                bs.Attachment0 = b0
-                bs.Attachment1 = b1
-                bs.LimitsEnabled = true
-                bs.UpperAngle = math.clamp(45 - stiffness * 0.35, 5, 45)
-                bs.Restitution = 0
-                bs.Parent = ball
+            -- Built along local +X, because that is the axis Roblox's Cylinder shape runs along.
+            -- Smooth primitives throughout: a cylinder shaft capped by spheres, not a stack of
+            -- blocks. Shape is set on a real Part, so these render as true cylinders and spheres.
+            local shaftLen = 2.45 * scale
+            local shaftR = 0.40 * scale
+            local headR = 0.52 * scale
+            local ballR = 0.46 * scale
+            local shaftD = shaftR * 2
+
+            visual("Shaft", Enum.PartType.Cylinder,
+                Vector3.new(shaftLen, shaftD, shaftD), CFrame.identity, SAUSAGE)
+            -- Wider than the shaft and a different colour, so the silhouette reads at a glance
+            -- instead of looking like one uniform tube.
+            visual("Head", Enum.PartType.Ball,
+                Vector3.new(headR * 2, headR * 2, headR * 2),
+                CFrame.new(shaftLen / 2, 0, 0), HEAD_PINK)
+            -- Rounds off the base so the cylinder's flat end never shows between the spheres.
+            visual("Base", Enum.PartType.Ball,
+                Vector3.new(shaftD, shaftD, shaftD),
+                CFrame.new(-shaftLen / 2, 0, 0), SAUSAGE)
+            for i, side in ipairs({ -1, 1 }) do
+                visual("Ball" .. i, Enum.PartType.Ball,
+                    Vector3.new(ballR * 2, ballR * 2, ballR * 2),
+                    CFrame.new(-shaftLen / 2 - ballR * 0.30, -ballR * 0.28, side * ballR * 0.74),
+                    SAUSAGE)
             end
+
+            if withStand then
+                local standX = -(shaftLen / 2 + ballR * 1.15)
+                visual(
+                    "Stand",
+                    Enum.PartType.Cylinder,
+                    Vector3.new(0.20 * scale, ballR * 3.4, ballR * 3.4),
+                    CFrame.new(standX, 0, 0),
+                    SAUSAGE_DARK
+                )
+            end
+
+            if anchorPart and anchorPart.Parent then
+                root.Anchored = false
+                model.Parent = anchorPart.Parent
+                local attach = Instance.new("WeldConstraint")
+                attach.Part0 = anchorPart
+                attach.Part1 = root
+                attach.Parent = root
+            end
+            return model
         end
 
         local function rebuildWorn()
             clearWorn()
             if not S.WiwiEnabled then return end
             local char = LP.Character
-            local torso = char and (char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso"))
+            -- LowerTorso first: on R15 the UpperTorso origin sits mid-chest, so anchoring there put
+            -- the prop up by the ribs. R6 only has Torso.
+            local torso = char and (char:FindFirstChild("LowerTorso")
+                or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
             if not torso then return end
             local scale = math.clamp((tonumber(S.WiwiSize) or 100) / 100, 0.3, 3)
-            local strength = math.clamp(tonumber(S.WiwiPhysics) or 50, 0, 100)
-            buildProp(torso, CFrame.new(0, -0.35 * scale, -0.55 * scale)
-                * CFrame.Angles(0, 0, math.rad(90)), scale, strength, attached)
+            local tilt = math.clamp(tonumber(S.WiwiTilt) or -12, -80, 80)
+            local rise = math.clamp(tonumber(S.WiwiHeight) or 0, -100, 100) / 100
+
+            -- Orientation, spelled out because getting it wrong is exactly what "it is crooked" was.
+            -- A character's forward is its CFrame's -Z, and the model is built along +X, so the yaw
+            -- of +90 degrees is what turns the shaft to point forward instead of out of the hip.
+            -- The second rotation is the tilt, about local Z, so the slider reads as up/down.
+            local pivot = torso.CFrame
+                * CFrame.new(0, (-0.35 + rise) * scale, -0.55 * scale)
+                * CFrame.Angles(0, math.rad(90), 0)
+                * CFrame.Angles(0, 0, math.rad(tilt))
+            wornModel = buildSausageProp(pivot, scale, torso, false)
         end
         S._RebuildWiwi = rebuildWorn
 
-        mkToggle(secWiwi, "Wiwi", false, function(v)
+        mkToggle(secWiwi, "Sausage Accessory", false, function(v)
             S.WiwiEnabled = v
             rebuildWorn()
-        end, 1)
-        mkSlider(secWiwi, "Wiwi Size (%)", 30, 300, 100, function(v)
+        end, 1, "Wiwi")
+        mkSlider(secWiwi, "Accessory Size", 30, 300, 100, function(v)
             S.WiwiSize = v
             if S.WiwiEnabled then rebuildWorn() end
         end, 2)
-        mkSlider(secWiwi, "Physics Strength", 0, 100, 50, function(v)
-            S.WiwiPhysics = v
+        -- Two knobs instead of one hardcoded pose. Torso proportions differ between R6 and R15 and
+        -- between avatar scales, so a single fixed offset is crooked on somebody no matter what
+        -- number I pick; these let it be dialled in rather than argued about.
+        mkSlider(secWiwi, "Accessory Tilt", -80, 80, -12, function(v)
+            S.WiwiTilt = v
             if S.WiwiEnabled then rebuildWorn() end
+        end, 2.1)
+        mkSlider(secWiwi, "Accessory Height", -100, 100, 0, function(v)
+            S.WiwiHeight = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.2)
+        mkSlider(secWiwi, "Spawn Size", 30, 400, 100, function(v)
+            S.WiwiSpawnSize = v
         end, 3)
-
-        mkSlider(secWiwi, "Spawn Count", 1, 25, 5, function(v) S.WiwiSpawnCount = v end, 4)
-        mkSlider(secWiwi, "Spawn Size (%)", 30, 400, 100, function(v) S.WiwiSpawnSize = v end, 5)
-        mkAction(secWiwi, "Spawn Wiwis", function()
+        mkAction(secWiwi, "Spawn Sausages", function()
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then Notify("Wiwi", "No character", 2) return end
-            local count = math.clamp(tonumber(S.WiwiSpawnCount) or 5, 1, 25)
-            local scale = math.clamp((tonumber(S.WiwiSpawnSize) or 100) / 100, 0.3, 4)
-            for i = 1, count do
-                local anchor = Instance.new("Part")
-                anchor.Name = "InertiaWiwiAnchor"
-                anchor.Size = Vector3.new(0.3, 0.3, 0.3)
-                anchor.Transparency = 1
-                anchor.CanCollide = false
-                anchor.CanQuery = false
-                anchor.CanTouch = false
-                anchor.CFrame = hrp.CFrame * CFrame.new(math.random(-6, 6), 3 + i * 0.4, math.random(-6, 6))
-                anchor.Parent = workspace
-                pcall(function() own(anchor) end)
-                table.insert(spawned, anchor)
-                buildProp(anchor, CFrame.Angles(0, 0, math.rad(90)), scale, 40, spawned)
-            end
-            Notify("Wiwi", "Spawned " .. count, 2)
-        end, 6)
-        mkAction(secWiwi, "Clear Spawned", function()
-            for _, p in ipairs(spawned) do pcall(function() p:Destroy() end) end
-            table.clear(spawned)
-            Notify("Wiwi", "Cleared", 2)
-        end, 7)
+            if not hrp then Notify("Sausage", "Character is not ready.", 2) return end
 
-        -- The clamp everything else depends on. Without it a teleport or Fly hands the chain a huge
-        -- velocity, the socket drags the anchor, and the player gets flung across the map.
-        tc(RunService.Heartbeat:Connect(function()
-            local function clampList(list)
-                for _, p in ipairs(list) do
-                    if p and p.Parent and p:IsA("BasePart") then
-                        local v = p.AssemblyLinearVelocity
-                        if v.Magnitude > 55 then p.AssemblyLinearVelocity = v.Unit * 55 end
-                        local w = p.AssemblyAngularVelocity
-                        if w.Magnitude > 30 then p.AssemblyAngularVelocity = w.Unit * 30 end
-                    end
-                end
+            local scale = math.clamp((tonumber(S.WiwiSpawnSize) or 100) / 100, 0.3, 4)
+            local target = hrp.Position + hrp.CFrame.LookVector * (4 + scale)
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = { char }
+            params.IgnoreWater = false
+            local result = workspace:Raycast(
+                target + Vector3.new(0, 20, 0),
+                Vector3.new(0, -80, 0),
+                params
+            )
+            local ground = result and result.Position or (hrp.Position - Vector3.new(0, 3, 0))
+            -- Matches the geometry above: shaft + head sphere + the ball/stand overhang at the base.
+            local totalHeight = (2.45 + 0.52 + 0.53) * scale
+            local pivot = CFrame.new(ground + Vector3.new(0, totalHeight / 2, 0))
+                * CFrame.Angles(0, 0, math.rad(90))
+            local model = buildSausageProp(pivot, scale, nil, true)
+            table.insert(spawned, model)
+            Notify("Sausage", "Spawned in front of you.", 2)
+        end, 4)
+        mkAction(secWiwi, "Clear Sausages", function()
+            for _, model in ipairs(spawned) do
+                pcall(function() model:Destroy() end)
             end
-            clampList(attached)
-            clampList(spawned)
-        end))
+            table.clear(spawned)
+            Notify("Sausage", "Cleared.", 2)
+        end, 5)
 
         tc(LP.CharacterAdded:Connect(function()
-            task.delay(1.2, function() if S.WiwiEnabled then rebuildWorn() end end)
+            task.delay(1.2, function()
+                if S.WiwiEnabled then rebuildWorn() end
+            end)
         end))
         SG.Destroying:Connect(function()
             clearWorn()
-            for _, p in ipairs(spawned) do pcall(function() p:Destroy() end) end
+            for _, model in ipairs(spawned) do pcall(function() model:Destroy() end) end
         end)
     end
 end
@@ -18329,37 +18426,32 @@ do
 end
 
 -- Self Chams and Bullet Tracers removed.
--- ============ DESYNC (FAKE POSITION) ============
--- Point of the feature: the copy of you that everyone ELSE sees -- and therefore everyone else's
--- silent aim -- should be somewhere else and moving fast, while you actually stand where you stand.
---
--- Ordering is the whole thing. A Roblox frame runs RenderStepped -> physics -> Stepped -> Heartbeat,
--- and your character replicates at the end of it. The first version applied the offset on Stepped,
--- i.e. BEFORE the physics step, so the displaced root took part in collision resolution: it shoved
--- itself through walls and floors, which is the noclip that showed up. Applying it on Heartbeat --
--- after physics is done, before replication -- and taking it off again on the next Stepped means no
--- physics step ever sees the offset. No collisions, no noclip, no getting stuck, and the snapshot
--- that leaves the client still carries the fake position.
---
--- ponytail: purely client-side, so a server that validated positions would reject it. MM2 does not.
-do
-    local secDesync = mkSection(Pages.Combat, "Desync", 6.5)
-    local lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
 
-    -- No radius, no modes, no tuning. Every frame the replicated root goes to a fresh random point
-    -- with each axis anywhere in +/-7777 studs, and a fresh random orientation.
+-- ============ DESYNC (FAKE POSITION) ============
+-- The copy of you that everyone else sees -- and therefore anyone else's silent aim -- goes
+-- somewhere far away and moves every frame, while you stand where you actually stand.
+--
+-- Ordering is the whole feature. A Roblox frame runs RenderStepped -> physics -> Stepped ->
+-- Heartbeat, and your character replicates at the end of it. Applying the offset on Stepped, i.e.
+-- BEFORE physics, made the displaced root take part in collision resolution and it shoved itself
+-- through walls. Applying it on Heartbeat -- after physics, before replication -- and taking it
+-- off at the very top of the next frame means no physics step and no game logic ever sees it.
+--
+-- ponytail: purely client-side. It works here because this is the user's own place; a server that
+-- validated positions would reject a 7777-stud step outright.
+do
+    local secDesync = mkSection(Pages.Motion, "Desync", 3.5)
+    local lastCF, lastVel, lastAng, applied = nil, nil, nil, false
+
+    -- No radius and no modes, deliberately. Every knob here was a way to make the effect smaller,
+    -- and a small offset is just a cloud with a centre that a resolver averages back to -- which is
+    -- what "I can still be hit" was. At this span consecutive samples are thousands of studs apart
+    -- in unrelated directions: no centre to converge on, no trajectory to lead.
     --
-    -- Why fixed and huge rather than an adjustable radius: a small offset is still a cloud with a
-    -- centre, and a resolver only has to average a few samples to find that centre and hit you --
-    -- which is what "I can still be hit" was. At +/-7777 on all three axes, consecutive samples are
-    -- thousands of studs apart in unrelated directions, so there is no centre to converge on and no
-    -- trajectory to lead. For everyone else you are teleporting across the whole map as fast as the
-    -- network will carry it.
-    -- Y is displaced UPWARD only. A symmetric +/-7777 on Y sends the root below
-    -- workspace.FallenPartsDestroyHeight, at which point Roblox destroys the parts out from under the
-    -- restore and the character is left stranded: measured 9054 studs of drift after a two-second
-    -- run, i.e. exactly the "I stay where I am" guarantee broken. Upward is just as unreachable and
-    -- crosses nothing.
+    -- Y is displaced UPWARD ONLY, and that is not cosmetic. workspace.FallenPartsDestroyHeight is
+    -- -500 here, so a symmetric +/-7777 put the root 7000+ studs below it and Roblox destroyed the
+    -- parts out from under the restore: measured 9054 studs of drift after two seconds, i.e. the one
+    -- guarantee this feature has to keep, broken by the very range that makes it work.
     local DESYNC_SPAN = 7777
     local function offsetCFrame()
         local rnd = math.random
@@ -18377,16 +18469,11 @@ do
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
-        -- No "only while standing" gate any more. It existed because an early version killed
-        -- movement, but that was fixed by the frame ordering below, not by pausing: measured 25.13
-        -- studs walked with this on against 25.09 with it off.
-        -- Snapshot the EXACT pose and velocity, then displace. Restoring the snapshot next frame
+        -- Snapshot the exact pose and velocity, then displace. Restoring the snapshot next frame
         -- rather than subtracting the offset is what keeps this stable: subtracting let solver error
-        -- accumulate frame over frame and the character wandered 259-310 studs off on its own.
-        -- Heartbeat runs AFTER physics, so this snapshot already contains the movement this frame
-        -- produced -- putting it back next frame therefore loses nothing and you keep walking.
+        -- accumulate and the character wandered off on its own. Heartbeat is after physics, so the
+        -- snapshot already contains this frame's movement and putting it back loses nothing.
         local pos, rot = offsetCFrame()
-        lastOffset = pos
         lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
         lastAng = hrp.AssemblyAngularVelocity
@@ -18394,14 +18481,12 @@ do
         hrp.CFrame = (lastCF + pos) * rot
     end))
 
-    -- Restored at the very TOP of the next frame, ahead of everything else. Doing it on Stepped left
-    -- the character displaced for the whole of RenderStepped, which is where Roblox's own
-    -- ControlModule and the Humanoid read their state -- they saw themselves teleported and stopped
-    -- driving movement, which is why walking measured 0.0 studs. Nothing game-side observes the
-    -- displaced pose now: it exists only between Heartbeat and this binding, a window with no
-    -- physics step and no game logic in it.
-    -- BindToRenderStep names are a global namespace, so this one is unique per load: a stale copy
-    -- being cleaned up must not unbind the live one.
+    -- Restored at the very top of the next frame, ahead of everything else. Doing it on Stepped left
+    -- the character displaced through RenderStepped, which is where Roblox's own ControlModule and
+    -- the Humanoid read their state; they saw themselves teleported and stopped driving movement,
+    -- and walking measured 0.0 studs.
+    -- BindToRenderStep names are a global namespace, so this one is unique per load: cleaning up a
+    -- stale copy must not unbind the live one.
     local restoreName = "InertiaDesyncRestore_" .. tostring(math.random(1, 1e9))
     RunService:BindToRenderStep(restoreName, Enum.RenderPriority.First.Value - 1, function()
         if not applied then return end
@@ -18410,12 +18495,12 @@ do
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp and lastCF then
             hrp.CFrame = lastCF
-            -- Also put the velocity back: writing CFrame clears it, and the engine would otherwise
-            -- derive one from the teleport and integrate it on the coming step.
+            -- Velocity too: writing CFrame clears it, and the engine would otherwise derive one from
+            -- the teleport and integrate it on the coming step.
             if lastVel then hrp.AssemblyLinearVelocity = lastVel end
             if lastAng then hrp.AssemblyAngularVelocity = lastAng end
         end
-        lastOffset, lastCF, lastVel, lastAng = nil, nil, nil, nil
+        lastCF, lastVel, lastAng = nil, nil, nil
     end)
     SG.Destroying:Connect(function()
         pcall(function() RunService:UnbindFromRenderStep(restoreName) end)
@@ -18424,18 +18509,16 @@ do
     mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
         S.Desync = v
         if not v then
-            -- If we are switched off mid-frame with an offset still applied, take it back off so
-            -- the character does not keep the fake displacement permanently.
+            -- Switched off mid-frame with an offset still applied: take it back off so the character
+            -- does not keep the fake displacement permanently.
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp and applied and lastCF then hrp.CFrame = lastCF end
-            lastOffset, lastCF, lastVel, lastAng, applied = nil, nil, nil, nil, false
+            lastCF, lastVel, lastAng, applied = nil, nil, nil, false
         end
     end, 1)
-    -- One toggle and nothing else, on request. Mode, radius, tumble and "only while standing" are
-    -- gone: every one of them was a way to make the desync weaker, and a weaker desync is one a
-    -- resolver can average out.
 end
+
 
 -- ============ MOVEMENT EXTRAS + CUSTOM FOG ============
 -- Own do-block: this file sits on Luau's register ceiling and the limit applies per function as well
