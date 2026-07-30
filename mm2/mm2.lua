@@ -215,6 +215,11 @@ local function snd(id, pitch, vol)
 end
 S._PlaySoundSafe = function(s)
     if not s or not s:IsA("Sound") or s.SoundId == "" then return end
+    -- Tag it as ours. The sound mutes match on name, SoundId and ancestor names, and a replacement
+    -- gun sound is by definition gun-shaped -- so muting the game's shot silenced the hub's own
+    -- substitute along with it, which is not what "mute the gun" means. applyMute skips anything
+    -- carrying this.
+    pcall(function() s:SetAttribute("InertiaOwned", true) end)
     local started = false
     local function startPlayback()
         if started or not s.Parent then return end
@@ -6531,29 +6536,44 @@ end, 6)
     -- This is a separate, purely local trail drawn on the knife handle, so it works on every knife
     -- including the default one and needs nothing unlocked.
     do
+        -- Its own palette. Borrowing S._ChamColorMap looked tidy but that table only defines ten
+        -- names -- Crimson, Orange, Gold, Lime, Mint, Teal, Sky, Indigo and Lavender are not in it --
+        -- so nine of the twenty picks silently fell through to the same fallback. That fallback is a
+        -- teal, which is exactly the "why is it green" every time.
+        local FX_COLORS = {
+            Cyan = Color3.fromRGB(80, 220, 230),   White = Color3.fromRGB(245, 245, 245),
+            Red = Color3.fromRGB(255, 60, 60),     Crimson = Color3.fromRGB(180, 25, 45),
+            Pink = Color3.fromRGB(255, 120, 200),  Magenta = Color3.fromRGB(255, 60, 170),
+            Orange = Color3.fromRGB(255, 140, 40), Gold = Color3.fromRGB(255, 200, 60),
+            Yellow = Color3.fromRGB(255, 235, 90), Lime = Color3.fromRGB(170, 255, 60),
+            Green = Color3.fromRGB(60, 210, 90),   Mint = Color3.fromRGB(140, 255, 200),
+            Teal = Color3.fromRGB(40, 190, 180),   Sky = Color3.fromRGB(120, 200, 255),
+            Blue = Color3.fromRGB(70, 140, 255),   Indigo = Color3.fromRGB(90, 80, 230),
+            Purple = Color3.fromRGB(180, 120, 255), Lavender = Color3.fromRGB(210, 180, 255),
+            Black = Color3.fromRGB(20, 20, 20),
+        }
         local KNIFE_FX_COLORS = {
             "Rainbow", "Cyan", "White", "Red", "Crimson", "Pink", "Magenta", "Orange",
             "Gold", "Yellow", "Lime", "Green", "Mint", "Teal", "Sky", "Blue",
             "Indigo", "Purple", "Lavender", "Black",
         }
         local KNIFE_FX_STYLES = {
-            "Trail", "Neon Trail", "Wide Trail", "Ghost", "Sparkle", "Glow", "Comet", "Ribbon",
+            "Trail", "Neon", "Wide", "Ghost", "Sparks", "Flame", "Comet", "Ribbon", "Aura", "Smoke",
         }
-        local trail, a0, a1
+        local trail, a0, a1, emitter
 
         local function fxColor()
             if S.KnifeFXColor == "Rainbow" then
                 return Color3.fromHSV((tick() * 0.4) % 1, 0.9, 1)
             end
-            local map = S._ChamColorMap or {}
-            return map[S.KnifeFXColor] or Color3.fromRGB(80, 220, 230)
+            return FX_COLORS[S.KnifeFXColor] or FX_COLORS.Cyan
         end
 
         local function clearFX()
-            for _, o in ipairs({ trail, a0, a1 }) do
+            for _, o in ipairs({ trail, emitter, a0, a1 }) do
                 if o then pcall(function() o:Destroy() end) end
             end
-            trail, a0, a1 = nil, nil, nil
+            trail, emitter, a0, a1 = nil, nil, nil, nil
         end
 
         local function heldKnife()
@@ -6583,20 +6603,77 @@ end, 6)
             end
             local style = S.KnifeFXStyle or "Trail"
             local col = fxColor()
+
+            -- Each style is a distinct combination, not the same trail with a slightly different
+            -- number. The first version only nudged lifetime and light emission, which is why they
+            -- all looked the same.
+            --   width  : how thick the ribbon starts
+            --   taper  : width at the tail (1 = parallel-sided ribbon, 0 = pointed)
+            --   life   : how long the streak hangs in the air
+            --   light  : self-illumination
+            --   alpha  : head transparency
+            --   tex    : streak texture
+            --   parts  : particle rate, 0 for none
+            local P = {
+                Trail  = { width = 1.0, taper = 0, life = 0.45, light = 0.2, alpha = 0.10, tex = "",       parts = 0 },
+                Neon   = { width = 1.2, taper = 0, life = 0.55, light = 1.0, alpha = 0.00, tex = "",       parts = 0 },
+                Wide   = { width = 2.8, taper = 0, life = 0.50, light = 0.4, alpha = 0.15, tex = "",       parts = 0 },
+                Ghost  = { width = 1.6, taper = 0, life = 1.10, light = 0.0, alpha = 0.65, tex = "",       parts = 0 },
+                Sparks = { width = 0.8, taper = 0, life = 0.35, light = 0.9, alpha = 0.20, tex = "sparkle", parts = 90 },
+                Flame  = { width = 1.4, taper = 0, life = 0.40, light = 1.0, alpha = 0.05, tex = "",       parts = 130 },
+                Comet  = { width = 1.8, taper = 0, life = 1.80, light = 0.8, alpha = 0.00, tex = "",       parts = 45 },
+                Ribbon = { width = 1.0, taper = 1, life = 0.90, light = 0.1, alpha = 0.10, tex = "",       parts = 0 },
+                Aura   = { width = 3.6, taper = 1, life = 0.25, light = 0.7, alpha = 0.55, tex = "",       parts = 60 },
+                Smoke  = { width = 2.2, taper = 1, life = 1.40, light = 0.0, alpha = 0.70, tex = "smoke",  parts = 35 },
+            }
+            local p = P[style] or P.Trail
+
             trail.Color = ColorSequence.new(col)
-            trail.Lifetime = (style == "Comet" and 1.6) or (style == "Ghost" and 0.9) or 0.45
+            trail.Lifetime = p.life
             trail.WidthScale = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, style == "Wide Trail" and 2.4 or 1),
-                NumberSequenceKeypoint.new(1, style == "Ribbon" and 1 or 0),
+                NumberSequenceKeypoint.new(0, p.width),
+                NumberSequenceKeypoint.new(1, p.taper),
             })
-            trail.LightEmission = (style == "Neon Trail" or style == "Glow") and 1 or 0.2
-            trail.LightInfluence = style == "Ghost" and 1 or 0
+            trail.LightEmission = p.light
+            trail.LightInfluence = (style == "Ghost" or style == "Smoke") and 1 or 0
             trail.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, style == "Ghost" and 0.6 or 0.1),
+                NumberSequenceKeypoint.new(0, p.alpha),
                 NumberSequenceKeypoint.new(1, 1),
             })
-            trail.Texture = style == "Sparkle" and "rbxasset://textures/particles/sparkles_main.dds" or ""
+            trail.Texture = (p.tex == "sparkle" and "rbxasset://textures/particles/sparkles_main.dds")
+                or (p.tex == "smoke" and "rbxasset://textures/particles/smoke_main.dds")
+                or ""
             trail.FaceCamera = style ~= "Ribbon"
+
+            -- Particles. A Trail is a stretched ribbon and can never look granular on its own, which
+            -- is why "no particles" was a fair complaint -- there were none to have.
+            if p.parts > 0 then
+                if not emitter or not emitter.Parent then
+                    emitter = Instance.new("ParticleEmitter")
+                    emitter.Parent = handle
+                    pcall(function() own(emitter) end)
+                end
+                emitter.Enabled = true
+                emitter.Rate = p.parts
+                emitter.Color = ColorSequence.new(col)
+                emitter.Lifetime = NumberRange.new(0.25, p.life)
+                emitter.Speed = NumberRange.new(style == "Flame" and 1 or 3, style == "Flame" and 4 or 9)
+                emitter.SpreadAngle = Vector2.new(style == "Aura" and 180 or 35, style == "Aura" and 180 or 35)
+                emitter.Size = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, style == "Smoke" and 0.9 or 0.35),
+                    NumberSequenceKeypoint.new(1, style == "Smoke" and 1.8 or 0),
+                })
+                emitter.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, style == "Smoke" and 0.5 or 0.1),
+                    NumberSequenceKeypoint.new(1, 1),
+                })
+                emitter.LightEmission = p.light
+                emitter.Texture = (p.tex == "smoke" and "rbxasset://textures/particles/smoke_main.dds")
+                    or "rbxasset://textures/particles/sparkles_main.dds"
+                emitter.Acceleration = Vector3.new(0, style == "Smoke" and 4 or -8, 0)
+            elseif emitter then
+                emitter.Enabled = false
+            end
         end
         S._ApplyKnifeFX = applyFX
 
@@ -8199,6 +8276,9 @@ do
         end
         local function applyMute(s)
             if not s:IsA("Sound") then return end
+            -- Never silence the hub's own sounds. Kill sounds, previews and the custom gun sound all
+            -- go through S._PlaySoundSafe, which stamps this attribute.
+            if s:GetAttribute("InertiaOwned") then return end
             if catFor(s) then
                 if muted[s] == nil then muted[s] = s.Volume end
                 s.Volume = 0
@@ -12305,10 +12385,21 @@ local function loadConfig(name)
     for _, c in ipairs(ConfigControls) do
         local hasValue, value = false, nil
         local stateValue = dat.S and _cfgValueFromState(c.id)
-        if c.kind == "toggle" and type(stateValue) == "boolean" then
-            hasValue, value = true, stateValue
-        elseif type(dat.controls) == "table" and dat.controls[c.id] ~= nil then
+        -- data.controls is keyed by the control's FULL unique id, so it is the only source that
+        -- cannot be ambiguous -- it is checked first now.
+        --
+        -- It used to be the other way round for toggles: _cfgValueFromState won, and that is what
+        -- "the config saves nothing" actually was. That function takes everything after the last
+        -- "/" of the id and matches an S key by normalised name, so a label containing a slash
+        -- collapses to its tail, and any label that merely normalises the same as some unrelated S
+        -- field picks that field up instead. On restore ~136 toggles were handed a value that had
+        -- nothing to do with what was saved, and the next autosave wrote that back over the file.
+        -- Measured before: 136 of 156 controls read back wrong. The S fallback stays, but only for
+        -- old config files written before data.controls existed.
+        if type(dat.controls) == "table" and dat.controls[c.id] ~= nil then
             hasValue, value = true, dat.controls[c.id]
+        elseif c.kind == "toggle" and type(stateValue) == "boolean" then
+            hasValue, value = true, stateValue
         elseif stateValue ~= nil then
             value = stateValue
             hasValue = value ~= nil
