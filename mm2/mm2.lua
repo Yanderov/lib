@@ -95,7 +95,7 @@ local S = {
     CrosshairShape = "Cross", CrosshairColor = "White", CrosshairSize = 12, CrosshairThickness = 2, CrosshairGap = 4, CrosshairRotation = 0,
     AutoGG = false, CustomGGText = "GG!", UseCustomGG = false,
     VoteFarmSlot = "1", VoteFarmCount = 5, AutoVote = false,
-    MuteGun = false, MuteCoin = false, MuteKill = false, MuteKillNotify = false, MuteKillEffect = false,
+    MuteGun = false, MuteReload = false, MuteCoin = false, MuteKill = false, MuteKillNotify = false, MuteKillEffect = false,
     Whitelist = {},   -- [playerName]=true : right-click in Targets; skipped by fling / kill / aura / aim
     ManualTargets = {},  -- [playerName]=true : left-click multi-select in Targets (Fun / Follow). empty = Auto
     SheriffSilentAim = false,
@@ -1817,6 +1817,12 @@ local FULL_TOGGLE_STATE_ALIASES = {
     visualshandshadersselfrainbow = "HandRainbow",
     miscaichatrespondtoallmessages = "AIChatRespondToAll",
     miscaichatmaxhumanizer = "AIChatMaxHumanizer",
+    -- This label contains a slash of its own. _toggleStateFromS derives its short key by taking
+    -- everything after the LAST "/" of the id, so "Enable Custom Cursor / Crosshair" collapsed to
+    -- "crosshair" -- the TOGGLE_STATE_ALIASES entry never matched, and the name-match loop found
+    -- S.Crosshair (a different, always-false flag) instead. The full-id table is checked first and
+    -- is not affected by the split.
+    visualscustomassetsgithubenablecustomcursorcrosshair = "CustomCrosshair",
 }
 local function _toggleNorm(v)
     return tostring(v or ""):lower():gsub("[^%w]", "")
@@ -8067,6 +8073,10 @@ do
     do
         local muteWords = {
             MuteGun        = { "gun", "revolver", "fire", "shoot", "shot", "bang", "pistol" },
+            -- Reload is separate from MuteGun on purpose: the gun Tool ships a "Reload" Sound
+            -- alongside "Gunshot", and none of the MuteGun keywords match it, so it always played
+            -- through. Silencing the shot and keeping the reload is also a reasonable thing to want.
+            MuteReload     = { "reload", "cock", "clip", "magazine", "chamber" },
             MuteCoin       = { "coin", "pickup", "collect", "ding", "cash", "gem" },
             MuteKill       = { "death", "die", "dead", "stab", "slash", "knife", "hit", "hurt", "ough", "splat", "kill", "blood",
                                "gib", "corpse", "bodyfall", "body_fall", "thud", "squish", "impale", "scream", "grunt", "pain", "damage", "explo" },
@@ -8077,7 +8087,7 @@ do
                                "reaper", "effect", "shatter", "freeze", "burn", "disintegrate" },
         }
         local muted = {}   -- [Sound] = original Volume (only while we've silenced it)
-        local function anyMuteOn() return S.MuteGun or S.MuteCoin or S.MuteKill or S.MuteKillNotify or S.MuteKillEffect end
+        local function anyMuteOn() return S.MuteGun or S.MuteReload or S.MuteCoin or S.MuteKill or S.MuteKillNotify or S.MuteKillEffect end
         local function catFor(s)
             local hay = s.Name .. " " .. tostring(s.SoundId)
             local a = s.Parent
@@ -8123,6 +8133,7 @@ do
         local secSnd = mkSection(Pages.Misc, "Sound Mutes", 9)
         S._RegisterMiscSection(secSnd, "Utility")
         mkToggle(secSnd, "Mute Gun Sound",     false, function(v) S.MuteGun = v;        refreshMutes() end, 1)
+        mkToggle(secSnd, "Mute Reload",        false, function(v) S.MuteReload = v;     refreshMutes() end, 1.5)
         mkToggle(secSnd, "Mute Coin Sound",    false, function(v) S.MuteCoin = v;       refreshMutes() end, 2)
         mkToggle(secSnd, "Mute Kill Sound",    false, function(v) S.MuteKill = v;       refreshMutes() end, 3)
         mkToggle(secSnd, "Mute Kill Effect Sound", false, function(v) S.MuteKillEffect = v; refreshMutes() end, 4)
@@ -17709,22 +17720,39 @@ do
                 -- after a while, which is what "they should not disappear" was about.
                 pcall(function() own(part) end)
 
-                -- Rigid, not a joint. An earlier build hung these off BallSocketConstraints and the
-                -- whole thing wobbled like jelly; welds are what "it should not be floppy" means.
-                local weld = Instance.new("WeldConstraint")
-                weld.Part0 = root
-                weld.Part1 = part
-                weld.Parent = part
+                -- Rigid by default. An earlier build hung everything off BallSocketConstraints and the
+                -- whole thing wobbled like jelly, which is what "it should not be floppy" meant --
+                -- so the joint is opt-in now rather than the only option.
+                if S.WiwiJiggle then
+                    local a0 = Instance.new("Attachment")
+                    a0.Parent = root
+                    local a1 = Instance.new("Attachment")
+                    a1.CFrame = CFrame.new(-offset.Position)
+                    a1.Parent = part
+                    local socket = Instance.new("BallSocketConstraint")
+                    socket.Attachment0 = a0
+                    socket.Attachment1 = a1
+                    socket.LimitsEnabled = true
+                    socket.UpperAngle = 22
+                    socket.Restitution = 0.1
+                    socket.Parent = part
+                    part.Massless = false
+                else
+                    local weld = Instance.new("WeldConstraint")
+                    weld.Part0 = root
+                    weld.Part1 = part
+                    weld.Parent = part
+                end
                 return part
             end
 
             -- Built along local +X, because that is the axis Roblox's Cylinder shape runs along.
             -- Smooth primitives throughout: a cylinder shaft capped by spheres, not a stack of
             -- blocks. Shape is set on a real Part, so these render as true cylinders and spheres.
-            local shaftLen = 2.45 * scale
-            local shaftR = 0.40 * scale
-            local headR = 0.52 * scale
-            local ballR = 0.46 * scale
+            local shaftLen = 2.45 * scale * (math.clamp(tonumber(S.WiwiLength) or 100, 20, 400) / 100)
+            local shaftR = 0.40 * scale * (math.clamp(tonumber(S.WiwiGirth) or 100, 30, 300) / 100)
+            local headR = shaftR * 1.30
+            local ballR = 0.46 * scale * (math.clamp(tonumber(S.WiwiBalls) or 100, 20, 300) / 100)
             local shaftD = shaftR * 2
 
             visual("Shaft", Enum.PartType.Cylinder,
@@ -17743,6 +17771,21 @@ do
                     Vector3.new(ballR * 2, ballR * 2, ballR * 2),
                     CFrame.new(-shaftLen / 2 - ballR * 0.30, -ballR * 0.28, side * ballR * 0.74),
                     SAUSAGE)
+            end
+
+            -- Hair. Thin cylinders sprouting off the base sphere, count driven by the slider. Each
+            -- one is a part, so this is the only control here with a real cost -- hence a cap rather
+            -- than an open-ended number.
+            local hairCount = math.clamp(math.floor(tonumber(S.WiwiHair) or 0), 0, 40)
+            for i = 1, hairCount do
+                local a = (i / hairCount) * math.pi * 2
+                local tiltA = math.rad(35 + math.random() * 30)
+                local len = ballR * (0.9 + math.random() * 0.7)
+                visual("Hair" .. i, Enum.PartType.Cylinder,
+                    Vector3.new(len, 0.035 * scale, 0.035 * scale),
+                    CFrame.new(-shaftLen / 2 - ballR * 0.55, math.cos(a) * ballR * 0.6, math.sin(a) * ballR * 0.6)
+                        * CFrame.Angles(a, 0, tiltA),
+                    SAUSAGE_DARK)
             end
 
             if withStand then
@@ -17814,6 +17857,35 @@ do
         mkSlider(secWiwi, "Spawn Size", 30, 400, 100, function(v)
             S.WiwiSpawnSize = v
         end, 3)
+        mkSlider(secWiwi, "Length", 20, 400, 100, function(v)
+            S.WiwiLength = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.3)
+        mkSlider(secWiwi, "Girth", 30, 300, 100, function(v)
+            S.WiwiGirth = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.4)
+        mkSlider(secWiwi, "Balls Size", 20, 300, 100, function(v)
+            S.WiwiBalls = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.5)
+        mkSlider(secWiwi, "Hair", 0, 40, 0, function(v)
+            S.WiwiHair = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.6)
+        -- Erect drives the tilt slider to a preset instead of being a second, competing angle --
+        -- two controls writing the same pose would fight each other.
+        mkToggle(secWiwi, "Erect", false, function(v)
+            S.WiwiErect = v
+            S.WiwiTilt = v and -78 or 22
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.7)
+        mkToggle(secWiwi, "Jiggle Physics", false, function(v)
+            S.WiwiJiggle = v
+            if S.WiwiEnabled then rebuildWorn() end
+        end, 2.8)
+        mkSlider(secWiwi, "Spawn Count", 1, 40, 1, function(v) S.WiwiSpawnCount = v end, 3.1)
+        mkSlider(secWiwi, "Spawn Radius", 0, 120, 0, function(v) S.WiwiSpawnRadius = v end, 3.2)
         mkAction(secWiwi, "Spawn Sausages", function()
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -17835,9 +17907,24 @@ do
             local totalHeight = (2.45 + 0.52 + 0.53) * scale
             local pivot = CFrame.new(ground + Vector3.new(0, totalHeight / 2, 0))
                 * CFrame.Angles(0, 0, math.rad(90))
-            local model = buildSausageProp(pivot, scale, nil, true)
-            table.insert(spawned, model)
-            Notify("Sausage", "Spawned in front of you.", 2)
+            -- Count and radius. One at your feet when the radius is zero, otherwise spread evenly
+            -- around a circle centred on you, each one ground-snapped by its own raycast so an
+            -- uneven map does not leave half of them buried or floating.
+            local count = math.clamp(math.floor(tonumber(S.WiwiSpawnCount) or 1), 1, 40)
+            local radius = math.clamp(tonumber(S.WiwiSpawnRadius) or 0, 0, 120)
+            for i = 1, count do
+                local pos = target
+                if radius > 0 then
+                    local a = (i / count) * math.pi * 2
+                    pos = hrp.Position + Vector3.new(math.cos(a) * radius, 0, math.sin(a) * radius)
+                end
+                local hit = workspace:Raycast(pos + Vector3.new(0, 40, 0), Vector3.new(0, -160, 0), params)
+                local g = hit and hit.Position or (hrp.Position - Vector3.new(0, 3, 0))
+                local p = CFrame.new(g + Vector3.new(0, totalHeight / 2, 0))
+                    * CFrame.Angles(0, 0, math.rad(90))
+                table.insert(spawned, buildSausageProp(p, scale, nil, true))
+            end
+            Notify("Sausage", "Spawned " .. count .. ".", 2)
         end, 4)
         mkAction(secWiwi, "Clear Sausages", function()
             for _, model in ipairs(spawned) do
@@ -19088,33 +19175,6 @@ do
     end))
     mkToggle(secJump, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 1)
 
-    -- ---- Custom Fog ----
-    -- The fog ENGINE already existed and was complete: applyAtmo() reads S.FogEnabled, S.FogMode
-    -- (Classic legacy FogStart/End vs Atmosphere density haze), S.FogColorName, S.FogStart,
-    -- S.FogEnd, S.FogDensity and S.FogRainbow, parks any map Atmosphere out of the way for classic
-    -- fog, and restores everything on the way out. What never existed was a single control to set
-    -- any of those keys -- same shape of gap as Infinity Jump. So this wires the existing engine up
-    -- rather than adding a second one.
-    -- I did write a parallel implementation first; it collided on S.FogStart/S.FogEnd and applyAtmo's
-    -- own restoreFog() overwrote it every pass. Measured: FogEnd stayed at 1e9 with the slider at 450.
-    local secFog = mkSection(Pages.Visuals, "Custom Fog", 5.4)
-    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secFog) end
-
-    -- Names must match the engine's own FOG_COLORS table keys, not a new palette.
-    local function fogRefresh()
-        if S._ApplyEnvironment then pcall(S._ApplyEnvironment) end
-    end
-
-    mkToggle(secFog, "Custom Fog", false, function(v) S.FogEnabled = v; fogRefresh() end, 1)
-    mkCycle(secFog, "Fog Mode", { "Classic", "Atmosphere" }, "Classic", function(v)
-        S.FogMode = v; fogRefresh()
-    end, 2)
-    mkCycle(secFog, "Fog Color",
-        { "Gray", "White", "Black", "Red", "Orange", "Green", "Cyan", "Blue", "Purple", "Pink" },
-        "Gray", function(v) S.FogColorName = v; fogRefresh() end, 3)
-    mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; fogRefresh() end, 4)
-    mkSlider(secFog, "Fog Start", 0, 1500, 0, function(v) S.FogStart = v; fogRefresh() end, 5)
-    mkSlider(secFog, "Fog End", 10, 3000, 500, function(v) S.FogEnd = v; fogRefresh() end, 6)
-    -- Only meaningful in Atmosphere mode.
-    mkSlider(secFog, "Fog Density (%)", 0, 100, 40, function(v) S.FogDensity = v; fogRefresh() end, 7)
+    -- Custom Fog removed on request. S.FogEnabled stays false, so the pre-existing fog engine in
+    -- applyAtmo() stays dormant and the map's own lighting is untouched.
 end
