@@ -6530,6 +6530,105 @@ end, 6)
         if S._RefreshKnifeEffectCatalog then task.spawn(S._RefreshKnifeEffectCatalog) end
     end, 1)
 
+    -- ---- Knife trail: styles and colours ----
+    -- The unlock above only reveals the game's own effects, and they are whatever the game ships.
+    -- This is a separate, purely local trail drawn on the knife handle, so it works on every knife
+    -- including the default one and needs nothing unlocked.
+    do
+        local KNIFE_FX_COLORS = {
+            "Rainbow", "Cyan", "White", "Red", "Crimson", "Pink", "Magenta", "Orange",
+            "Gold", "Yellow", "Lime", "Green", "Mint", "Teal", "Sky", "Blue",
+            "Indigo", "Purple", "Lavender", "Black",
+        }
+        local KNIFE_FX_STYLES = {
+            "Trail", "Neon Trail", "Wide Trail", "Ghost", "Sparkle", "Glow", "Comet", "Ribbon",
+        }
+        local trail, a0, a1
+
+        local function fxColor()
+            if S.KnifeFXColor == "Rainbow" then
+                return Color3.fromHSV((tick() * 0.4) % 1, 0.9, 1)
+            end
+            local map = S._ChamColorMap or {}
+            return map[S.KnifeFXColor] or Color3.fromRGB(80, 220, 230)
+        end
+
+        local function clearFX()
+            for _, o in ipairs({ trail, a0, a1 }) do
+                if o then pcall(function() o:Destroy() end) end
+            end
+            trail, a0, a1 = nil, nil, nil
+        end
+
+        local function heldKnife()
+            local char = LP.Character
+            if not char then return nil end
+            for _, t in ipairs(char:GetChildren()) do
+                if t:IsA("Tool") and t:FindFirstChild("Handle") then return t.Handle end
+            end
+        end
+
+        local function applyFX()
+            local handle = heldKnife()
+            if not S.KnifeFX or not handle then clearFX() return end
+            if not trail or not trail.Parent or a0.Parent ~= handle then
+                clearFX()
+                a0 = Instance.new("Attachment")
+                a0.Position = Vector3.new(0, handle.Size.Y / 2, 0)
+                a0.Parent = handle
+                a1 = Instance.new("Attachment")
+                a1.Position = Vector3.new(0, -handle.Size.Y / 2, 0)
+                a1.Parent = handle
+                trail = Instance.new("Trail")
+                trail.Attachment0 = a0
+                trail.Attachment1 = a1
+                trail.Parent = handle
+                pcall(function() own(trail) end)
+            end
+            local style = S.KnifeFXStyle or "Trail"
+            local col = fxColor()
+            trail.Color = ColorSequence.new(col)
+            trail.Lifetime = (style == "Comet" and 1.6) or (style == "Ghost" and 0.9) or 0.45
+            trail.WidthScale = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, style == "Wide Trail" and 2.4 or 1),
+                NumberSequenceKeypoint.new(1, style == "Ribbon" and 1 or 0),
+            })
+            trail.LightEmission = (style == "Neon Trail" or style == "Glow") and 1 or 0.2
+            trail.LightInfluence = style == "Ghost" and 1 or 0
+            trail.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, style == "Ghost" and 0.6 or 0.1),
+                NumberSequenceKeypoint.new(1, 1),
+            })
+            trail.Texture = style == "Sparkle" and "rbxasset://textures/particles/sparkles_main.dds" or ""
+            trail.FaceCamera = style ~= "Ribbon"
+        end
+        S._ApplyKnifeFX = applyFX
+
+        -- 4 Hz, not per frame. The Trail follows its attachments on the engine side, so this only has
+        -- to notice a new knife or a changed setting; always-on per-frame work is what made this hub
+        -- stutter before. Rainbow is the one case that needs a repaint, and only while it is picked.
+        task.spawn(function()
+            while SG and SG.Parent do
+                pcall(applyFX)
+                task.wait(S.KnifeFX and S.KnifeFXColor == "Rainbow" and 0.06 or 0.25)
+            end
+            clearFX()
+        end)
+
+        mkToggle(secKnifeEffects, "Knife Trail FX", false, function(v)
+            S.KnifeFX = v
+            pcall(applyFX)
+        end, 2)
+        mkCycle(secKnifeEffects, "Trail Style", KNIFE_FX_STYLES, "Trail", function(v)
+            S.KnifeFXStyle = v
+            pcall(applyFX)
+        end, 3)
+        mkCycle(secKnifeEffects, "Trail Color", KNIFE_FX_COLORS, "Rainbow", function(v)
+            S.KnifeFXColor = v
+            pcall(applyFX)
+        end, 4)
+    end
+
     -- Dual Wield: removed
 
     local activeVisualsSubTab = "ESP"
@@ -6928,28 +7027,26 @@ do
     -- (KnifeServer/ThrowKnife/Slash/anything parented to "Knife") and blindly rewrote EVERY CFrame/
     -- Vector3 argument it saw — on a throw with more than 2 args that clobbers whatever real data was
     -- in slot 3+ (e.g. a velocity or spin value), which is why the throw silently did nothing.
+    -- Restored verbatim from 1_backup.lua. The version that replaced it fed getPredictedPosition a
+    -- lead amount of 100 instead of 0, a ping offset instead of 0, and a flight speed of 120 instead
+    -- of 80 -- three separate multipliers on the lead, all pushing the same way, which is why the
+    -- throw landed far in front of the target. Do not "improve" these numbers again without a live
+    -- measurement showing the old ones miss.
     if self.Name == "KnifeThrown" and S.KnifeSilentAim then
-        local targetChar = (S.KnifeSilentAimPrioritizeSheriff and silentAimTargetChar("SheriffOrHero", false, S.KnifeSilentAimWallCheck, "Head"))
-            or silentAimTargetChar("Nearest", false, S.KnifeSilentAimWallCheck, "Head")
-        if targetChar then
-            local aimPart = targetChar:FindFirstChild("Head")
-                or targetChar:FindFirstChild("UpperTorso")
-                or targetChar:FindFirstChild("Torso")
-                or targetChar:FindFirstChild("HumanoidRootPart")
-            if aimPart then
-                local speed = tonumber(S.KnifeFlightSpeed) or 120
-                -- The new Prediction / Amount / Ping Offset controls write KnifePredict*; the older
-                -- KnifeSilentAim* keys stay as the fallback so a config saved before them still
-                -- behaves the same.
-                local pos = getPredictedPosition(
-                    targetChar, aimPart.Name,
-                    S.KnifePredictMode or S.KnifeSilentAimPredictMode or "Perfect",
-                    S.KnifePredictAmount or S.KnifeSilentAimPrediction or 100,
-                    (tonumber(S.KnifePingOffset) or 0) / 1000, speed)
-                args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
-                return args
-            end
-        end
+        local targetChar = (S.KnifeSilentAimPrioritizeSheriff and silentAimTargetChar("SheriffOrHero", S.KnifeSilentAimFOVEnabled, S.KnifeSilentAimWallCheck, "Head"))
+            or silentAimTargetChar("Nearest", S.KnifeSilentAimFOVEnabled, S.KnifeSilentAimWallCheck, "Head")
+        if not targetChar then return nil end
+        local aimPart = targetChar:FindFirstChild("Head")
+            or targetChar:FindFirstChild("UpperTorso")
+            or targetChar:FindFirstChild("Torso")
+            or targetChar:FindFirstChild("HumanoidRootPart")
+        if not aimPart then return nil end
+        local pos = getPredictedPosition(
+            targetChar, aimPart.Name,
+            S.KnifeSilentAimPredictMode or "Perfect",
+            S.KnifeSilentAimPrediction or 0, 0, 80)
+        args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
+        return args
     end
 
     return nil
@@ -12104,6 +12201,12 @@ local function saveConfig(name)
 end
 S.SaveConfig = saveConfig
 local function writeAutoConfig()
+    -- Never write once Destroy() has run. Destroy() deliberately clears SheriffSilentAim and
+    -- SheriffSilentAimPiercing so stale namecall wrappers from a previous inject stop firing, but
+    -- those are persisted keys -- and the outgoing hub's autosave was still alive long enough to
+    -- write the cleared values over the config. That is why sheriff silent aim came back off after
+    -- every re-inject while every other toggle survived: it is one of the few flags Destroy touches.
+    if S.Destroyed then return end
     if not (FILE_OK and S.AutoSaveCfg and configLoadedSuccessfully and not applyingConfig) then return end
     local ok, enc = pcall(function() return CfgHttp:JSONEncode(buildConfig()) end)
     if not ok or enc == lastAutoSaveEnc then return end
@@ -15279,7 +15382,11 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
         HUD.gunLbl.Text = table.concat(lines, "\n")
     end
     if S.RoleHUDEnabled and HUD.roleLbl and HUD.roleLbl.Parent then
-        local active = isRoundActive()
+        -- Shown whenever the toggle is on, not only during a round. It used to track
+        -- isRoundActive(), so it vanished in the lobby and between rounds -- which reads as the HUD
+        -- being broken rather than as a deliberate gate. The text below already handles the
+        -- no-round case on its own.
+        local active = true
         if HUD.hRole.frame.Visible ~= active then S._SetHUDVisible(HUD.hRole, active) end
         if active then
             local murdererName = "None"
@@ -17700,8 +17807,10 @@ do
             root.CanCollide = false
             root.CanTouch = false
             root.CanQuery = false
-            root.Massless = true
-            root.Anchored = true
+            root.Massless = not withStand
+            -- Spawned props drop and settle where they land; the worn one is anchored until the weld
+            -- to the torso takes over below.
+            root.Anchored = not withStand
             root.CFrame = pivot
             root.Parent = model
             model.PrimaryPart = root
@@ -17713,10 +17822,12 @@ do
                 part.Size = size
                 part.Color = color
                 part.Material = Enum.Material.SmoothPlastic
-                part.CanCollide = false
+                -- Spawned props are physical so they drop and settle; the worn one stays weightless
+                -- and non-colliding, or it would shove your own character around.
+                part.CanCollide = withStand == true
                 part.CanTouch = false
                 part.CanQuery = false
-                part.Massless = true
+                part.Massless = not withStand
                 part.Anchored = false
                 part.CFrame = root.CFrame * offset
                 part.Parent = model
@@ -17792,16 +17903,9 @@ do
                     SAUSAGE_DARK)
             end
 
-            if withStand then
-                local standX = -(shaftLen / 2 + ballR * 1.15)
-                visual(
-                    "Stand",
-                    Enum.PartType.Cylinder,
-                    Vector3.new(0.20 * scale, ballR * 3.4, ballR * 3.4),
-                    CFrame.new(standX, 0, 0),
-                    SAUSAGE_DARK
-                )
-            end
+            -- The base stand is gone: it existed to prop these upright when they were anchored, and
+            -- now they tumble and lie where they fall, so a plinth welded to the bottom just read as
+            -- a stray disc.
 
             if anchorPart and anchorPart.Parent then
                 root.Anchored = false
@@ -17911,24 +18015,26 @@ do
             local totalHeight = (2.45 + 0.52 + 0.53) * scale
             local pivot = CFrame.new(ground + Vector3.new(0, totalHeight / 2, 0))
                 * CFrame.Angles(0, 0, math.rad(90))
-            -- Count and radius. One at your feet when the radius is zero, otherwise spread evenly
-            -- around a circle centred on you, each one ground-snapped by its own raycast so an
-            -- uneven map does not leave half of them buried or floating.
+            -- Scattered, not arranged. Random point in the disc rather than evenly around its edge,
+            -- and sqrt on the radius so they spread across the whole area instead of bunching in
+            -- the middle -- picking r linearly would crowd the centre.
+            -- They are dropped from above and left to physics: no ground snap, so they fall, bounce
+            -- off whatever is there and lie where they land.
             local count = math.clamp(math.floor(tonumber(S.WiwiSpawnCount) or 1), 1, 40)
             local radius = math.clamp(tonumber(S.WiwiSpawnRadius) or 0, 0, 120)
-            for i = 1, count do
+            for _ = 1, count do
                 local pos = target
                 if radius > 0 then
-                    local a = (i / count) * math.pi * 2
-                    pos = hrp.Position + Vector3.new(math.cos(a) * radius, 0, math.sin(a) * radius)
+                    local a = math.random() * math.pi * 2
+                    local r = math.sqrt(math.random()) * radius
+                    pos = hrp.Position + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
                 end
-                local hit = workspace:Raycast(pos + Vector3.new(0, 40, 0), Vector3.new(0, -160, 0), params)
-                local g = hit and hit.Position or (hrp.Position - Vector3.new(0, 3, 0))
-                local p = CFrame.new(g + Vector3.new(0, totalHeight / 2, 0))
-                    * CFrame.Angles(0, 0, math.rad(90))
+                local drop = pos + Vector3.new(0, 6 + math.random() * 10, 0)
+                local p = CFrame.new(drop)
+                    * CFrame.Angles(math.random() * 6.2832, math.random() * 6.2832, math.random() * 6.2832)
                 table.insert(spawned, buildSausageProp(p, scale, nil, true))
             end
-            Notify("Sausage", "Spawned " .. count .. ".", 2)
+            Notify("Sausage", "Dropped " .. count .. ".", 2)
         end, 4)
         mkAction(secWiwi, "Clear Sausages", function()
             for _, model in ipairs(spawned) do
@@ -18584,6 +18690,9 @@ end
 -- validated positions would reject a 7777-stud step outright.
 do
     local secDesync = mkSection(Pages.Motion, "Desync", 3.5)
+    -- Registered, or it belongs to no subtab and the switcher never hides it -- so it stays on
+    -- screen under both Movement and Targets and reads as a duplicate card.
+    if S._RegisterMotionMovementSection then pcall(S._RegisterMotionMovementSection, secDesync) end
     local lastCF, lastVel, lastAng, applied = nil, nil, nil, false
 
     -- No radius and no modes, deliberately. Every knob here was a way to make the effect smaller,
