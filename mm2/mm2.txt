@@ -9,12 +9,18 @@ pcall(function()
     if ps then ps:Destroy() end
 end)
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
-local ContentProvider = game:GetService("ContentProvider")
+-- One register for this whole cluster: these are all live to the end of the chunk,
+-- which is the only kind of top-level local that costs anything at the peak.
+-- Namespace tables, all declared before ANY of them is touched: each collapses a cluster of
+-- long-lived top-level locals into one register, and a late declaration would leave every
+-- earlier reference indexing nil.
+local Svc, UI, Cfg, Em = {}, {}, {}, {}
+Svc.Players = game:GetService("Players")
+Svc.RunService = game:GetService("RunService")
+Svc.UIS = game:GetService("UserInputService")
+Svc.TweenService = game:GetService("TweenService")
+Svc.SoundService = game:GetService("SoundService")
+Svc.ContentProvider = game:GetService("ContentProvider")
 
 -- ===== BUILD MODE (PC / MOBILE) =====
 -- The launcher's PC/MOBILE switch sets _G.INERTIA_MOBILE before running this
@@ -26,10 +32,10 @@ local ContentProvider = game:GetService("ContentProvider")
 -- above it resolved to a nil GLOBAL instead of this local — so the toast width
 -- and all three toast text sizes silently kept their desktop values on phones.
 local MOBILE = _G.INERTIA_MOBILE
-if MOBILE == nil then MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled end
+if MOBILE == nil then MOBILE = Svc.UIS.TouchEnabled and not Svc.UIS.KeyboardEnabled end
 MOBILE = MOBILE == true
 
-local LP = Players.LocalPlayer
+local LP = Svc.Players.LocalPlayer
 -- The game's real max camera zoom, captured BEFORE anything (incl. config auto-load) changes it.
 -- "No Camera Limit" restores THIS when off, so executing the script never widens your zoom-out.
 local _origMaxZoom = LP.CameraMaxZoomDistance
@@ -45,6 +51,10 @@ local S = {
     PixelSurf = false, SurfSpeed = 60, SurfGravity = 80, SurfJumpPower = 50,
     AutoKillSheriff = false, AutoKillNearest = false, ClickKill = false, KillAura = false, KillAuraRange = 18,
     ActiveShader = "None",
+    HUD_MotionGraph = false, MotionGraphSpan = 100,
+    ShTime = 140, ShBrightness = 200, ShAmbient = 96, ShOutdoor = 140, ShExposure = 0,
+    ShShadows = true, ShBlur = 0, ShBloom = 45, ShBloomSize = 24, ShBloomThresh = 150,
+    ShCCBright = 0, ShContrast = 10, ShSaturation = 10,
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
     HUD_Ping = false, HUD_Coords = false, NoEmoteStop = false, LoopEmote = false,
     NameESP = false, DistanceESP = false, RoleESP = false,
@@ -52,14 +62,17 @@ local S = {
     HeadDot = false, TracerOrigin = "Bottom",
     ChamsOpacity = 50, RoleChams = false, RoleHUDEnabled = false,
     ItemChamsMode = "Outline", ItemChamsColor = "White", ItemChamsRainbow = false,
+    GunDropChams = false, GunHeldChams = false,
     Saturation = 0, Contrast = 0, CamFOV = 70,
     SkyEnabled = false, SkyPreset = "Day", SkyTint = "Preset", SkyRainbow = false,
     FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
-    FogMode = "Classic", FogDensity = 40,
+    FogMode = "Atmosphere", FogDensity = 40,
+    FogHaze = 24, FogGlare = 0, FogOffset = 0,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
-    UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "White 02 Angel Rig",
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel",
+    VFXWingEffect = "Angel Aura", VFXWingPower = 70,
     VFXWingScale = 100, VFXWingHeight = 0, VFXWingBack = 0,
+    VFXBloom = 35, VFXGroundAura = false,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
     KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
@@ -75,8 +88,8 @@ local S = {
     Bhop = false, BhopMax = 28, SpeedGlitch = false, AirSpeed = 50,
     ClickTP = false,
     AutoSaveCfg = true,
-    GuiTransparency = 0.15, UIBlur = 0, UIGlass = 0,
-    HudTransparency = 0.20,
+    GuiTransparency = 0,
+    HudTransparency = 0,
     HeadSit = false,
     Orbit = false, OrbitSpeed = 20, OrbitDist = 6, OrbitHeight = 0,
     Bang = false, BangSpeed = 3, Jerk = false,
@@ -108,6 +121,7 @@ local S = {
     SheriffSilentAimPrediction = 25,
     SheriffSilentAimFOVEnabled = true,
     SheriffSilentAimPiercing = false,
+    SheriffAntiDesync = false, AntiDesyncSamples = 12,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
     KnifeSilentAimPredictMode = "Perfect",
@@ -205,11 +219,11 @@ local function snd(id, pitch, vol)
         local k = id..pitch
         local s = SndCache[k]
         if not s or not s.Parent then
-            s = Instance.new("Sound"); s.SoundId = id; s.Parent = SoundService; SndCache[k] = s
+            s = Instance.new("Sound"); s.SoundId = id; s.Parent = Svc.SoundService; SndCache[k] = s
         end
         s.PlaybackSpeed = pitch; s.Volume = vol or 0.3
-        pcall(function() ContentProvider:PreloadAsync({s}) end)
-        pcall(function() SoundService:PlayLocalSound(s) end)
+        pcall(function() Svc.ContentProvider:PreloadAsync({s}) end)
+        pcall(function() Svc.SoundService:PlayLocalSound(s) end)
         if not s.IsPlaying then pcall(function() s:Play() end) end
     end) end)
 end
@@ -224,11 +238,11 @@ S._PlaySoundSafe = function(s)
     local function startPlayback()
         if started or not s.Parent then return end
         started = true
-        pcall(function() SoundService:PlayLocalSound(s) end)
+        pcall(function() Svc.SoundService:PlayLocalSound(s) end)
         if not s.IsPlaying then pcall(function() s:Play() end) end
     end
     task.spawn(function()
-        pcall(function() ContentProvider:PreloadAsync({ s }) end)
+        pcall(function() Svc.ContentProvider:PreloadAsync({ s }) end)
         startPlayback()
     end)
     -- PreloadAsync can stall on a restricted asset. Do not let one bad ID make every
@@ -461,7 +475,9 @@ local Translations = {
         ["Avatar (Local)"] = "Local Avatar",
         ["Fake Headless (Local)"] = "Local Headless",
         ["Fake Korblox (Local)"] = "Local Korblox",
-        ["VFX Wing Style"] = "Wing Style",
+        ["VFX Wing Style"] = "Wing Model",
+        ["VFX Wing Effect"] = "Wing FX",
+        ["Wing Effect Power"] = "FX Power",
         ["Wing Size (%)"] = "Wing Size",
         ["Wing Back Offset"] = "Wing Back",
         ["Crosshair Size"] = "Cursor Size",
@@ -544,7 +560,7 @@ end
 -- Mesh/texture ids were read off Players:CreateHumanoidModelFromDescription with
 -- RightLeg = 139607718 on a live client; re-derive them the same way if Roblox republishes it.
 -- Own do-block to keep these three off the main chunk's register budget (200-local ceiling).
-do
+;(function()
 local savedLimb = setmetatable({}, { __mode = "k" })
 local savedHead = nil
 S._UpdateAvatarMods = function()
@@ -639,7 +655,7 @@ LP.CharacterAdded:Connect(function()
     end)
 end)
 
-end
+end)()
 
 -- Section cards are named after their own title ("Desync", "Aimbot", ...), so unlike TBar or HUD_*
 -- there is no name to match them on -- which is why the transparency slider never reached them and
@@ -668,8 +684,8 @@ end
 local function updateGuiTransparency()
     -- Keep enough opacity for controls and notifications to remain readable even
     -- when an old or malformed config contains an out-of-range value.
-    local guiTrans = math.clamp(tonumber(S.GuiTransparency) or 0.15, 0, 0.85)
-    local hudTrans = math.clamp(tonumber(S.HudTransparency) or (guiTrans + 0.05), 0, 0.90)
+    local guiTrans = math.clamp(tonumber(S.GuiTransparency) or 0, 0, 0.85)
+    local hudTrans = math.clamp(tonumber(S.HudTransparency) or guiTrans, 0, 0.90)
     S.GuiTransparency = guiTrans
     S.HudTransparency = hudTrans
     if SG then
@@ -696,7 +712,6 @@ local function updateGuiTransparency()
     S._EachSurface(function(o)
         o.BackgroundTransparency = o:GetAttribute("InertiaHudSurface") and hudTrans or guiTrans
     end)
-    if S._ApplyGlass then S._ApplyGlass() end
 end
 S._UpdateGuiTransparency = updateGuiTransparency
 
@@ -865,6 +880,18 @@ local function applyTheme(themeName)
     pcall(function() if rebuildCrosshair then rebuildCrosshair() end end)
 end
 S._ApplyTheme = applyTheme
+-- Every theme change funnels through applyTheme, so the persist request belongs here rather
+-- than duplicated at each call site. Deferred + deduped, so dragging a colour slider costs one
+-- write at the end of the frame instead of one per tick.
+;(function()
+    local _rawApplyTheme = applyTheme
+    applyTheme = function(...)
+        local r = table.pack(_rawApplyTheme(...))
+        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
+        return table.unpack(r, 1, r.n)
+    end
+    S._ApplyTheme = applyTheme
+end)()
 S._UpdateLanguage = updateLanguage
 S._UpdateTextSizes = updateTextSizes
 
@@ -909,13 +936,13 @@ local FM = Enum.Font.GothamMedium
 -- Some headings use FH.  Keep it explicit instead of assigning nil to TextLabel.Font.
 local FH = Enum.Font.GothamBold
 local FB = Enum.Font.GothamBold
-local function Corner(i, r)
+function UI.Corner(i, r)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, r or 6)
     c.Parent = i
     return c
 end
-local function Stroke(i, col, th, tr)
+function UI.Stroke(i, col, th, tr)
     local s = Instance.new("UIStroke")
     s.Color = col or T.Bd
     s.Thickness = th or 1
@@ -925,14 +952,14 @@ local function Stroke(i, col, th, tr)
     s.Parent = i
     return s
 end
-local function Grad(i, c1, c2, rot)
+function UI.Grad(i, c1, c2, rot)
     local g = Instance.new("UIGradient")
     g.Color = ColorSequence.new(c1, c2)
     g.Rotation = rot or 90
     g.Parent = i
     return g
 end
-local function Pad(i, t, b, l, r)
+function UI.Pad(i, t, b, l, r)
     local p = Instance.new("UIPadding")
     p.PaddingTop = UDim.new(0,t or 0)
     p.PaddingBottom = UDim.new(0,b or 0)
@@ -941,7 +968,7 @@ local function Pad(i, t, b, l, r)
     p.Parent = i
     return p
 end
-local function Shadow(i, transparency)
+function UI.Shadow(i, transparency)
     local s = Instance.new("UIStroke")
     s.Color = T.Bd2; pcall(function() s:SetAttribute("ThemeColorRole_Color", "Bd2") end)
     s.Thickness = 2
@@ -952,7 +979,7 @@ local function Shadow(i, transparency)
     return s
 end
 -- Shared subtab helpers; optional width overrides support three-column bars.
-local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
+function UI.mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
     btn.Name = text
     btn.Parent = bar
     btn.LayoutOrder = order
@@ -962,8 +989,8 @@ local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
     btn.Font = FM
     btn.TextSize = 13
     btn.Text = text
-    Corner(btn, 6)
-    return Stroke(btn, T.Bd, 1, 0.4)
+    UI.Corner(btn, 6)
+    return UI.Stroke(btn, T.Bd, 1, 0.4)
 end
 -- Deduped: Blink and InvisibleFE each declared their own identical "disconnect every connection in
 -- this list" closure. One shared helper, called as `conns = disconnectAll(conns)`.
@@ -971,7 +998,7 @@ local function disconnectAll(conns)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     return {}
 end
-local function styleSubTabActive(btn, stroke, active)
+function UI.styleSubTabActive(btn, stroke, active)
     btn.BackgroundColor3 = active and T.ActiveBg or T.Elev
     btn.TextColor3 = active and T.White or T.Tx2
     pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", active and "ActiveBg" or "Elev") end)
@@ -983,12 +1010,13 @@ end
 -- Small, consistent Lucide set for the main navigation. There is deliberately no hand-drawn fallback:
 -- if an executor cannot load local assets, the sidebar stays clean and text-only.
 S._NavIconFiles = {
-    eye = "InertiaAssets/nav_eye.png",
-    combat = "InertiaAssets/nav_combat.png",
+    search = "InertiaAssets/nav_search.png",
+    eye = "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",
+    combat = "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",
     motion = "InertiaAssets/nav_motion.png",
     player = "InertiaAssets/nav_player.png",
     misc = "InertiaAssets/nav_misc.png",
-    teleport = "InertiaAssets/nav_teleport.png",
+    teleport = "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",
     servers = "InertiaAssets/nav_servers.png",
     config = "InertiaAssets/nav_config.png",
 }
@@ -1001,6 +1029,7 @@ S._NavIconData = {
     teleport = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAACd0lEQVR42u1dQXIDMQgLmv7/y9tLTp1pm2xsSwLxgDVINjbYsI9HJBKJRCIRipSLotd1XW8bV1Uh4BDYrqTUFOBViahpwKsRUVOBVyGipgPPJgIBn6tfBXjuaign8N8BhDGmJAGfALHSeBU9jhJw1+idBqvpJGMo4xiooCOmgn9n3B0HiWKCr5SXYeldDCOUs5SnbcC03EvbSNgx0FKwF3E99/VcQQLierj61onZv9qYv8Y8OdaKMbcTsAoQ5p3wThvhsPHeHUddv+17wKcz8HoK+xs79wOozv7V31fVF4qzfxdYiinp45FwZAEBO5ezm2v79NtQcj/qpxab+wCHXJJK7ip7gBsB07Ke228DFcLyVWmGU+mKlRhYuqDfDHTLuFoS8B/IbiRkEw4BISASAkJAm3O2W5yCTsGOZQ2CyiU1A7xdem4NxByDHWVSswl33AMc2gqouEmMfI0m5EYhVzO1uyhOTPfsAV3jAMUnIIpPZTDFVajqC+WL73oK+xs7g0R0fqs/omNW6gM+G/NrQrjf+hT0ChiuT1lOrO7EAR3igI6r4NTehvhlrr14pF0ZVU+cnhUdesatXO1I10SuXsgZnWsfrUJGbRUwInp6laQKCSzwJQIxNgns8ZGcjWmlfAdXxHQ9qZKcVCV5sgOVW4cvdGwD5tReDV17sbn0tkPnhngOjQXRvSuheldHdG8Nqd5SE53z8w73D3CJMN8F06WJOJzC/FdBdergDrdcy8oqSYVcFRwTXiuqJFUShbYVMj/Bdv1xRP6mmhXgUaAxLg5wK9Bo/Udt1Z+wpUCjwZUout7LutxHo+PluNNjgDTti0QikUiEJN+pDOzI1BYgJwAAAABJRU5ErkJggg==",
     servers = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAABKklEQVR42u3cQQ6DMAxEUcfi/ldO95UqUAhxUN/ft4v5QIiBiQAAACW0kR/13rvofgTaWntMgODni2iCrxWRwn+Ws/xS+LUSUvi1ElI0taSjv/YsOFbd71pwL54BV/5E+OO5fOebjvzanbBFeMdFGAQQAAIIAAEE4OUCzJWKBdg5uwQRAAIIAAEEgAACcFOAne3cfHLGg2WMv9BwmPFseAkyv4llczGL8K6LsLNgzVQ4jZJrX9ZK8/za5yG+EXvDN2JEeAIIAAAAAPqCRKcvSF8Q9AWFviDoC9IXhNAXpC8I+oL0BUFfkO8DQAABIIAAEEAA9AXpC7JzdgkiAAQQAAIIAAEEQF+QviB9QaEvSF9QeGPCIqwvSF+QUbK+IH1B7nz0BekLAgD8Gx8tKrCTY2J7CQAAAABJRU5ErkJggg==",
     config = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAClUlEQVR42u1dy5LDMAiLNfn/X85e9tDZ2U7SGoyExblNMBjMQybHYTKZTCaTqYSGGsPXdV23ixpjWAEFgldUBLoKf+Z/toAEAbJaA3YQPrM1SLigzoQddj+zFWAX4bMq4ZRNYP45VBWiHuooKCrJUkrWoL7r1TNhR0FWgBWwRfTDemDbAjpFQe921d2hmBW1RDz32zUtU8CnpvyX8af/z1LADE8RyhgKfnRmgew8olt1US2IGOyCj/C1zDyju/ArMuNP5AT1ssM2HbGVuz9LWCuV8DgCyww1V4ZzmW7ila/oNY3qhKbaPczwFSGXEAUolX9XW9KdbOB4v1ZBp2J0weTOxhhjZpOe3TLN198ZmmhoYr4CMhd5/VL1MzLXD9YMsgs0cToK6iQsRj4RFelkmzrbmRTVxQPbLmOHJkbzh4x4nz1qWcHfU3mBJenqBEtJa8h88vBu50EWeACdmhuHYBNpqKCZs+Dp1WhrdNppipYJtUrobYODkCdjQ10NNVkBVoApXAEVydbdOxl5amcB7xa81TXV6OSkQnjR/H0TjuIwNL3UFYGlKNWlzvOpEqBYwmV/Xwo8PaMZUaWEFfw9lRfYdla2Etj4Q2QEsEuf4Olan8gNO91mYeQTqoAmlS7enfzAvLAIt5btGmefja69VpVc5FRMhFivO6XUgrrNamYbswYLt9Z9nlG7wLckE8vRM3djV5Qw2t8T7nJTnnEdUN+dysL39PRDrCnPPPZFdczO6GTOinyi2/wduXKJpyYKT0303NBG4+srcEYMbtTYUCugHyzFFmALMLVUwDdDm/wRn4XYU0Xc6rnbsGy7IHFo4hZnQIfRxY6C7IIMTWzzSfOZA5e9bG5ooi2gtmpqMplMJlMV/QBrJTy+7ROVrgAAAABJRU5ErkJggg==",
+    search = "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x/rAlMhcLfUwaaEf/PiLmU2PjSRN0ySgFE0ChlABkM5w98WADUnnD6xLKgTrFn+9bGC0JjwB3AHcVnzcXvz1LWb2QmQwaQ9NAkrRJKCgAiBZcPflSEVgGrAKaQth1eLzasCKwIJhAUf3KjAduJ/0bv7BIR93ALeb2ZNx8aRLVAJKUQlABUB6wt2NVAJWBl4DLAUsAyxdfCw1z68XKf6viwBTi18vCCw+z5d+AXil+PVLpPvnAV4GngaeKT4P/Xiq+P3HgYeAR3SwjlRJJaCU3pcAFQARkQzpmoBSen1NgAqAiEimVAJK6W0JUAEQEcmYSkApvSwBKgAiIplTCSildyVABUBEpAdUAkrpVQlQARAR6QmVgFJ6UwJUAEREekQloJRelAAVABGRnlEJKCX7EqACICLSQyoBpWRdAlQARER6SiWglGxLgAqAiEiPqQSUkmUJUAEQEek5lYBSsisBKgAiIqISUE5WJUAFQEREAJWAkrIpASoAIiIyh0pAKVmUABUAERGZi0pAKZ0vASoAIiIyH5WAUjpdAlQARERkWCoBpXS2BKgAiIjIiFQCSulkCVABEBGRUakElNK5EqACICIiY1IJKKVTJUAFQERESlEJKKUzJUAFQERESlMJKKUTJUAFQERExkUloJTWlwAVABERGTeVgFJaXQJUAEREZEJUAkppbQlQARARkQlTCSillSVABUBERCZFJaCU1pUAFQAREZk0lYBSWlUCVABERKQSKgGltKYEqACIiEhlVAJKaUUJUAEQEZFKqQSUEl4CVABERKRyKgGlhJYAFQAREamFSkApYSVABUBERGqjElBKSAlQARARkVqpBJTSeAlQARARkdqpBJTSaAlQARARkUaoBJTSWAlQARARkcaoBJTSSAlQARARkUapBJRSewlQARARkcapBJRSawlQARARkRAqAaXUVgJUAEREJIxKQCm1lAAVABERCaUSUErlJUAFQEREwqkElFJpCVABEBGRVlAJKKWyEqACICIiraESUEolJUAFQEREWkUloJRJlwAVABERaR2VgFImVQJUAEREpJVUAkqZcAlQARARkdZSCShlQiVABUBERFpNJaCUcZcAFQAREWk9lYBSxlUCVABERKQTVAJKKV0CVABERKQzVAJKKVUCVABERKRTVAJKGbMEqACIiEjnuPsCwM+A90VnabHfAG83s1eG+x8HGg4jIiIyaWY2E/ggqQTI8HYHfuTuw77ZVwEQEZFOMrNZwEeAU4KjtNkHgH8c7n/QFoCIiHSargkY02zgrWZ26dDfVAEQEZHO0zUBY7oH2MTMXhj8DW0BiIhI5+magDGtCRw19Dc0ARARkWxoEjCql4D1zex+0ARAREQyoknAqKYCnx38C00AREQkO5oEjOg5YHUze1oTABERyY4mASNagqIUqQCIiEiWinMCDkQlYF7vB20BiIhI5rQdMJ9ZwHKaAIiISNa0HTCfKcD2KgAiIpI9HRs8HxUAERHpB00C5rK+CoCIiPSGJgFzTFMBEBGRXtEkAIAVdBeAiIj0Us+fIvi8CoCIiPRWj28RnKktABER6a0ebwc8rwIgIiK91tMLA59TARARkd7r4STgPhUAERERevfsgDtUAERERAo92g64XncBiIiIzKMHtwhuowIgIiIyjIxvEXwGWF5bACIiIsPI+MLAM81M5wCIiIiMJNNrAk4B0BaAiIjIGDK6JuAuYD0zm6UJgIiIyBgyukXw2OKfRRMAERGRsjo+Cbgb2MjMZgBoAiAiIlJSxycBfze4+IMmACIiIuPWwVsEzzWzvYf+hgqAiIjIBHRoO+BRYHMzmz70N7UFICIiMgEduUXwFWC/eRd/ERERmSR3n+LuP/X2me3uB0b/+xEREcmWuy/g7j8PXvCHmu3uh0f/exEREcmeuw+4+3HBC7+7+6vufkD0vw8REZFecfdPufuMoMX/QXd/c/S/AxERkV5y983c/YaGF/+z3X3F6H92ERGRXnP3hdz9CHd/quaF/2533zf6n1dERESGcPfl3f1f3P3Rihf+29z9IHdfMPqfUUREREbg7lPd/UPufoa7vzTBRf8Rdz/R3Xd090kd5qeTAEVERBrm7lOB1wPbARsBawErA0sCC5AO8HkSeAS4BbgRuAy4zsy8igz/D3HvcNUjfIxZAAAAAElFTkSuQmCC",
 }
 S._NavIconCache = {}
 S._MakeNavIcon = function(parent, kind)
@@ -1088,7 +1117,7 @@ end
     slot.BackgroundTransparency = 1
     slot.BorderSizePixel = 0
     pcall(function() slot:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-    Corner(slot, 6)
+    UI.Corner(slot, 6)
 
     local image = Instance.new("ImageLabel")
     image.Name = "NavIcon"
@@ -1114,7 +1143,7 @@ SG.DisplayOrder = 1000
 SG.IgnoreGuiInset = false
 SG.Enabled = true
 pcall(function() SG.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets end)
-do
+;(function()
     local uiParent
     if gethui then pcall(function() uiParent = gethui() end) end
     if not uiParent then pcall(function() uiParent = game:GetService("CoreGui") end) end
@@ -1125,7 +1154,7 @@ do
         if not playerGui then error("[Inertia] PlayerGui is unavailable") end
         SG.Parent = playerGui
     end
-end
+end)()
 S.Gui = SG
 tc(SG.DescendantAdded:Connect(function(obj)
     -- The final updateTextSizes() pass handles the initial bulk tree. Deferring one task per label
@@ -1254,7 +1283,7 @@ local function Notify(title, msg, dur, style)
     shadow.Position = UDim2.fromOffset(slideX, slideY + 3)
     shadow.Size = UDim2.fromScale(1, 1)
     shadow.ZIndex = 901
-    Corner(shadow, 13)
+    UI.Corner(shadow, 13)
 
     local card = Instance.new("TextButton")
     card.Name = "NotificationCard"
@@ -1269,8 +1298,8 @@ local function Notify(title, msg, dur, style)
     card.Position = UDim2.fromOffset(slideX, slideY)
     card.Size = UDim2.fromScale(1, 1)
     card.ZIndex = 902
-    Corner(card, 12)
-    local tst = Stroke(card, T.Bd2, 1, 0.14); pcall(function() tst:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+    UI.Corner(card, 12)
+    local tst = UI.Stroke(card, T.Bd2, 1, 0.14); pcall(function() tst:SetAttribute("ThemeColorRole_Color", "Bd2") end)
 
     local cardGradient = Instance.new("UIGradient")
     cardGradient.Name = "NotificationGradient"
@@ -1290,7 +1319,7 @@ local function Notify(title, msg, dur, style)
     statusDot.BackgroundColor3 = T.Accent; pcall(function() statusDot:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     statusDot.BorderSizePixel = 0
     statusDot.ZIndex = 904
-    Corner(statusDot, 4)
+    UI.Corner(statusDot, 4)
 
     local tt = Instance.new("TextLabel")
     tt.Name = "NotificationTitle"
@@ -1334,8 +1363,8 @@ local function Notify(title, msg, dur, style)
             row.BackgroundTransparency = 0.04
             row.BorderSizePixel = 0
             row.ZIndex = 903
-            Corner(row, 7)
-            local rowStroke = Stroke(row, T[borderRole], 1, 0.24)
+            UI.Corner(row, 7)
+            local rowStroke = UI.Stroke(row, T[borderRole], 1, 0.24)
             pcall(function() rowStroke:SetAttribute("ThemeColorRole_Color", borderRole) end)
 
             local dot = Instance.new("Frame")
@@ -1347,7 +1376,7 @@ local function Notify(title, msg, dur, style)
             dot.BackgroundColor3 = T[colorRole]
             dot.BorderSizePixel = 0
             dot.ZIndex = 905
-            Corner(dot, 6)
+            UI.Corner(dot, 6)
             pcall(function() dot:SetAttribute("ThemeColorRole_BackgroundColor3", colorRole) end)
 
             local roleLabel = Instance.new("TextLabel")
@@ -1412,7 +1441,7 @@ local function Notify(title, msg, dur, style)
     progressTrack.BackgroundTransparency = 0.25
     progressTrack.BorderSizePixel = 0
     progressTrack.ZIndex = 903
-    Corner(progressTrack, 2)
+    UI.Corner(progressTrack, 2)
     local progress = Instance.new("Frame")
     progress.Name = "NotificationProgress"
     progress.Parent = progressTrack
@@ -1421,7 +1450,7 @@ local function Notify(title, msg, dur, style)
     progress.BackgroundTransparency = 0.04
     progress.BorderSizePixel = 0
     progress.ZIndex = 904
-    Corner(progress, 2)
+    UI.Corner(progress, 2)
 
     local entry = { toast = toast }
     local closed = false
@@ -1434,17 +1463,17 @@ local function Notify(title, msg, dur, style)
             if active == entry then table.remove(ActiveN, i); break end
         end
         if not toast.Parent then return end
-        TweenService:Create(card, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Svc.TweenService:Create(card, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             Position = UDim2.fromOffset(slideX, slideY),
         }):Play()
-        TweenService:Create(shadow, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Svc.TweenService:Create(shadow, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             Position = UDim2.fromOffset(slideX, slideY + 3),
             BackgroundTransparency = 1,
         }):Play()
-        TweenService:Create(tst, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+        Svc.TweenService:Create(tst, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
         task.delay(0.11, function()
             if toast.Parent then
-                TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Svc.TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
                     Size = UDim2.fromOffset(toastWidth, 0),
                 }):Play()
             end
@@ -1463,31 +1492,31 @@ local function Notify(title, msg, dur, style)
     card.Activated:Connect(dismiss)
     card.MouseEnter:Connect(function()
         if closed then return end
-        TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             BackgroundTransparency = 0,
         }):Play()
-        TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.02 }):Play()
+        Svc.TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.02 }):Play()
         closeGlyph.TextTransparency = 0
     end)
     card.MouseLeave:Connect(function()
         if closed then return end
-        TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService:Create(card, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             BackgroundTransparency = 0.035,
         }):Play()
-        TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.14 }):Play()
+        Svc.TweenService:Create(tst, TweenInfo.new(0.12), { Transparency = 0.14 }):Play()
         closeGlyph.TextTransparency = 0.18
     end)
 
-    TweenService:Create(toast, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+    Svc.TweenService:Create(toast, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
         Size = UDim2.fromOffset(toastWidth, finalHeight),
     }):Play()
-    TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+    Svc.TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
         Position = UDim2.fromOffset(0, 0),
     }):Play()
-    TweenService:Create(shadow, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+    Svc.TweenService:Create(shadow, TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
         Position = UDim2.fromOffset(0, 3),
     }):Play()
-    progressTween = TweenService:Create(progress, TweenInfo.new(math.max(dur, 0.1), Enum.EasingStyle.Linear), {
+    progressTween = Svc.TweenService:Create(progress, TweenInfo.new(math.max(dur, 0.1), Enum.EasingStyle.Linear), {
         Size = UDim2.new(0, 0, 1, 0),
     })
     progressTween:Play()
@@ -1576,73 +1605,13 @@ Main.Visible = true
 Main.Parent = SG
 Main.Active = true
 Main.BackgroundColor3 = T.BG; pcall(function() Main:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
-Main.BackgroundTransparency = MOBILE and math.clamp(tonumber(S.GuiTransparency) or 0.08, 0, 0.85) or math.clamp(tonumber(S.GuiTransparency) or 0.15, 0, 0.85)
+Main.BackgroundTransparency = math.clamp(tonumber(S.GuiTransparency) or 0, 0, 0.85)
 Main.BorderSizePixel = 0
 Main.Position = UDim2.new(0.5, -WW/2, 0.5, -WH/2)
 Main.Size = expandedSize
 Main.ClipsDescendants = true
-Corner(Main, MOBILE and 18 or 12)
-Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
--- Placed here, AFTER Main exists. It used to sit ~900 lines earlier, where `Main` was still an
--- undeclared global: the glass gradient indexed nil inside a pcall and did nothing, and the
--- blur's `Main and Main.Parent` was always nil so the effect was never created. Both features
--- were dead on arrival for that one reason.
--- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
--- Main itself and not a child frame -- an opaque child would square off the window's rounded
--- corners, because UICorner does not clip descendants.
-S._GlassOn = function(obj, amount)
-    if not obj or not obj.Parent then return end
-    local g = obj:FindFirstChild("GlassSheen")
-    if amount <= 0.01 then
-        if g then g:Destroy() end
-        return
-    end
-    if not g then
-        g = Instance.new("UIGradient")
-        g.Name = "GlassSheen"
-        g.Rotation = 90
-        g.Parent = obj
-    end
-    g.Color = ColorSequence.new(
-        Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
-        Color3.new(0, 0, 0))
-    g.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
-        NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-end
-
-S._ApplyGlass = function()
-    local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
-    pcall(S._GlassOn, Main, amount)
-    -- Cards and HUD panels get the same sheen. Without this the glass stopped dead at the window
-    -- edge and every card sitting on top of it stayed flat, which is what "cards do not blur"
-    -- actually looked like.
-    S._EachSurface(function(o) S._GlassOn(o, amount) end)
-end
-
--- Background blur. Deliberately NOT gated on the menu being open: you set it to look at the game
--- through it, and tying it to Main.Visible meant closing the menu removed the very thing you had
--- just turned on.
-do
-    local blurFx
-    tc(RunService.RenderStepped:Connect(function()
-        local want = math.clamp(tonumber(S.UIBlur) or 0, 0, 24)
-        local on = want > 0 and Main and Main.Parent
-        if on then
-            if not blurFx or not blurFx.Parent then
-                blurFx = Instance.new("BlurEffect")
-                blurFx.Name = "InertiaUIBlur"
-                blurFx.Parent = game:GetService("Lighting")
-            end
-            blurFx.Size = want
-        elseif blurFx then
-            blurFx:Destroy()
-            blurFx = nil
-        end
-    end))
-end
+UI.Corner(Main, MOBILE and 18 or 12)
+UI.Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
 -- Mobile shows/hides the window as a droplet that is swallowed by the Dynamic
 -- Island and spat back out of it; desktop keeps the plain instant toggle.
 -- Everything that opens or closes the menu goes through here so the animation
@@ -1662,14 +1631,14 @@ local function setMenuVisible(v)
         Main.Visible = true
         menuScale.Scale = 1 -- Fast UI, no heavy scaling on open
         Main.Position = (S._islandPoint and S._islandPoint()) or UDim2.new(0.5, 0, 0, 34)
-        TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = S._menuHome or UDim2.fromScale(0.5, 0.5)
         }):Play()
         if S._islandGulp then S._islandGulp(true) end
     else
         S._menuHome = Main.Position
         local target = (S._islandPoint and S._islandPoint()) or UDim2.new(0.5, 0, 0, 34)
-        TweenService:Create(Main, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = target }):Play()
+        Svc.TweenService:Create(Main, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = target }):Play()
         task.delay(0.16, function()
             if S._menuWantOpen then return end
             Main.Visible = false
@@ -1700,7 +1669,7 @@ end
 
 -- Connect the menu key as soon as the root window exists.  Later feature setup
 -- must not be able to leave an already-created GUI without a working toggle.
-tc(UIS.InputBegan:Connect(function(input, processed)
+tc(Svc.UIS.InputBegan:Connect(function(input, processed)
     if not processed and input.KeyCode == Enum.KeyCode.LeftControl then
         setMenuVisible(not Main.Visible)
     end
@@ -1714,7 +1683,7 @@ AccLine.BackgroundColor3 = T.Accent; pcall(function() AccLine:SetAttribute("Them
 AccLine.BorderSizePixel = 0
 AccLine.ZIndex = 10
 AccLine.BackgroundTransparency = 0.05
-Corner(AccLine, 1)
+UI.Corner(AccLine, 1)
 local accGrad = Instance.new("UIGradient")
 accGrad.Name = "AccentGradient"
 accGrad.Parent = AccLine
@@ -1737,7 +1706,7 @@ TBar.BackgroundColor3 = T.Card; pcall(function() TBar:SetAttribute("ThemeColorRo
 -- rectangle, so once this bar had an opaque colour its square top corners sat on top of Main's
 -- rounded ones. Round the bar to match, then square off just its bottom edge with a filler strip
 -- so it still meets the content area in a straight line.
-Corner(TBar, 12)
+UI.Corner(TBar, 12)
 TBar.BackgroundTransparency = 1
 TBar.Size = UDim2.new(1, 0, 0, M.titleH - 1)
 TBar.Position = UDim2.new(0, 0, 0, 1)
@@ -1759,7 +1728,7 @@ TIcon.BorderSizePixel = 0
 -- Mobile pins the brand row to the top; the search box gets its own row below.
 TIcon.Position = MOBILE and UDim2.new(0, 16, 0, 18) or UDim2.new(0, 16, 0.5, -8)
 TIcon.Size = UDim2.new(0, 4, 0, 16)
-Corner(TIcon, 4)
+UI.Corner(TIcon, 4)
 local TTitle = Instance.new("TextLabel")
 TTitle.Parent = TBar
 TTitle.BackgroundTransparency = 1
@@ -1770,7 +1739,7 @@ TTitle.Text = "Inertia"
 TTitle.TextColor3 = T.White; pcall(function() TTitle:SetAttribute("ThemeColorRole_TextColor3", "White") end)
 TTitle.TextSize = 17
 TTitle.TextXAlignment = Enum.TextXAlignment.Left
-local function mkWinBtn(txt, xOff)
+function UI.mkWinBtn(txt, xOff)
     local b = Instance.new("TextButton")
     b.Parent = TBar
     b.AnchorPoint = Vector2.new(1, 0.5)
@@ -1783,20 +1752,20 @@ local function mkWinBtn(txt, xOff)
     b.Text = txt
     b.TextColor3 = T.Tx2; pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     b.AutoButtonColor = false
-    Corner(b, 7)
+    UI.Corner(b, 7)
     b.MouseEnter:Connect(function()
-        TweenService.Create(TweenService, b, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
+        Svc.TweenService.Create(Svc.TweenService, b, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
         b.TextColor3 = T.White; pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", "White") end)
     end)
     b.MouseLeave:Connect(function()
-        TweenService.Create(TweenService, b, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
+        Svc.TweenService.Create(Svc.TweenService, b, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
         b.TextColor3 = T.Tx2; pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     end)
     return b
 end
 -- Right margin 16 on mobile so the button lines up with the search box and the
 -- brand accent bar, which both sit on a 16px inset; -14 left it 2px out of true.
-local CloseBtn = mkWinBtn("×", MOBILE and -16 or -10)
+local CloseBtn = UI.mkWinBtn("×", MOBILE and -16 or -10)
 -- Mobile: the slot opens Settings, so it must LOOK like settings — keeping the
 -- "—" glyph made it read as minimize and surprised everyone who tapped it.
 -- ===== Feature search =====
@@ -1809,7 +1778,6 @@ local TOGGLE_STATE_ALIASES = {
     gunchamsrainbow = "ItemChamsRainbow",
     enablecustomcursorcrosshair = "CustomCrosshair",
     enablehandshader = "HandShader",
-    unlockallknifeeffectsvisual = "UnlockAllKnifeEffects",
     customtime = "CustomTime",
     dynamicisland = "WatermarkEnabled",
 }
@@ -1850,7 +1818,7 @@ local function _toggleStateFromS(controlId)
     -- TOGGLE_STATE_ALIASES / FULL_TOGGLE_STATE_ALIASES if a toggle really must mirror an S flag.
     return nil
 end
-local function _cfgId(parent, label)
+function Cfg._cfgId(parent, label)
     local card = parent and parent.Parent or nil
     local page = card and card.Parent
     local sectionName = card and (card:GetAttribute("ConfigSection") or card.Name) or "?"
@@ -1986,14 +1954,34 @@ SearchBox.PlaceholderColor3 = T.Tx4
 SearchBox.Text = ""
 SearchBox.ClearTextOnFocus = false
 SearchBox.TextXAlignment = Enum.TextXAlignment.Left
-Corner(SearchBox, MOBILE and 12 or 6)
-do
+UI.Corner(SearchBox, MOBILE and 12 or 6)
+-- Search glyph inside the field. The text is inset past it rather than overlapping: a placeholder
+-- running under the icon is the usual way this ends up looking broken.
+;(function()
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0, MOBILE and 34 or 26)
+    pad.Parent = SearchBox
+    -- _MakeNavIcon returns { slot = Frame, image = ImageLabel }, not the label itself.
+    local ic = S._MakeNavIcon and S._MakeNavIcon(SearchBox, "search")
+    if ic and ic.slot then
+        ic.slot.AnchorPoint = Vector2.new(0, 0.5)
+        ic.slot.Position = UDim2.new(0, MOBILE and 9 or 5, 0.5, 0)
+        ic.slot.Size = UDim2.fromOffset(MOBILE and 20 or 17, MOBILE and 20 or 17)
+        ic.slot.ZIndex = (SearchBox.ZIndex or 1) + 1
+        ic.image.Size = UDim2.fromOffset(MOBILE and 15 or 12, MOBILE and 15 or 12)
+        ic.image.ImageColor3 = T.Tx4
+        ic.image.ImageTransparency = 0
+        ic.image.ZIndex = (SearchBox.ZIndex or 1) + 2
+        pcall(function() ic.image:SetAttribute("ThemeColorRole_ImageColor3", "Tx4") end)
+    end
+end)()
+;(function()
     -- Search field polish: the stroke lights up while the box is focused (so it reads as an active
     -- input), the text is padded away from the clear button, and a small × appears only while a
     -- query is typed — one click wipes the query and restores the normal tab view.
-    local sbStroke = Stroke(SearchBox, T.Bd2, 1, 0.4)
+    local sbStroke = UI.Stroke(SearchBox, T.Bd2, 1, 0.4)
     pcall(function() sbStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-    Pad(SearchBox, 0, 0, 28, 12)
+    UI.Pad(SearchBox, 0, 0, 28, 12)
     SearchBox.Focused:Connect(function()
         sbStroke.Transparency = 0.05
         sbStroke.Color = T.Accent; pcall(function() sbStroke:SetAttribute("ThemeColorRole_Color", "Accent") end)
@@ -2030,12 +2018,12 @@ do
     SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
         clearBtn.Visible = SearchBox.Text ~= ""
     end)
-end
+end)()
 SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
     SearchQuery = string.lower(SearchBox.Text)
     applySearch()
 end)
-do
+;(function()
     -- Touch counts as a drag: matching only MouseButton1/MouseMovement (as this
     -- did) makes the window impossible to move on a phone.
     local dr, ds, sp, so, di
@@ -2059,7 +2047,7 @@ do
             so = Main.Parent and (Main.AbsolutePosition - Main.Parent.AbsolutePosition) or nil
         end
     end)
-    tc(UIS.InputChanged:Connect(function(i)
+    tc(Svc.UIS.InputChanged:Connect(function(i)
         local mouseDrag = di and di.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
         local touchDrag = di and di.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
         if dr and (i == di or mouseDrag or touchDrag) then
@@ -2084,13 +2072,13 @@ do
             end
         end
     end))
-    tc(UIS.InputEnded:Connect(function(i)
+    tc(Svc.UIS.InputEnded:Connect(function(i)
         if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
             di = nil
         end
     end))
-end
+end)()
 -- Navigation. Desktop = vertical sidebar. Mobile = bottom tab bar, the layout
 -- every phone app uses, horizontally scrollable so the tab count can grow past
 -- what fits. Same instance, different axis: one set of tab buttons downstream.
@@ -2111,10 +2099,10 @@ else
     SB.Size = UDim2.fromOffset(124, 293)
     SB.ClipsDescendants = true
 end
-Corner(SB, MOBILE and 16 or 10)
-local sidebarStroke = Stroke(SB, T.Bd2, 1, 0.35)
+UI.Corner(SB, MOBILE and 16 or 10)
+local sidebarStroke = UI.Stroke(SB, T.Bd2, 1, 0.35)
 pcall(function() sidebarStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-Shadow(SB, 0.35)
+UI.Shadow(SB, 0.35)
 local SBLine = Instance.new("Frame")
 SBLine.Parent = Main
 SBLine.BackgroundColor3 = T.Bd; pcall(function() SBLine:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd") end)
@@ -2131,10 +2119,10 @@ SBLayout.HorizontalAlignment = MOBILE and Enum.HorizontalAlignment.Center or Enu
 -- Centering is for the mobile strip only; the desktop list must stay top-aligned.
 SBLayout.VerticalAlignment = MOBILE and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top
 SBLayout.Padding = UDim.new(0, MOBILE and 6 or 3)
-Pad(SB, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
+UI.Pad(SB, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
 
 -- Settings Modal definition
-do
+;(function()
 S.ExecutorName = "Unknown executor"
 -- The sidebar profile slot is ~64px wide, so "name  ·  version" always clipped there and
 -- showed as "Potassium...". Keep the bare name for that slot; the full string still goes
@@ -2173,8 +2161,8 @@ SettingsModal.BackgroundColor3 = T.Card; pcall(function() SettingsModal:SetAttri
 SettingsModal.BorderSizePixel = 0
 SettingsModal.ZIndex = 1000
 SettingsModal.Visible = false
-Corner(SettingsModal, 12)
-Stroke(SettingsModal, T.Bd2, 1.2, 0.4)
+UI.Corner(SettingsModal, 12)
+UI.Stroke(SettingsModal, T.Bd2, 1.2, 0.4)
 
 -- Modal Header
 local mHdr = Instance.new("TextLabel")
@@ -2202,8 +2190,8 @@ mClose.TextSize = 13
 mClose.TextColor3 = T.Tx2; pcall(function() mClose:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
 mClose.Text = "X"
 mClose.ZIndex = 1000
-Corner(mClose, 6)
-Stroke(mClose, T.Bd, 1, 0.4)
+UI.Corner(mClose, 6)
+UI.Stroke(mClose, T.Bd, 1, 0.4)
 mClose.MouseButton1Click:Connect(function()
     SettingsModal.Visible = false
     SFX.Off()
@@ -2229,7 +2217,7 @@ mList.SortOrder = Enum.SortOrder.LayoutOrder
 mList.Padding = UDim.new(0, 8)
 
 -- Helper to make setting labels
-local function mkModalLabel(text, order)
+function UI.mkModalLabel(text, order)
     local l = Instance.new("TextLabel")
     l.Parent = mScroll
     l.LayoutOrder = order
@@ -2245,7 +2233,7 @@ local function mkModalLabel(text, order)
 end
 
 -- 1. Language Option (Cycle style)
-mkModalLabel("Language", 1)
+UI.mkModalLabel("Language", 1)
 local langBtn = Instance.new("TextButton")
 langBtn.Parent = mScroll
 langBtn.LayoutOrder = 2
@@ -2260,8 +2248,8 @@ table.insert(S._LanguageRefreshers, function()
     langBtn.Text = S.Language or "ENG"
 end)
 langBtn.ZIndex = 1001
-Corner(langBtn, 6)
-Stroke(langBtn, T.Bd, 1, 0.4)
+UI.Corner(langBtn, 6)
+UI.Stroke(langBtn, T.Bd, 1, 0.4)
 
 local langList = {"ENG", "RU", "UK", "SPANISH"}
 langBtn.MouseButton1Click:Connect(function()
@@ -2272,11 +2260,11 @@ langBtn.MouseButton1Click:Connect(function()
     langBtn.Text = nextLang
     updateLanguage()
     SFX.Click()
-    pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+    pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
 end)
 
 -- 2. Text Size Option
-mkModalLabel("Text Size", 3)
+UI.mkModalLabel("Text Size", 3)
 local sizeBtn = Instance.new("TextButton")
 sizeBtn.Parent = mScroll
 sizeBtn.LayoutOrder = 4
@@ -2292,8 +2280,8 @@ table.insert(S._LanguageRefreshers, function()
     sizeBtn.Text = lang(sizeNames[S.TextSizeScale or 1.0] or "Medium")
 end)
 sizeBtn.ZIndex = 1001
-Corner(sizeBtn, 6)
-Stroke(sizeBtn, T.Bd, 1, 0.4)
+UI.Corner(sizeBtn, 6)
+UI.Stroke(sizeBtn, T.Bd, 1, 0.4)
 
 local sizeList = {0.85, 1.0, 1.15}
 sizeBtn.MouseButton1Click:Connect(function()
@@ -2304,11 +2292,11 @@ sizeBtn.MouseButton1Click:Connect(function()
     sizeBtn.Text = lang(sizeNames[nextScale])
     updateTextSizes()
     SFX.Click()
-    pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+    pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
 end)
 
 -- 3. Notification Position
-mkModalLabel("Notification Position", 5)
+UI.mkModalLabel("Notification Position", 5)
 local notifyPosBtn = Instance.new("TextButton")
 notifyPosBtn.Name = "NotificationPosition"
 notifyPosBtn.Parent = mScroll
@@ -2321,8 +2309,8 @@ notifyPosBtn.TextSize = 13
 notifyPosBtn.TextColor3 = T.White; pcall(function() notifyPosBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end)
 notifyPosBtn.Text = lang(S.NotificationPosition or "Bottom Right")
 notifyPosBtn.ZIndex = 1001
-Corner(notifyPosBtn, 6)
-Stroke(notifyPosBtn, T.Bd, 1, 0.4)
+UI.Corner(notifyPosBtn, 6)
+UI.Stroke(notifyPosBtn, T.Bd, 1, 0.4)
 table.insert(S._LanguageRefreshers, function()
     notifyPosBtn.Text = lang(S.NotificationPosition or "Bottom Right")
 end)
@@ -2338,7 +2326,7 @@ notifyPosBtn.MouseButton1Click:Connect(function()
 end)
 
 -- 4. Theme Selector
-mkModalLabel("Theme Style", 7)
+UI.mkModalLabel("Theme Style", 7)
 local themeContainer = Instance.new("Frame")
 themeContainer.Parent = mScroll
 themeContainer.LayoutOrder = 8
@@ -2353,9 +2341,9 @@ themeScroll.BackgroundColor3 = T.Elev; pcall(function() themeScroll:SetAttribute
 themeScroll.BorderSizePixel = 0
 themeScroll.Size = UDim2.new(1, 0, 1, 0)
 themeScroll.ZIndex = 1001
-Corner(themeScroll, 6)
-Stroke(themeScroll, T.Bd, 1, 0.4)
-Pad(themeScroll, 6, 6, 6, 6)
+UI.Corner(themeScroll, 6)
+UI.Stroke(themeScroll, T.Bd, 1, 0.4)
+UI.Pad(themeScroll, 6, 6, 6, 6)
 
 local themeListLayout = Instance.new("UIGridLayout")
 themeListLayout.Parent = themeScroll
@@ -2385,7 +2373,7 @@ for idx, tName in ipairs(themeNames) do
     btn.TextXAlignment = Enum.TextXAlignment.Left
     btn.ZIndex = 1002
     btn:SetAttribute("ThemeOption", tName)
-    Corner(btn, 5)
+    UI.Corner(btn, 5)
 
     local pDot = Instance.new("Frame")
     pDot.Parent = btn
@@ -2395,7 +2383,7 @@ for idx, tName in ipairs(themeNames) do
     pDot.BackgroundColor3 = Themes[tName].Accent
     pDot.BorderSizePixel = 0
     pDot.ZIndex = 1003
-    Corner(pDot, 9999)
+    UI.Corner(pDot, 9999)
 
     btn.MouseButton1Click:Connect(function()
         applyTheme(tName)
@@ -2421,8 +2409,8 @@ editCustomBtn.TextSize = 13
 editCustomBtn.TextColor3 = T.Tx2; pcall(function() editCustomBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
 editCustomBtn.Text = "Edit Theme"
 editCustomBtn.ZIndex = 1001
-Corner(editCustomBtn, 6)
-Stroke(editCustomBtn, T.Bd, 1, 0.4)
+UI.Corner(editCustomBtn, 6)
+UI.Stroke(editCustomBtn, T.Bd, 1, 0.4)
 editCustomBtn.MouseButton1Click:Connect(function()
     SFX.Click()
     if S._OpenThemeEditor then S._OpenThemeEditor() end
@@ -2433,7 +2421,7 @@ editCustomBtn.MouseLeave:Connect(function() editCustomBtn.TextColor3 = T.Tx2; pc
 
 -- Custom theme editor. The button above called S._OpenThemeEditor, which nothing ever defined, so
 -- "Edit Custom Theme..." was a no-op -- that is the whole of the "custom themes do not work"
--- report. Same deferred-factory trick as the transparency slider: mkSlider/mkCycle do not exist
+-- report. Same deferred-factory trick as the transparency slider: mkSlider/UI.mkCycle do not exist
 -- yet at this point in the file, so the rows are built later from S._BuildThemeEditor.
 --
 -- Every role below is a key of T, and every themed object carries a
@@ -2466,8 +2454,8 @@ S._BuildThemeEditor = function()
     swatch.Size = UDim2.new(1, 0, 0, 24)
     swatch.BorderSizePixel = 0
     swatch.BackgroundColor3 = T[selected] or Color3.new(1, 1, 1)
-    Corner(swatch, 6)
-    Stroke(swatch, T.Bd, 1, 0.4)
+    UI.Corner(swatch, 6)
+    UI.Stroke(swatch, T.Bd, 1, 0.4)
 
     local rS, gS, bS
     local function currentColor()
@@ -2506,12 +2494,14 @@ S._BuildThemeEditor = function()
         if Themes.Custom then Themes.Custom[selected] = nil end
         if applyTheme then pcall(applyTheme, S.SelectedTheme or "Custom") end
         loadRole()
+        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         Notify("Theme", "Reset " .. selected, 2)
     end, 5)
     S._mkAction(roleHost, "Reset Whole Theme", function()
         Themes.Custom = {}
         if applyTheme then pcall(applyTheme, S.SelectedTheme or "Custom") end
         loadRole()
+        pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
         Notify("Theme", "Custom theme cleared", 2)
     end, 6)
 
@@ -2526,37 +2516,17 @@ end
 -- settings scope so it retains the local scrolling container, then run it once
 -- the builder is ready.
 S._BuildTransparencySetting = function()
-    local initialTrans = math.clamp(math.round((tonumber(S.GuiTransparency) or 0.15) * 100), 0, 85)
-    mkSlider(mScroll, "UI & HUD Transparency (%)", 0, 85, initialTrans, function(v)
-        S.GuiTransparency = v / 100
-        S.HudTransparency = math.clamp((v / 100) + 0.05, 0, 0.90)
-        updateGuiTransparency()
-        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-    end, 9, true)
-    -- Blur is a Lighting BlurEffect, so it blurs the GAME behind the panel. Roblox has no
-    -- backdrop filter, so that is the only real "frosted" option; it is driven only while the menu
-    -- is open (see the RenderStepped hook that reads S.UIBlur) and removed when it is closed.
-    mkSlider(mScroll, "Background Blur", 0, 24, math.clamp(tonumber(S.UIBlur) or 0, 0, 24), function(v)
-        S.UIBlur = v
-        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-    end, 9.1, true)
-    -- Glass is a gloss gradient over the window: a highlight down the top edge fading out, which
-    -- is what reads as "glass" once the panel is already translucent.
-    mkSlider(mScroll, "Glass Sheen (%)", 0, 100, math.clamp(tonumber(S.UIGlass) or 0, 0, 100), function(v)
-        S.UIGlass = v
-        if S._ApplyGlass then pcall(S._ApplyGlass) end
-        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-    end, 9.2, true)
+-- Removed transparencies
 end
 
 
-mkModalLabel("UI Wallpaper", 11)
+UI.mkModalLabel("UI Wallpaper", 11)
 local wallBtn = Instance.new("TextButton")
 wallBtn.Parent = mScroll; wallBtn.LayoutOrder = 12; wallBtn.Size = UDim2.new(1, 0, 0, 28)
 wallBtn.BackgroundColor3 = T.Elev; pcall(function() wallBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
 wallBtn.BorderSizePixel = 0; wallBtn.Font = F; wallBtn.TextSize = 13
 wallBtn.TextColor3 = T.White; pcall(function() wallBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end)
-wallBtn.Text = S.UIWallpaper or "None"; wallBtn.ZIndex = 1001; Corner(wallBtn, 6); Stroke(wallBtn, T.Bd, 1, 0.4)
+wallBtn.Text = S.UIWallpaper or "None"; wallBtn.ZIndex = 1001; UI.Corner(wallBtn, 6); UI.Stroke(wallBtn, T.Bd, 1, 0.4)
 -- The five built-in rbxassetid wallpapers (Space/Abstract/Anime/Dark Cyber/Vaporwave) were all
 -- verified dead on a live client — every one came back IsLoaded=false after PreloadAsync — so the
 -- wallpaper feature could never show anything. The real library is the GitHub backgrounds folder,
@@ -2621,14 +2591,14 @@ S._BuildWallpaperPicker = function(items, fetch)
     end)
 end
 
-mkModalLabel("Wallpaper Transparency (%)", 13)
+UI.mkModalLabel("Wallpaper Transparency (%)", 13)
 local opSlider = Instance.new("TextBox")
 opSlider.Parent = mScroll; opSlider.LayoutOrder = 14; opSlider.Size = UDim2.new(1, 0, 0, 28)
 opSlider.BackgroundColor3 = T.Elev; pcall(function() opSlider:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
 opSlider.BorderSizePixel = 0; opSlider.Font = F; opSlider.TextSize = 13; opSlider.ClearTextOnFocus = false
 opSlider.TextColor3 = T.White; pcall(function() opSlider:SetAttribute("ThemeColorRole_TextColor3", "White") end)
 opSlider.Text = tostring(math.floor((tonumber(S.UIWallpaperOpacity) or 0.2) * 100))
-opSlider.ZIndex = 1001; Corner(opSlider, 6); Stroke(opSlider, T.Bd, 1, 0.4)
+opSlider.ZIndex = 1001; UI.Corner(opSlider, 6); UI.Stroke(opSlider, T.Bd, 1, 0.4)
 opSlider.FocusLost:Connect(function()
     local v = tonumber(opSlider.Text)
     if v then
@@ -2640,14 +2610,14 @@ opSlider.FocusLost:Connect(function()
 end)
 task.defer(applyWall)
 
-mkModalLabel("Notification Sound", 15)
+UI.mkModalLabel("Notification Sound", 15)
 local notifyBtn = Instance.new("TextButton")
 notifyBtn.Parent = mScroll; notifyBtn.LayoutOrder = 16; notifyBtn.Size = UDim2.new(1, 0, 0, 28)
 notifyBtn.BackgroundColor3 = T.Elev; pcall(function() notifyBtn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
 notifyBtn.BorderSizePixel = 0; notifyBtn.Font = F; notifyBtn.TextSize = 13
 notifyBtn.TextColor3 = T.White; pcall(function() notifyBtn:SetAttribute("ThemeColorRole_TextColor3", "White") end)
 notifyBtn.Text = (S.NotifySounds[S.NotifySoundIndex or 1] or S.NotifySounds[1]).name
-notifyBtn.ZIndex = 1001; Corner(notifyBtn, 6); Stroke(notifyBtn, T.Bd, 1, 0.4)
+notifyBtn.ZIndex = 1001; UI.Corner(notifyBtn, 6); UI.Stroke(notifyBtn, T.Bd, 1, 0.4)
 -- Deferred for the same reason as the wallpaper picker: S._OpenOptionPicker is declared later.
 S._BuildNotifySoundSetting = function()
     local names = {}
@@ -2664,7 +2634,7 @@ S._BuildNotifySoundSetting = function()
     end)
 end
 
-mkModalLabel("Executor", 14)
+UI.mkModalLabel("Executor", 14)
 local executorValue = Instance.new("TextLabel")
 executorValue.Name = "ExecutorValue"
 executorValue.Parent = mScroll
@@ -2679,9 +2649,9 @@ executorValue.TextXAlignment = Enum.TextXAlignment.Left
 executorValue.TextTruncate = Enum.TextTruncate.AtEnd
 executorValue.Text = S.ExecutorName
 executorValue.ZIndex = 1001
-Corner(executorValue, 6)
-Stroke(executorValue, T.Bd, 1, 0.4)
-Pad(executorValue, 0, 0, 10, 10)
+UI.Corner(executorValue, 6)
+UI.Stroke(executorValue, T.Bd, 1, 0.4)
+UI.Pad(executorValue, 0, 0, 10, 10)
 
 -- Profile Header
 local ProfileHeader = Instance.new("Frame")
@@ -2695,10 +2665,10 @@ ProfileHeader.Visible = not MOBILE
 ProfileHeader.BackgroundColor3 = T.Card; pcall(function() ProfileHeader:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
 ProfileHeader.BorderSizePixel = 0
 ProfileHeader.Active = true
-Corner(ProfileHeader, 10)
-local profileStroke = Stroke(ProfileHeader, T.Bd2, 1, 0.35)
+UI.Corner(ProfileHeader, 10)
+local profileStroke = UI.Stroke(ProfileHeader, T.Bd2, 1, 0.35)
 pcall(function() profileStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-Shadow(ProfileHeader, 0.45)
+UI.Shadow(ProfileHeader, 0.45)
 
 local phLine = Instance.new("Frame")
 phLine.Name = "phLine"
@@ -2711,7 +2681,7 @@ phLine.Size = UDim2.new(1, 0, 0, 1)
 
 local avatarUrl = "rbxasset://textures/ui/Guidetool/PlayerIcon.png"
 pcall(function()
-    avatarUrl = Players:GetUserThumbnailAsync(LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+    avatarUrl = Svc.Players:GetUserThumbnailAsync(LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
 end)
 
 local AvatarImage = Instance.new("ImageLabel")
@@ -2721,8 +2691,8 @@ AvatarImage.Size = UDim2.fromOffset(34, 34)
 AvatarImage.BackgroundTransparency = 1
 AvatarImage.Image = avatarUrl
 AvatarImage.ZIndex = 50
-Corner(AvatarImage, 9999)
-Stroke(AvatarImage, T.Bd2, 1, 0.4)
+UI.Corner(AvatarImage, 9999)
+UI.Stroke(AvatarImage, T.Bd2, 1, 0.4)
 
 local UserLabel = Instance.new("TextLabel")
 UserLabel.Parent = ProfileHeader
@@ -2765,7 +2735,7 @@ end)
 mScroll.Active = true
 
 -- Make settings modal draggable by header
-do
+;(function()
     local dr, di, ds, sp, so
     mHdr.Active = true
     mHdr.InputBegan:Connect(function(i)
@@ -2777,7 +2747,7 @@ do
             so = SettingsModal.Parent and (SettingsModal.AbsolutePosition - SettingsModal.Parent.AbsolutePosition) or nil
         end
     end)
-    tc(UIS.InputChanged:Connect(function(i)
+    tc(Svc.UIS.InputChanged:Connect(function(i)
         local mouseDrag = di and di.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
         local touchDrag = di and di.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
         if dr and (i == di or mouseDrag or touchDrag) then
@@ -2798,15 +2768,15 @@ do
             end
         end
     end))
-    tc(UIS.InputEnded:Connect(function(i)
+    tc(Svc.UIS.InputEnded:Connect(function(i)
         if i == di and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
             di = nil
         end
     end))
-end
+end)()
 
-end
+end)()
 local ContentArea = Instance.new("ScrollingFrame")
 ContentArea.Name = "Content"
 ContentArea.Parent = Main
@@ -2840,7 +2810,7 @@ StatusBar.ClipsDescendants = true
 -- The bottom edge belongs to the tab bar on a phone; the status strip would sit
 -- underneath it and be unreadable.
 StatusBar.Visible = not MOBILE
-Corner(StatusBar, 12)
+UI.Corner(StatusBar, 12)
 -- Keep the status bar's upper edge straight while its two bottom corners follow Main.
 local sbTopFill = Instance.new("Frame")
 sbTopFill.Name = "TopFill"
@@ -2899,7 +2869,7 @@ StatusHint.TextXAlignment = Enum.TextXAlignment.Right
 StatusHint.Text = "LCtrl = menu  |  RMB = bind"
 local fpsCount, lastFpsT, curFPS = 0, tick(), 0
 local lastStatusT = 0  -- throttles the role/ping status-bar labels (no need to recompute per frame)
-local function mkPage(name)
+function UI.mkPage(name)
     local sf = Instance.new("Frame")
     sf.Name = name
     sf.Parent = ContentArea
@@ -2927,26 +2897,26 @@ local function mkPage(name)
     hdr.TextXAlignment = Enum.TextXAlignment.Left
     hdr.Text = string.upper(name)
     hdr.Visible = false
-    Corner(hdr, 6)
-    Pad(hdr, 0, 0, 10, 10)
+    UI.Corner(hdr, 6)
+    UI.Pad(hdr, 0, 0, 10, 10)
     Pages[name] = sf
     return sf
 end
-mkPage("Visuals")
-mkPage("Combat")
-mkPage("Motion")
-mkPage("Player")
-mkPage("Misc")
-mkPage("Teleport")
-mkPage("Servers")
-mkPage("Config")
+UI.mkPage("Visuals")
+UI.mkPage("Combat")
+UI.mkPage("Motion")
+UI.mkPage("Player")
+UI.mkPage("Misc")
+UI.mkPage("Teleport")
+UI.mkPage("Servers")
+UI.mkPage("Config")
 -- Floating buttons are a touch feature, so the tab that manages them only
 -- exists on the mobile build.
-if MOBILE then mkPage("Buttons") end
+if MOBILE then UI.mkPage("Buttons") end
 
 -- Pages use a compact masonry layout instead of one tall list. Normal tabs never scroll; search can
 -- still combine hits from several tabs, but its scrollbar stays hidden.
-do
+;(function()
 local COLLAPSED_PAGE = UDim2.new(1, 0, 0, 0)
 local pageLayoutQueued = false
 local pageLayoutSearchMode = false
@@ -3104,7 +3074,7 @@ S._RefreshPageLayout = function(searching)
     end)
 end
 queuePageLayout()
-end
+end)()
 Pages.Visuals.Visible = true
 -- Shown instead of a blank content area when a search query matches nothing (applySearch toggles it).
 SearchEmptyLbl = Instance.new("TextLabel")
@@ -3140,7 +3110,7 @@ refreshSB = function()
         item.stroke.Transparency = on and 0.25 or 1
     end
 end
-local function mkSBItem(name, iconKind, page, order)
+function UI.mkSBItem(name, iconKind, page, order)
     local btn = Instance.new("TextButton")
     btn.Name = name
     btn.Parent = SB
@@ -3153,8 +3123,8 @@ local function mkSBItem(name, iconKind, page, order)
     btn.BackgroundTransparency = 1
     btn.BorderSizePixel = 0
     btn.Text = ""
-    Corner(btn, MOBILE and 12 or 8)
-    local btnStroke = Stroke(btn, T.Bd, 1, 1)
+    UI.Corner(btn, MOBILE and 12 or 8)
+    local btnStroke = UI.Stroke(btn, T.Bd, 1, 1)
     local bar = Instance.new("Frame")
     bar.Parent = btn
     -- Active marker: a short accent bar on the leading edge in both builds.
@@ -3163,7 +3133,7 @@ local function mkSBItem(name, iconKind, page, order)
     bar.BackgroundColor3 = T.Accent; pcall(function() bar:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     bar.BorderSizePixel = 0
     bar.Visible = false
-    Corner(bar, 2)
+    UI.Corner(bar, 2)
     -- Icons on BOTH builds: every tab has a glyph, so the mobile rail leads with
     -- the icon instead of falling back to a uniform text strip.
     -- Lay the row out from the CAPABILITY, not from whether this particular call
@@ -3219,7 +3189,7 @@ local function mkSBItem(name, iconKind, page, order)
     dot.BackgroundColor3 = T.Accent; pcall(function() dot:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     dot.BorderSizePixel = 0
     dot.Visible = false
-    Corner(dot, 3)
+    UI.Corner(dot, 3)
     -- Favourite pin (gold dot). Right-click a tab to pin it to the very top of the sidebar.
     local pin = Instance.new("Frame")
     pin.Name = "FavPin"
@@ -3232,7 +3202,7 @@ local function mkSBItem(name, iconKind, page, order)
     pin.BackgroundColor3 = Color3.fromRGB(255, 200, 70)
     pin.BorderSizePixel = 0
     pin.Visible = false
-    Corner(pin, 3)
+    UI.Corner(pin, 3)
     -- iconKind is kept so the mobile home grid can build its own tile with the same glyph.
     local item = { name = name, btn = btn, bar = bar, icon = icon, iconKind = iconKind, label = label, stroke = btnStroke, page = page, dot = dot, pin = pin, order = order, fav = false }
     btn.MouseButton1Click:Connect(function()
@@ -3268,15 +3238,15 @@ local function mkSBItem(name, iconKind, page, order)
     end)
     table.insert(SBItems, item)
 end
-mkSBItem("Visuals", "eye", Pages.Visuals, 1)
-mkSBItem("Combat", "combat", Pages.Combat, 2)
-mkSBItem("Motion", "motion", Pages.Motion, 3)
-mkSBItem("Player", "player", Pages.Player, 4)
-mkSBItem("Misc", "misc", Pages.Misc, 5)
-mkSBItem("Teleport", "teleport", Pages.Teleport, 6)
-mkSBItem("Servers", "servers", Pages.Servers, 7)
-mkSBItem("Config", "misc", Pages.Config, 8)
-if MOBILE and Pages.Buttons then mkSBItem("Buttons", "servers", Pages.Buttons, 9) end
+UI.mkSBItem("Visuals", "eye", Pages.Visuals, 1)
+UI.mkSBItem("Combat", "combat", Pages.Combat, 2)
+UI.mkSBItem("Motion", "motion", Pages.Motion, 3)
+UI.mkSBItem("Player", "player", Pages.Player, 4)
+UI.mkSBItem("Misc", "misc", Pages.Misc, 5)
+UI.mkSBItem("Teleport", "teleport", Pages.Teleport, 6)
+UI.mkSBItem("Servers", "servers", Pages.Servers, 7)
+UI.mkSBItem("Config", "misc", Pages.Config, 8)
+if MOBILE and Pages.Buttons then UI.mkSBItem("Buttons", "servers", Pages.Buttons, 9) end
 
 -- ===== MOBILE DRILL-DOWN NAVIGATION =====
 -- A phone has no room for a permanent tab dock: the header, the dock and the status bar together
@@ -3305,8 +3275,8 @@ do
     backBtn.TextColor3 = T.Tx
     pcall(function() backBtn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
     backBtn.Visible = false
-    Corner(backBtn, 12)
-    Stroke(backBtn, T.Bd2, 1, 0.4)
+    UI.Corner(backBtn, 12)
+    UI.Stroke(backBtn, T.Bd2, 1, 0.4)
 
     local crumb = Instance.new("TextLabel")
     crumb.Name = "MobileCrumb"
@@ -3348,8 +3318,8 @@ do
     card.BackgroundColor3 = T.Card
     pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
     card.BorderSizePixel = 0
-    Corner(card, 14)
-    Stroke(card, T.Bd2, 1, 0.4)
+    UI.Corner(card, 14)
+    UI.Stroke(card, T.Bd2, 1, 0.4)
 
     local av = Instance.new("ImageLabel")
     av.Parent = card
@@ -3362,12 +3332,12 @@ do
     av.Image = "rbxasset://textures/ui/Guidetool/PlayerIcon.png"
     task.spawn(function()
         local ok, url = pcall(function()
-            return Players:GetUserThumbnailAsync(LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+            return Svc.Players:GetUserThumbnailAsync(LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
         end)
         if ok and type(url) == "string" and url ~= "" then av.Image = url end
     end)
-    Corner(av, 9999)
-    Stroke(av, T.Bd2, 1, 0.4)
+    UI.Corner(av, 9999)
+    UI.Stroke(av, T.Bd2, 1, 0.4)
 
     local nameLbl = Instance.new("TextLabel")
     nameLbl.Parent = card
@@ -3418,8 +3388,8 @@ do
         f.BackgroundColor3 = T.Card
         pcall(function() f:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
         f.BorderSizePixel = 0
-        Corner(f, 14)
-        Stroke(f, T.Bd2, 1, 0.4)
+        UI.Corner(f, 14)
+        UI.Stroke(f, T.Bd2, 1, 0.4)
         local cap = Instance.new("TextLabel")
         cap.Parent = f
         cap.BackgroundTransparency = 1
@@ -3518,8 +3488,8 @@ do
         tile.BackgroundColor3 = T.Elev
         pcall(function() tile:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
         tile.BorderSizePixel = 0
-        Corner(tile, 14)
-        Stroke(tile, T.Bd2, 1, 0.4)
+        UI.Corner(tile, 14)
+        UI.Stroke(tile, T.Bd2, 1, 0.4)
         -- Its own glyph instance: the dock button owns the one in item.icon and reparenting that
         -- would empty the (hidden) dock the search code still walks.
         local glyph = S._MakeNavIcon and S._MakeNavIcon(tile, item.iconKind) or nil
@@ -3561,7 +3531,7 @@ refreshSB()
 local BindReg = {}
 local PendingBind = nil
 local AllBinds = {}
-tc(UIS.InputBegan:Connect(function(input, processed)
+tc(Svc.UIS.InputBegan:Connect(function(input, processed)
     if PendingBind then
         if input.UserInputType == Enum.UserInputType.Keyboard then
             local e = PendingBind
@@ -3594,7 +3564,7 @@ tc(UIS.InputBegan:Connect(function(input, processed)
         -- it ever throws on an executor it can't kill the whole trigger branch (that would make every
         -- bind silently do nothing even though binding worked). trigger() is pcall-guarded too.
         local typing = false
-        pcall(function() typing = (UIS:GetFocusedTextBox() ~= nil) end)
+        pcall(function() typing = (Svc.UIS:GetFocusedTextBox() ~= nil) end)
         if not typing then
             local e = BindReg[input.KeyCode]
             if e and e.trigger then pcall(e.trigger) end
@@ -3611,7 +3581,7 @@ end))
 -- a control is bindable and floatable through one definition and the two builds
 -- cannot drift apart.
 local FloatPos = {}
-do
+;(function()
     local FloatHost = Instance.new("Frame")
     FloatHost.Name = "FloatingButtons"
     FloatHost.Parent = SG
@@ -3674,10 +3644,10 @@ do
         local active = entry and entry.isToggle and entry.state == true or false
         if button.lastActive == active then return end
         button.lastActive = active
-        TweenService.Create(TweenService, button.frame, TweenInfo.new(0.16), {
+        Svc.TweenService.Create(Svc.TweenService, button.frame, TweenInfo.new(0.16), {
             BackgroundColor3 = active and T.ActiveBg or T.Card,
         }):Play()
-        TweenService.Create(TweenService, button.stroke, TweenInfo.new(0.16), {
+        Svc.TweenService.Create(Svc.TweenService, button.stroke, TweenInfo.new(0.16), {
             Color = active and T.Accent or T.Bd2,
             Transparency = active and 0.05 or 0.3,
         }):Play()
@@ -3713,9 +3683,9 @@ do
         frame.AutoButtonColor = false
         frame.Text = ""
         frame.Active = true
-        Corner(frame, math.floor(size * 0.3))
-        local stroke = Stroke(frame, T.Bd2, 1, 0.3)
-        Shadow(frame, 0.55)
+        UI.Corner(frame, math.floor(size * 0.3))
+        local stroke = UI.Stroke(frame, T.Bd2, 1, 0.3)
+        UI.Shadow(frame, 0.55)
 
         local dot = Instance.new("Frame")
         dot.Parent = frame
@@ -3724,7 +3694,7 @@ do
         dot.Size = UDim2.fromOffset(6, 6)
         dot.BackgroundColor3 = T.Tx4
         dot.BorderSizePixel = 0
-        Corner(dot, 99)
+        UI.Corner(dot, 99)
 
         -- Glyph between the state dot and the caption.  Nil when the executor has
         -- no getcustomasset, in which case the caption keeps the old full-height
@@ -3755,7 +3725,7 @@ do
         local scale = Instance.new("UIScale")
         scale.Parent = frame
         scale.Scale = 0.6
-        TweenService.Create(TweenService, scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, scale, TweenInfo.new(0.24, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 
         local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
         Buttons[id] = record
@@ -3770,10 +3740,10 @@ do
             if not dragging then
                 local current = Entries[id]
                 if current and current.trigger then pcall(current.trigger) end
-                TweenService.Create(TweenService, scale, TweenInfo.new(0.09), { Scale = 0.9 }):Play()
+                Svc.TweenService.Create(Svc.TweenService, scale, TweenInfo.new(0.09), { Scale = 0.9 }):Play()
                 task.delay(0.09, function()
                     if frame.Parent then
-                        TweenService.Create(TweenService, scale, TweenInfo.new(0.14, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+                        Svc.TweenService.Create(Svc.TweenService, scale, TweenInfo.new(0.14, Enum.EasingStyle.Back), { Scale = 1 }):Play()
                     end
                 end)
                 task.defer(function() paintState(id) end)
@@ -3801,7 +3771,7 @@ do
             if endConn then endConn:Disconnect(); endConn = nil end
             pressPos, dragging = input.Position, false
             local startCentre = frame.AbsolutePosition + frame.AbsoluteSize / 2
-            moveConn = UIS.InputChanged:Connect(function(moved)
+            moveConn = Svc.UIS.InputChanged:Connect(function(moved)
                 if moved ~= input then return end
                 if not pressPos then return end
                 if moved.UserInputType ~= Enum.UserInputType.Touch
@@ -3831,8 +3801,8 @@ do
         local button = Buttons[id]
         if not button then return end
         Buttons[id] = nil
-        TweenService.Create(TweenService, button.scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.5 }):Play()
-        TweenService.Create(TweenService, button.frame, TweenInfo.new(0.14), { BackgroundTransparency = 1 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, button.scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.5 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, button.frame, TweenInfo.new(0.14), { BackgroundTransparency = 1 }):Play()
         task.delay(0.16, function() if button.frame.Parent then button.frame:Destroy() end end)
     end
 
@@ -3910,8 +3880,8 @@ do
         chip.TextColor3 = T.Tx2
         chip.Text = "BTN"
         chip.ZIndex = 3
-        Corner(chip, 8)
-        local chipStroke = Stroke(chip, T.Bd2, 1, 0.42)
+        UI.Corner(chip, 8)
+        local chipStroke = UI.Stroke(chip, T.Bd2, 1, 0.42)
         local function paint()
             local on = S._floatIsOn(id)
             chip.BackgroundColor3 = on and T.ActiveBg or T.Elev
@@ -3947,9 +3917,9 @@ do
             end))
         end
     end
-end
+end)()
 
-local function mkSection(parent, title, order)
+function UI.mkSection(parent, title, order)
     -- A section title is unique within a page. Remove a stale copy before creating a new card.
     for _, existing in ipairs(parent:GetChildren()) do
         if existing:IsA("Frame") and existing.Name == title then
@@ -3966,15 +3936,15 @@ local function mkSection(parent, title, order)
     card.BorderSizePixel = 0
     card.Size = UDim2.new(1, 0, 0, 0)
     card.AutomaticSize = Enum.AutomaticSize.Y
-    Corner(card, 10)
-    local cardSt = Stroke(card, T.Bd, 1, 0.3); cardSt:SetAttribute("ThemeColorRole_Color", "Bd")
+    UI.Corner(card, 10)
+    local cardSt = UI.Stroke(card, T.Bd, 1, 0.3); cardSt:SetAttribute("ThemeColorRole_Color", "Bd")
     local inner = Instance.new("Frame")
     inner.Name = "Inner"
     inner.Parent = card
     inner.BackgroundTransparency = 1
     inner.Size = UDim2.new(1, 0, 0, 0)
     inner.AutomaticSize = Enum.AutomaticSize.Y
-    Pad(inner, 8, 8, 10, 10)
+    UI.Pad(inner, 8, 8, 10, 10)
     local layout = Instance.new("UIListLayout")
     layout.Parent = inner
     layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -3990,7 +3960,7 @@ local function mkSection(parent, title, order)
     tick.BackgroundColor3 = T.Accent; pcall(function() tick:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     tick.Position = UDim2.new(0, 0, 0.5, -4)
     tick.Size = UDim2.new(0, 2, 0, 8)
-    Corner(tick, 2)
+    UI.Corner(tick, 2)
     local hdr = Instance.new("TextLabel")
     hdr.Parent = hdrRow
     hdr.BackgroundTransparency = 1
@@ -4003,7 +3973,7 @@ local function mkSection(parent, title, order)
     bindLocalizedText(hdr, title, title, true)
     return inner
 end
-local function mkToggle(parent, label, default, callback, order, configLabel)
+function UI.mkToggle(parent, label, default, callback, order, configLabel)
     callback = type(callback) == "function" and callback or function() end
     local row = Instance.new("Frame")
     row.Name = label
@@ -4014,7 +3984,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     row.BackgroundColor3 = T.Hover; pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", "Hover") end)
     row.Active = true
     row.BorderSizePixel = 0
-    Corner(row, 6)
+    UI.Corner(row, 6)
     local lbl = Instance.new("TextLabel")
     lbl.Parent = row
     lbl.BackgroundTransparency = 1
@@ -4061,9 +4031,9 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     badge.Text = ""
     badge.Visible = false
     badge.AutomaticSize = Enum.AutomaticSize.X
-    Corner(badge, 5)
-    local badgeSt = Stroke(badge, T.Bd2, 1, 0.5)
-    Pad(badge, 0, 0, 8, 8)
+    UI.Corner(badge, 5)
+    local badgeSt = UI.Stroke(badge, T.Bd2, 1, 0.5)
+    UI.Pad(badge, 0, 0, 8, 8)
     local badgeScale = Instance.new("UIScale")
     badgeScale.Parent = badge
     local track = Instance.new("TextButton")
@@ -4077,9 +4047,9 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     track.BorderSizePixel = 0
     track.Text = ""
     track.AutoButtonColor = false
-    Corner(track, math.floor(M.trackH / 2))
-    local trackSt = Stroke(track, T.Bd2, 1, 0.38)
-    local trackGrad = Grad(track, T.White:Lerp(T.Bd2, 0.05), T.White:Lerp(T.Card, 0.06), 0)
+    UI.Corner(track, math.floor(M.trackH / 2))
+    local trackSt = UI.Stroke(track, T.Bd2, 1, 0.38)
+    local trackGrad = UI.Grad(track, T.White:Lerp(T.Bd2, 0.05), T.White:Lerp(T.Card, 0.06), 0)
     trackGrad.Name = "ToggleGradient"
     -- A separate solid shell stays much cleaner than UIStroke around a tiny moving circle. Roblox
     -- rasterizes a scaled 16px circular stroke into a jagged translucent halo, especially at 125% DPI.
@@ -4091,7 +4061,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     knobShell.Position = UDim2.new(0, shellInset, 0.5, -math.floor(M.knobShell / 2))
     knobShell.BackgroundColor3 = T.Bd2
     knobShell.BorderSizePixel = 0
-    Corner(knobShell, math.floor(M.knobShell / 2))
+    UI.Corner(knobShell, math.floor(M.knobShell / 2))
     local knob = Instance.new("Frame")
     knob.Name = "knob"
     knob.Parent = knobShell
@@ -4100,7 +4070,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     knob.BackgroundColor3 = T.KnobOff; pcall(function() knob:SetAttribute("ThemeColorRole_BackgroundColor3", "KnobOff") end)
     knob:SetAttribute("Active", default == true)
     knob.BorderSizePixel = 0
-    Corner(knob, math.floor(M.knob / 2))
+    UI.Corner(knob, math.floor(M.knob / 2))
     local stateMark = Instance.new("Frame")
     stateMark.Name = "ToggleAccent"
     stateMark.Parent = row
@@ -4110,8 +4080,8 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
     stateMark.BackgroundColor3 = T.Accent; pcall(function() stateMark:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     stateMark.BackgroundTransparency = 1
     stateMark.BorderSizePixel = 0
-    Corner(stateMark, 2)
-    local entry = { label = label, cfgId = _cfgId(parent, type(configLabel) == "string" and configLabel or label), bindKey = nil, oldKey = nil, isToggle = true, state = default }
+    UI.Corner(stateMark, 2)
+    local entry = { label = label, cfgId = Cfg._cfgId(parent, type(configLabel) == "string" and configLabel or label), bindKey = nil, oldKey = nil, isToggle = true, state = default }
     local function setVis(on, anim)
         local tCol = on and T.TgOn or T.TgOff
         pcall(function() track:SetAttribute("ThemeColorRole_BackgroundColor3", on and "TgOn" or "TgOff") end)
@@ -4135,20 +4105,20 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
         stateMark.BackgroundTransparency = on and 0.12 or 1
         row.BackgroundTransparency = on and 0.86 or 1
         if anim then
-            TweenService.Create(TweenService, track, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Svc.TweenService.Create(Svc.TweenService, track, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundColor3 = tCol
             }):Play()
-            TweenService.Create(TweenService, knobShell, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+            Svc.TweenService.Create(Svc.TweenService, knobShell, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
                 Position = kPos,
                 BackgroundColor3 = shellCol
             }):Play()
-            TweenService.Create(TweenService, knob, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Svc.TweenService.Create(Svc.TweenService, knob, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundColor3 = kCol
             }):Play()
-            TweenService.Create(TweenService, stateMark, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Svc.TweenService.Create(Svc.TweenService, stateMark, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundTransparency = on and 0.12 or 1
             }):Play()
-            TweenService.Create(TweenService, row, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundTransparency = on and 0.86 or 1
             }):Play()
         else
@@ -4196,13 +4166,13 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
         badgeSt.Color = bound and T.Accent or T.Bd2
         badgeSt.Transparency = 0.04
         row.BackgroundTransparency = 0.42
-        TweenService.Create(TweenService, badgeScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-        TweenService.Create(TweenService, badge, TweenInfo.new(0.34, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = T.Elev }):Play()
-        TweenService.Create(TweenService, badgeSt, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService.Create(Svc.TweenService, badgeScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, badge, TweenInfo.new(0.34, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = T.Elev }):Play()
+        Svc.TweenService.Create(Svc.TweenService, badgeSt, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Color = T.Bd2,
             Transparency = 0.5
         }):Play()
-        TweenService.Create(TweenService, row, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             BackgroundTransparency = entry.state and 0.86 or 1
         }):Play()
     end
@@ -4244,31 +4214,31 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
             badgeSt.Color = T.Accent
             badgeSt.Transparency = 0.08
             row.BackgroundTransparency = 0
-            TweenService.Create(TweenService, row, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = T.ActiveBg, BackgroundTransparency = 0.38 }):Play()
-            TweenService.Create(TweenService, badgeScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+            Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = T.ActiveBg, BackgroundTransparency = 0.38 }):Play()
+            Svc.TweenService.Create(Svc.TweenService, badgeScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
         end
     end)
     row.MouseEnter:Connect(function()
         syncEntryState()
-        TweenService.Create(TweenService, row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = entry.state and 0.58 or 0.68 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = entry.state and 0.58 or 0.68 }):Play()
     end)
     row.MouseLeave:Connect(function()
         syncEntryState()
-        TweenService.Create(TweenService, row, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = entry.state and 0.86 or 1 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = entry.state and 0.86 or 1 }):Play()
     end)
     S._ToggleVisualRefresh = S._ToggleVisualRefresh or {}
     table.insert(S._ToggleVisualRefresh, function() syncEntryState(); setVis(entry.state, false) end)
     table.insert(AllBinds, entry)
     table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
     table.insert(ConfigControls, {
-        id = _cfgId(parent, type(configLabel) == "string" and configLabel or label),
+        id = Cfg._cfgId(parent, type(configLabel) == "string" and configLabel or label),
         kind = "toggle",
         get = function() return syncEntryState() end,
         set = function(v) entry.state = (v == true); setVis(entry.state, false); pcall(callback, entry.state); syncEntryState(); setVis(entry.state, false) end,
     })
     return entry
 end
-local function mkAction(parent, label, callback, order)
+function UI.mkAction(parent, label, callback, order)
     callback = type(callback) == "function" and callback or function() end
     local btn = Instance.new("TextButton")
     btn.Name = label
@@ -4282,11 +4252,11 @@ local function mkAction(parent, label, callback, order)
     btn.TextSize = M.rowFont
     btn.TextColor3 = T.Tx; pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
     bindLocalizedText(btn, label, label, false)
-    Corner(btn, 7)
-    local bst = Stroke(btn, T.Bd2, 1, 0.4)
+    UI.Corner(btn, 7)
+    local bst = UI.Stroke(btn, T.Bd2, 1, 0.4)
     local btnScale = Instance.new("UIScale")
     btnScale.Parent = btn
-    local entry = { label = label, cfgId = _cfgId(parent, label), bindKey = nil, oldKey = nil, isToggle = false, btn = btn }
+    local entry = { label = label, cfgId = Cfg._cfgId(parent, label), bindKey = nil, oldKey = nil, isToggle = false, btn = btn }
     function entry.updateVisuals()
         local bk = (entry.bindKey and not MOBILE) and ("   [ " .. entry.bindKey.Name .. " ]") or ""
         btn.Text = lang(label) .. bk
@@ -4295,12 +4265,12 @@ local function mkAction(parent, label, callback, order)
         btnScale.Scale = 0.96
         bst.Color = bound and T.Accent or T.Bd2
         bst.Transparency = 0.05
-        TweenService.Create(TweenService, btnScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-        TweenService.Create(TweenService, bst, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService.Create(Svc.TweenService, btnScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, bst, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Color = T.Bd2,
             Transparency = 0.4
         }):Play()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = T.Elev }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = T.Elev }):Play()
     end
     function entry.trigger()
         entry.playBindEffect(true)
@@ -4320,7 +4290,7 @@ local function mkAction(parent, label, callback, order)
         -- action's on-screen button instead of asking for a key.
         if S._floatChip then
             S._floatChip(btn, entry, -8)
-            Pad(btn, 0, 0, 12, 62)
+            UI.Pad(btn, 0, 0, 12, 62)
             btn.TextXAlignment = Enum.TextXAlignment.Left
         end
     else
@@ -4328,16 +4298,16 @@ local function mkAction(parent, label, callback, order)
             entry.oldKey = entry.bindKey
             PendingBind = entry
             btn.Text = label .. "   [ ... ]"
-            TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.ActiveBg }):Play()
+            Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.ActiveBg }):Play()
         end)
     end
     btn.MouseEnter:Connect(function()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
-        TweenService.Create(TweenService, bst, TweenInfo.new(0.12), { Transparency = 0.1 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
+        Svc.TweenService.Create(Svc.TweenService, bst, TweenInfo.new(0.12), { Transparency = 0.1 }):Play()
     end)
     btn.MouseLeave:Connect(function()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
-        TweenService.Create(TweenService, bst, TweenInfo.new(0.12), { Transparency = 0.4 }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
+        Svc.TweenService.Create(Svc.TweenService, bst, TweenInfo.new(0.12), { Transparency = 0.4 }):Play()
         entry.updateVisuals()
     end)
     table.insert(AllBinds, entry)
@@ -4347,7 +4317,7 @@ end
 -- Exported because closures built EARLIER in the file (the settings modal's theme editor) need
 -- these, and a local declared further down is not in their lexical scope. mkSlider avoids this by
 -- being forward-declared at the top; these two are not.
-S._mkAction = mkAction
+S._mkAction = UI.mkAction
 mkSlider = function(parent, label, min, max, def, callback, order, skipSearchRegistry)
     callback = type(callback) == "function" and callback or function() end
     local frame = Instance.new("Frame")
@@ -4387,13 +4357,13 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     bar.BackgroundColor3 = T.TgOff; pcall(function() bar:SetAttribute("ThemeColorRole_BackgroundColor3", "TgOff") end)
     bar.BorderSizePixel = 0
     bar.Active = true
-    Corner(bar, math.floor(M.barH / 2) + 1)
+    UI.Corner(bar, math.floor(M.barH / 2) + 1)
     local fill = Instance.new("Frame")
     fill.Parent = bar
     fill.Size = UDim2.new(0, 0, 1, 0)
     fill.BackgroundColor3 = T.Accent; pcall(function() fill:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
     fill.BorderSizePixel = 0
-    Corner(fill, math.floor(M.barH / 2) + 1)
+    UI.Corner(fill, math.floor(M.barH / 2) + 1)
     local handle = Instance.new("Frame")
     handle.Parent = bar
     handle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -4401,7 +4371,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     handle.Size = UDim2.fromOffset(M.grab, M.grab)
     handle.BackgroundColor3 = T.Bd2; pcall(function() handle:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd2") end)
     handle.BorderSizePixel = 0
-    Corner(handle, math.ceil(M.grab / 2))
+    UI.Corner(handle, math.ceil(M.grab / 2))
     local handleFill = Instance.new("Frame")
     handleFill.Name = "SliderHandleFill"
     handleFill.Parent = handle
@@ -4409,7 +4379,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
     handleFill.Size = UDim2.fromOffset(M.grab - 4, M.grab - 4)
     handleFill.BackgroundColor3 = T.White; pcall(function() handleFill:SetAttribute("ThemeColorRole_BackgroundColor3", "White") end)
     handleFill.BorderSizePixel = 0
-    Corner(handleFill, math.ceil((M.grab - 4) / 2))
+    UI.Corner(handleFill, math.ceil((M.grab - 4) / 2))
     local val = def
     local function upd(v)
         local pct = math.clamp((v - min) / (max - min), 0, 1)
@@ -4468,12 +4438,12 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
             fromMouse(i)
         end
     end)
-    tc(UIS.InputChanged:Connect(function(i)
+    tc(Svc.UIS.InputChanged:Connect(function(i)
         if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseMovement) then
             fromMouse(i)
         end
     end))
-    tc(UIS.InputEnded:Connect(function(i)
+    tc(Svc.UIS.InputEnded:Connect(function(i)
         if active and (i == activeInput or i.UserInputType == Enum.UserInputType.MouseButton1) then
             if MOBILE then
                 local sf = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
@@ -4486,7 +4456,7 @@ mkSlider = function(parent, label, min, max, def, callback, order, skipSearchReg
         table.insert(UIRegistry, { label = string.lower(label), row = frame, card = parent and parent.Parent or nil })
     end
     table.insert(ConfigControls, {
-        id = _cfgId(parent, label),
+        id = Cfg._cfgId(parent, label),
         get = function() return val end,
         set = function(v)
             v = tonumber(v); if not v then return end
@@ -4517,7 +4487,7 @@ end
 -- Own do-block so its seven widgets do not each burn a main-chunk register: this file sits on
 -- Luau's 200-register ceiling for the top-level function, and the executor enforces it even
 -- though a newer standalone luau-compile accepts the file. Only S._OpenOptionPicker escapes.
-do
+;(function()
 local OptionPickerModal = Instance.new("CanvasGroup")
 OptionPickerModal.Name = "OptionPicker"
 OptionPickerModal.Parent = SG
@@ -4530,8 +4500,8 @@ OptionPickerModal.BorderSizePixel = 0
 OptionPickerModal.ZIndex = 2000
 OptionPickerModal.Visible = false
 OptionPickerModal.ClipsDescendants = true
-Corner(OptionPickerModal, 12)
-Stroke(OptionPickerModal, T.Bd2, 1.2, 0.4)
+UI.Corner(OptionPickerModal, 12)
+UI.Stroke(OptionPickerModal, T.Bd2, 1.2, 0.4)
 
 local opHdr = Instance.new("TextLabel")
 opHdr.Parent = OptionPickerModal
@@ -4544,7 +4514,7 @@ opHdr.TextColor3 = T.White; pcall(function() opHdr:SetAttribute("ThemeColorRole_
 opHdr.TextXAlignment = Enum.TextXAlignment.Left
 
 -- Make OptionPicker modal draggable by header
-do
+;(function()
     local dr, di, ds, sp, so
     opHdr.Active = true
     opHdr.InputBegan:Connect(function(i)
@@ -4556,7 +4526,7 @@ do
             so = OptionPickerModal.Parent and (OptionPickerModal.AbsolutePosition - OptionPickerModal.Parent.AbsolutePosition) or nil
         end
     end)
-    tc(UIS.InputChanged:Connect(function(i)
+    tc(Svc.UIS.InputChanged:Connect(function(i)
         local mouseDrag = di and di.UserInputType == Enum.UserInputType.MouseButton1 and i.UserInputType == Enum.UserInputType.MouseMovement
         local touchDrag = di and di.UserInputType == Enum.UserInputType.Touch and i.UserInputType == Enum.UserInputType.Touch
         if dr and (i == di or mouseDrag or touchDrag) then
@@ -4581,12 +4551,12 @@ do
             end
         end
     end))
-    tc(UIS.InputEnded:Connect(function(i)
+    tc(Svc.UIS.InputEnded:Connect(function(i)
         if dr and (i == di or i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
             dr = false
         end
     end))
-end
+end)()
 
 local opClose = Instance.new("TextButton")
 opClose.Parent = OptionPickerModal
@@ -4618,9 +4588,9 @@ opSearch.Text = ""
 opSearch.ClearTextOnFocus = false
 opSearch.TextXAlignment = Enum.TextXAlignment.Left
 opSearch.ZIndex = 2001
-Corner(opSearch, 6)
-Stroke(opSearch, T.Bd2, 1, 0.45)
-Pad(opSearch, 0, 0, 10, 10)
+UI.Corner(opSearch, 6)
+UI.Stroke(opSearch, T.Bd2, 1, 0.45)
+UI.Pad(opSearch, 0, 0, 10, 10)
 
 local opScroll = Instance.new("ScrollingFrame")
 opScroll.Parent = OptionPickerModal
@@ -4676,7 +4646,7 @@ S._OpenOptionPicker = function(title, options, currentIndex, callback, opts)
         pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", (i == currentIndex) and "ActiveBg" or "Elev") end)
         row.BorderSizePixel = 0
         row.ZIndex = 2000
-        Corner(row, 6)
+        UI.Corner(row, 6)
 
         local textInset = 10
         if previews then
@@ -4689,7 +4659,7 @@ S._OpenOptionPicker = function(title, options, currentIndex, callback, opts)
             thumb.BorderSizePixel = 0
             thumb.ScaleType = Enum.ScaleType.Crop
             thumb.ZIndex = 2001
-            Corner(thumb, 5)
+            UI.Corner(thumb, 5)
             local src = previews[i]
             if type(src) == "string" then
                 thumb.Image = src
@@ -4733,8 +4703,8 @@ S._OpenOptionPicker = function(title, options, currentIndex, callback, opts)
             pcall(function() side:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
             side.Text = tostring(action.label or "PLAY")
             side.ZIndex = 2002
-            Corner(side, 5)
-            Stroke(side, T.Bd2, 1, 0.5)
+            UI.Corner(side, 5)
+            UI.Stroke(side, T.Bd2, 1, 0.5)
             side.MouseButton1Click:Connect(function()
                 SFX.Click()
                 task.spawn(function() pcall(action.fn, i) end)
@@ -4764,10 +4734,10 @@ S._OpenOptionPicker = function(title, options, currentIndex, callback, opts)
         end)
     end
 end
-end
+end)()
 -- =========================================================
 
-local function mkCycle(parent, label, options, default, callback, order)
+function UI.mkCycle(parent, label, options, default, callback, order)
     callback = type(callback) == "function" and callback or function() end
     local row = Instance.new("Frame")
     row.Name = label
@@ -4775,7 +4745,7 @@ local function mkCycle(parent, label, options, default, callback, order)
     row.LayoutOrder = order
     row.Size = UDim2.new(1, 0, 0, M.rowH)
     row.BackgroundTransparency = 1
-    Corner(row, 6)
+    UI.Corner(row, 6)
     local lbl = Instance.new("TextLabel")
     lbl.Parent = row
     lbl.BackgroundTransparency = 1
@@ -4798,8 +4768,8 @@ local function mkCycle(parent, label, options, default, callback, order)
     btn.Font = FM
     btn.TextSize = MOBILE and 13 or 12
     btn.TextColor3 = T.Tx; pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
-    Corner(btn, 6)
-    Stroke(btn, T.Bd2, 1, 0.4)
+    UI.Corner(btn, 6)
+    UI.Stroke(btn, T.Bd2, 1, 0.4)
     local idx = 1
     for i, o in ipairs(options) do if o == default then idx = i break end end
     local function apply(fire)
@@ -4832,14 +4802,14 @@ local function mkCycle(parent, label, options, default, callback, order)
         end
     end)
     btn.MouseEnter:Connect(function()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
     end)
     btn.MouseLeave:Connect(function()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
     end)
     table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
     table.insert(ConfigControls, {
-        id = _cfgId(parent, label),
+        id = Cfg._cfgId(parent, label),
         get = function() return options[idx] end,
         set = function(v)
             for i, o in ipairs(options) do
@@ -4849,7 +4819,7 @@ local function mkCycle(parent, label, options, default, callback, order)
     })
     return { get = function() return options[idx] end }
 end
-S._mkCycle = mkCycle
+S._mkCycle = UI.mkCycle
 local function getTarget(arg1, arg2, arg3)
     local fov, priorityRole
     if typeof(arg1) == "Vector3" then
@@ -4865,7 +4835,7 @@ local function getTarget(arg1, arg2, arg3)
     local shortestDist = math.huge
     local cam = workspace.CurrentCamera or workspace:FindFirstChildOfClass("Camera")
 
-    for _, p in pairs(Players:GetPlayers()) do
+    for _, p in pairs(Svc.Players:GetPlayers()) do
         if p ~= LP and p.Character then
             local role = getRole(p)
             if not priorityRole or role == priorityRole then
@@ -4874,7 +4844,7 @@ local function getTarget(arg1, arg2, arg3)
                 if hrp and hum and hum.Health > 0 and cam and cam:IsA("Camera") then
                     local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
                     if onScreen then
-                        local mousePos = UIS:GetMouseLocation()
+                        local mousePos = Svc.UIS:GetMouseLocation()
                         local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                         if dist < maxDist and dist < shortestDist then
                             shortestDist = dist
@@ -4957,7 +4927,7 @@ S._SafeTeleportSelf = function(targetCF, stabilizeFor)
             while S.Gui and S.Gui.Parent and S._TeleportGuardToken == token and os.clock() < deadline do
                 if LP.Character ~= character or not root.Parent then break end
                 S._ZeroCharacterMomentum(character)
-                RunService.Heartbeat:Wait()
+                Svc.RunService.Heartbeat:Wait()
             end
         end)
     end
@@ -5055,7 +5025,7 @@ local function serverHop()
         pcall(function() TS:Teleport(game.PlaceId, LP) end)
     end)
 end
-do
+;(function()
     -- Subtab bar setup for Visuals
     local visualsSubTabBar = Instance.new("Frame")
     visualsSubTabBar.Name = "VisualsSubTabBar"
@@ -5076,10 +5046,10 @@ do
 
     local customBtn = Instance.new("TextButton")
     
-    local espStroke = mkSubTabBtn(visualsSubTabBar, espBtn, "ESP", 1, 1/4, -6)
-    local envStroke = mkSubTabBtn(visualsSubTabBar, envBtn, "Environment", 2, 1/4, -6)
-    local shaderStroke = mkSubTabBtn(visualsSubTabBar, shaderBtn, "Shaders", 3, 1/4, -6)
-    local customStroke = mkSubTabBtn(visualsSubTabBar, customBtn, "Customs", 4, 1/4, -6)
+    local espStroke = UI.mkSubTabBtn(visualsSubTabBar, espBtn, "ESP", 1, 1/4, -6)
+    local envStroke = UI.mkSubTabBtn(visualsSubTabBar, envBtn, "Environment", 2, 1/4, -6)
+    local shaderStroke = UI.mkSubTabBtn(visualsSubTabBar, shaderBtn, "Shaders", 3, 1/4, -6)
+    local customStroke = UI.mkSubTabBtn(visualsSubTabBar, customBtn, "Customs", 4, 1/4, -6)
     bindLocalizedText(espBtn, "ESP", "ESP", false)
     bindLocalizedText(envBtn, "Environment", "Environment", false)
     bindLocalizedText(shaderBtn, "Shaders", "Shaders", false)
@@ -5307,13 +5277,62 @@ for _, bg in ipairs(CustomAssets.Backgrounds) do
     table.insert(bgPaths, bg)
 end
 
+local gunSoundNames = {
+    -- Names only; nothing is removed here. Which of these actually sound bad is a judgement
+    -- that needs listening to them, so trimming the list was left to you rather than guessed at.
+    [1] = "Glock 19",
+    [2] = "Desert Eagle",
+    [3] = "Revolver Classic",
+    [4] = "Sniper Rifle",
+    [5] = "Shotgun Blast",
+    [6] = "Assault Rifle",
+    [7] = "SMG Burst",
+    [8] = "Tactical Shotgun",
+    [9] = "Universal Silencer",
+    [10] = "Heavy Magnum",
+    [11] = "Laser Blaster",
+    [12] = "Plasma Gun",
+    [13] = "Silenced Pistol",
+    [14] = "Toy Gun",
+    [15] = "Alien Blaster",
+    [16] = "Compact 9mm",
+    [17] = "Marksman",
+    [18] = "Auto Pistol",
+    [19] = "Riot Shotgun",
+    [20] = "Carbine",
+    [21] = "Hand Cannon",
+    [22] = "Suppressed SMG",
+    [23] = "Battle Rifle",
+    [24] = "Snub Revolver",
+    [25] = "Service Pistol",
+    [26] = "Slug Shotgun",
+    [27] = "Bolt Action",
+    [28] = "Machine Pistol",
+    [29] = "Magnum Long",
+    [30] = "Scout Rifle",
+    [31] = "Pulse Rifle",
+    [32] = "Rail Shot",
+    [33] = "Ion Pistol",
+    [34] = "Arc Blaster",
+    [35] = "Void Cannon",
+    [36] = "Nail Gun",
+    [37] = "Flare Gun",
+    [38] = "Dart Gun",
+    [39] = "Cork Pop",
+    [40] = "Bubble Shot",
+    [41] = "Deep Boom",
+    [42] = "Sharp Crack",
+    [43] = "Dry Click",
+    [44] = "Muted Thump",
+}
 local gunPaths = {}
-for _, gs in ipairs(CustomAssets.GunSounds) do
+for i, gs in ipairs(CustomAssets.GunSounds) do
+    gs.Name = gunSoundNames[i] or ("Custom " .. i)
     table.insert(gunPaths, gs.Path)
 end
 
--- Built here rather than next to the transparency slider: the theme editor also needs mkCycle and
--- mkAction, which are declared after that point.
+-- Built here rather than next to the transparency slider: the theme editor also needs UI.mkCycle and
+-- UI.mkAction, which are declared after that point.
 if S._BuildThemeEditor then
     S._BuildThemeEditor()
     S._BuildThemeEditor = nil
@@ -5350,8 +5369,8 @@ end
 -- Sounds / Avatar / Wings & Aura stayed on screen under EVERY Visuals subtab -- which reads as the
 -- card being duplicated.
 S._CustomsSections = S._CustomsSections or {}
-local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
-    mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v)
+local secCustoms = UI.mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
+    UI.mkToggle(secCustoms, "Enable Custom Cursor / Crosshair", false, function(v)
         S.CustomCrosshair = v
         if S._RefreshCustomCursor then pcall(function() S._RefreshCustomCursor() end) end
         pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
@@ -5415,7 +5434,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             cursorPreviews[i] = function() return fetchCustomAsset(path, "cursors") end
         end
     end
-    mkAction(secCustoms, "Choose Cursor / Crosshair", function()
+    UI.mkAction(secCustoms, "Choose Cursor / Crosshair", function()
         S._OpenOptionPicker("Cursor / Crosshair", cursorNames, S.CrosshairIndex or 1, function(pick)
             local entry = cursorEntries[pick]
             S.CrosshairStyle = "Custom"
@@ -5528,7 +5547,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         skyNames[skyLibBase + i] = entry.Name
         skyPreviews[skyLibBase + i] = "rbxassetid://" .. tostring(entry.Preview or entry.Ft)
     end
-    mkAction(secCustoms, "Choose Skybox", function()
+    UI.mkAction(secCustoms, "Choose Skybox", function()
         local currentSky = math.clamp(tonumber(S.SkyboxPickerIndex) or ((S.SkyboxIndex or 0) + 1), 1, #skyNames)
         S._OpenOptionPicker("Skybox", skyNames, currentSky, function(pick)
             S.SkyboxPickerIndex = pick
@@ -5652,7 +5671,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         table.insert(gunSoundOptions, entry[1])
     end
     for i = 1, #gunPaths do
-        table.insert(gunSoundOptions, "Custom " .. i)
+        table.insert(gunSoundOptions, CustomAssets.GunSounds[i].Name)
     end
     local function libSoundId(name)
         for _, entry in ipairs(GUN_LIB) do
@@ -5693,7 +5712,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         local s = Instance.new("Sound")
         s.SoundId = id
         s.Volume = 1.5
-        s.Parent = SoundService
+        s.Parent = Svc.SoundService
         S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 5)
     end
@@ -5708,12 +5727,12 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         local s = Instance.new("Sound")
         s.SoundId = id
         s.Volume = 1.5
-        s.Parent = SoundService
+        s.Parent = Svc.SoundService
         S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 5)
     end
 
-    mkAction(secCustoms, "Choose Gun Sound", function()
+    UI.mkAction(secCustoms, "Choose Gun Sound", function()
         local current = 1
         for i, name in ipairs(gunSoundOptions) do
             if name == (S.GunSoundChoice or "Game Default") then current = i break end
@@ -5771,11 +5790,11 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end, 4)
     end
 
-    mkAction(secCustoms, "Preview Gun Sound", function()
+    UI.mkAction(secCustoms, "Preview Gun Sound", function()
         local s = Instance.new("Sound")
         s.SoundId = S.CustomGunSoundId or "rbxasset://sounds/electronicpingshort.wav"
         s.Volume = 1
-        s.Parent = SoundService
+        s.Parent = Svc.SoundService
         S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 8)
     end, 4.1)
@@ -5785,45 +5804,17 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     -- nobody else hears it. The list uses short public sound candidates; runtime access still
     -- depends on Roblox ownership/privacy rules for this experience.
     local KILL_SOUNDS = {
-        { "Off", 0 },
-        { "Knife Slice", 9125619840 },
-        { "Sword Slash", 935843979 },
-        { "Pixel Sword", 89085812723039 },
-        { "Classic Sword", 12222216 },
-        { "Fire Slash", 6455691350 },
-        { "Heavy Blade", 6241709963 },
-        { "Flesh Hit", 144884872 },
-        { "Cinematic Punch", 159504677 },
-        { "Glass Break", 6737582037 },
-        { "Metal Pipe", 6729922069 },
-        { "Big Boom", 6022120767 },
-        { "Vine Boom", 6308606116 },
-        { "Vine Boom Deep", 5153845714 },
-        { "COD Hitmarker", 5952120301 },
-        { "Modern Hitmarker", 17724151829 },
-        { "Minecraft Hit", 5984353288 },
-        { "Minecraft Hit Alt", 8766809464 },
-        { "Classic Hit", 12222046 },
-        { "Osu Hit", 7147454322 },
-        { "Headshot", 1255040462 },
-        { "Metal Impact", 142082170 },
-        { "Concrete Impact", 142082166 },
-        { "Wood Impact", 142082171 },
-        { "Glass Impact", 142082167 },
-        { "Level Up", 2686079706 },
-        { "Ding", 4590657391 },
-        { "Notification", 6026984224 },
-        { "Button Click", 6042053626 },
-        { "Click", 6052548458 },
-        { "Bonk", 130944130 },
-        { "Slap", 511340819 },
-        { "Quack", 9068554227 },
-        { "Oof", 5943191430 },
-        { "Bruh", 4578740568 },
-        { "Taco Bell", 5696182212 },
-        { "Za Warudo", 5679636294 },
-        { "Laser Hit", 8561505457 },
-    }
+    { "Off", 0 },
+    { "Headshot", 1255040462 },
+    { "Rust Headshot", 5043534569 },
+    { "CSGO Headshot", 8626685816 },
+    { "Valorant Kill", 5211993416 },
+    { "TF2 Crit", 3058862908 },
+    { "Minecraft Hit", 5984353288 },
+    { "Flesh Hit", 144884872 },
+    { "Glass Break", 6737582037 },
+    { "Modern Hitmarker", 17724151829 }
+}
     local killNames = {}
     for _, e in ipairs(KILL_SOUNDS) do table.insert(killNames, e[1]) end
     local function killSoundId(name)
@@ -5838,17 +5829,17 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         local s = Instance.new("Sound")
         s.SoundId = id
         s.Volume = math.clamp((tonumber(S.KillSoundVolume) or 70) / 100, 0, 1)
-        s.Parent = SoundService
+        s.Parent = Svc.SoundService
         S._PlaySoundSafe(s)
         game:GetService("Debris"):AddItem(s, 6)
     end
     S._PlayKillSound = playKillSound
 
     -- Own card: keeps the Customs page from being one giant column with an empty neighbour.
-    local secKillSnd = mkSection(Pages.Visuals, "Kill Sounds", 4.5)
+    local secKillSnd = UI.mkSection(Pages.Visuals, "Kill Sounds", 4.5)
     table.insert(S._CustomsSections, secKillSnd)
     local function killPicker(label, key, order)
-        mkAction(secKillSnd, label, function()
+        UI.mkAction(secKillSnd, label, function()
             local current = 1
             for i, n in ipairs(killNames) do if n == (S[key] or "Off") then current = i break end end
             S._OpenOptionPicker(label, killNames, current, function(pick)
@@ -5919,18 +5910,18 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             if p.Character then hook(p.Character) end
             tc(p.CharacterAdded:Connect(hook))
         end
-        for _, p in ipairs(Players:GetPlayers()) do watch(p) end
-        tc(Players.PlayerAdded:Connect(watch))
+        for _, p in ipairs(Svc.Players:GetPlayers()) do watch(p) end
+        tc(Svc.Players.PlayerAdded:Connect(watch))
     end
 
 
-    local secAvatar = mkSection(Pages.Visuals, "Avatar (Local)", 4.6)
+    local secAvatar = UI.mkSection(Pages.Visuals, "Avatar (Local)", 4.6)
     table.insert(S._CustomsSections, secAvatar)
-    mkToggle(secAvatar, "Fake Headless (Local)", false, function(v)
+    UI.mkToggle(secAvatar, "Fake Headless (Local)", false, function(v)
         S.FakeHeadless = v
         S._UpdateAvatarMods()
     end, 5)
-    mkToggle(secAvatar, "Fake Korblox (Local)", false, function(v)
+    UI.mkToggle(secAvatar, "Fake Korblox (Local)", false, function(v)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
 end, 6)
@@ -5985,7 +5976,320 @@ end, 6)
                 table.insert(wingNames, p.display)
             end
         end
-        local fx = { objects = {}, conns = {}, busy = false, ticket = 0 }
+        -- Curated directly from the five PulseVFX .rbxm templates supplied with this build.
+        -- They are rebuilt on a torso-relative carrier: nothing is placed on the floor and the
+        -- wing mesh itself stays static (no flapping/rig animation).
+        local function wingNumberSequence(points)
+            local keypoints = {}
+            for i, point in ipairs(points) do
+                keypoints[i] = NumberSequenceKeypoint.new(point[1], point[2], point[3] or 0)
+            end
+            return NumberSequence.new(keypoints)
+        end
+        local function wingColorSequence(points)
+            local keypoints = {}
+            for i, point in ipairs(points) do
+                keypoints[i] = ColorSequenceKeypoint.new(point[1], point[2])
+            end
+            return ColorSequence.new(keypoints)
+        end
+        local PULSE_WING_FX = {
+            ["Angel Aura"] = {
+                source = "PulseVFX_AngelAura.rbxm",
+                sizeScale = 1,
+                light = { color = Color3.fromRGB(246, 114, 255), brightness = 2.5, range = 6 },
+                particles = {
+                    {
+                        name = "Feathers", slots = { "Left", "Right" },
+                        texture = "rbxassetid://115361100558524", rate = 3,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(2),
+                        size = wingNumberSequence({ { 0, 0.30 }, { 0.72, 0.30 }, { 1, 0.18 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.58, 0.18 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(198, 12, 173)),
+                        rotation = NumberRange.new(-50), rotSpeed = NumberRange.new(100),
+                        spread = Vector2.new(50, 50), lightEmission = 1, brightness = 4,
+                    },
+                    {
+                        name = "Wing Glow", slots = { "Left", "Right" },
+                        texture = "rbxassetid://82114954422305", rate = 3,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(0.01),
+                        size = wingNumberSequence({ { 0, 1.8 }, { 0.5, 2.1 }, { 1, 2.25 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.16, 0.18 }, { 0.78, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(255, 39, 233)),
+                        lightEmission = 1, brightness = 4,
+                    },
+                    {
+                        name = "Halo", slot = "Center",
+                        texture = "rbxassetid://16509197144", rate = 1,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.01),
+                        size = wingNumberSequence({ { 0, 2.25 }, { 0.72, 2.55 }, { 1, 2.7 } }),
+                        transparency = wingNumberSequence({ { 0, 0.1 }, { 0.62, 0.22 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(255, 56, 222)),
+                        rotation = NumberRange.new(50), rotSpeed = NumberRange.new(120),
+                        lightEmission = 1, brightness = 4,
+                    },
+                },
+            },
+            ["Dracula"] = {
+                source = "PulseVFX_Dracula.rbxm",
+                sizeScale = 0.9,
+                light = { color = Color3.fromRGB(255, 18, 28), brightness = 2, range = 6 },
+                particles = {
+                    {
+                        name = "Blood Wings", slots = { "Left", "Right" },
+                        texture = "rbxassetid://140086278326241", rate = 3,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(0.01),
+                        size = wingNumberSequence({ { 0, 2.6 }, { 0.5, 3 }, { 1, 3.15 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.18 }, { 0.78, 0.38 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 0, 0)),
+                        lightEmission = 0.35, brightness = 3,
+                    },
+                    {
+                        name = "Red Spiral", slot = "Center",
+                        texture = "rbxassetid://12758468376", rate = 6,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(9, 14),
+                        size = wingNumberSequence({ { 0, 0.55 }, { 0.45, 1 }, { 1, 0.2 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.08 }, { 0.72, 0.38 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 0, 0)),
+                        rotation = NumberRange.new(0, 180), rotSpeed = NumberRange.new(120, 260),
+                        spread = Vector2.new(180, 180), lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Bats", slot = "Top",
+                        texture = "rbxassetid://12800352088", rate = 8,
+                        lifetime = NumberRange.new(1.4, 1.8), speed = NumberRange.new(8, 13),
+                        size = wingNumberSequence({ { 0, 0.45 }, { 0.65, 0.7 }, { 1, 0.55 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.08, 0 }, { 0.72, 0.15 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(170, 0, 0) },
+                            { 1, Color3.fromRGB(0, 0, 0) },
+                        }),
+                        rotation = NumberRange.new(180), rotSpeed = NumberRange.new(180, 360),
+                        spread = Vector2.new(180, 180), lightEmission = 0.2, brightness = 2,
+                    },
+                },
+            },
+            ["Frozen Bloom"] = {
+                source = "PulseVFX_FrozenBloom.rbxm",
+                sizeScale = 0.9,
+                light = { color = Color3.fromRGB(112, 205, 255), brightness = 2.2, range = 7 },
+                particles = {
+                    {
+                        name = "Bloom", slot = "Center",
+                        texture = "rbxassetid://14919880888", rate = 4,
+                        lifetime = NumberRange.new(0.5, 1), speed = NumberRange.new(0.07),
+                        size = wingNumberSequence({ { 0, 0 }, { 0.2, 1.4 }, { 0.62, 3.8 }, { 1, 4.63 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.1, 0.05 }, { 0.68, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(108, 185, 249)),
+                        rotation = NumberRange.new(-180, 180), lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Ice Shards A", slot = "Left",
+                        texture = "rbxassetid://16879659749", rate = 13,
+                        lifetime = NumberRange.new(1, 2.4), speed = NumberRange.new(4.9, 9.9),
+                        size = wingNumberSequence({ { 0, 0.45, 0.15 }, { 1, 0.49, 0.22 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.1, 0 }, { 0.72, 0.2 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 0.55, Color3.fromRGB(89, 188, 249) },
+                            { 1, Color3.fromRGB(74, 140, 247) },
+                        }),
+                        rotation = NumberRange.new(-180, 165), rotSpeed = NumberRange.new(-130, 140),
+                        spread = Vector2.new(40, 40), brightness = 3,
+                    },
+                    {
+                        name = "Ice Shards B", slot = "Right",
+                        texture = "rbxassetid://18671876469", rate = 13,
+                        lifetime = NumberRange.new(1, 2.4), speed = NumberRange.new(2.8, 5.8),
+                        size = wingNumberSequence({ { 0, 0.26, 0.09 }, { 1, 0.28, 0.13 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.1, 0 }, { 0.72, 0.2 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 0.55, Color3.fromRGB(89, 188, 249) },
+                            { 1, Color3.fromRGB(74, 140, 247) },
+                        }),
+                        rotation = NumberRange.new(-180, 165), rotSpeed = NumberRange.new(-130, 140),
+                        spread = Vector2.new(40, 40), brightness = 3,
+                    },
+                    {
+                        name = "Stars", slot = "Top",
+                        texture = "rbxassetid://12872162107", rate = 12,
+                        lifetime = NumberRange.new(0.5, 1.2), speed = NumberRange.new(5.2, 13.8),
+                        size = wingNumberSequence({ { 0, 0.13, 0.05 }, { 1, 0.16, 0.15 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.08, 0 }, { 0.72, 0.3 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 1, Color3.fromRGB(74, 140, 247) },
+                        }),
+                        rotation = NumberRange.new(-180, 180), rotSpeed = NumberRange.new(-360, 360),
+                        spread = Vector2.new(180, 180), brightness = 3,
+                    },
+                    {
+                        name = "Ice Wave", slot = "Center",
+                        texture = "rbxassetid://13992197350", rate = 3,
+                        lifetime = NumberRange.new(0.5, 1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 1.48 }, { 1, 5.03 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.55, 0.35 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 1, Color3.fromRGB(108, 185, 249) },
+                        }),
+                        rotation = NumberRange.new(-180, 180), lightEmission = 0.8, brightness = 4,
+                    },
+                    {
+                        name = "Snow Glyphs", slots = { "OuterLeft", "OuterRight" },
+                        texture = "rbxassetid://76951334461630", rate = 2,
+                        lifetime = NumberRange.new(1, 2), speed = NumberRange.new(0.006),
+                        size = wingNumberSequence({ { 0, 1.02 }, { 0.55, 2.1 }, { 1, 3.62 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.62, 0.35 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 1, Color3.fromRGB(108, 185, 249) },
+                        }),
+                        rotation = NumberRange.new(-180, 180), lightEmission = 0.8, brightness = 4,
+                    },
+                },
+            },
+            ["Magic Aura"] = {
+                source = "PulseVFX_MagicAura.rbxm",
+                sizeScale = 0.78,
+                light = { color = Color3.fromRGB(209, 116, 255), brightness = 2.4, range = 7 },
+                particles = {
+                    {
+                        name = "Magic Ring A", slot = "Center",
+                        texture = "rbxassetid://16956569427", rate = 1.5,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 0 }, { 1, 3.16 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.1 }, { 0.75, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Magic Ring B", slot = "Left",
+                        texture = "rbxassetid://14591895021", rate = 1.5,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 4.2 }, { 1, 4.2 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.2 }, { 0.7, 0.42 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Magic Ring C", slot = "Right",
+                        texture = "rbxassetid://16956497860", rate = 1.5,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 3.5 }, { 1, 3.5 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.18 }, { 0.72, 0.4 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        lightEmission = 1, brightness = 3,
+                    },
+                },
+                beams = {
+                    {
+                        name = "Magic Ribbon A", from = "OuterLeft", to = "Top",
+                        texture = "rbxassetid://12781812529", width = 2.5,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = NumberSequence.new(0.5), faceCamera = false,
+                    },
+                    {
+                        name = "Magic Ribbon B", from = "Top", to = "OuterRight",
+                        texture = "rbxassetid://12781812529", width = 2.5,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = NumberSequence.new(0.5), faceCamera = false,
+                    },
+                    {
+                        name = "Magic Ray A", from = "OuterLeft", to = "Center",
+                        texture = "rbxassetid://3029306948", width = 1.1,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                    {
+                        name = "Magic Ray B", from = "Center", to = "OuterRight",
+                        texture = "rbxassetid://3029306948", width = 1.1,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                    {
+                        name = "Magic Ray C", from = "Left", to = "Top",
+                        texture = "rbxassetid://3029306948", width = 0.9,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                    {
+                        name = "Magic Ray D", from = "Top", to = "Right",
+                        texture = "rbxassetid://3029306948", width = 0.9,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                },
+            },
+            ["Water Vortex"] = {
+                source = "PulseVFX_WaterVortex.rbxm",
+                -- Original source values reach 48 studs. The source textures/sequences are retained,
+                -- but scaled to a wing-sized vortex instead of recreating the old floor-covering disc.
+                sizeScale = 0.105,
+                light = { color = Color3.fromRGB(170, 255, 255), brightness = 2, range = 7 },
+                particles = {
+                    {
+                        name = "Water Core", slot = "Center",
+                        texture = "rbxassetid://13405951462", rate = 5,
+                        lifetime = NumberRange.new(0.4), speed = NumberRange.new(0.02),
+                        size = wingNumberSequence({ { 0, 0 }, { 0.25, 10 }, { 0.72, 18.6 }, { 1, 20.73 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.6, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), lightEmission = 0.8, brightness = 2,
+                    },
+                    {
+                        name = "Water Gradient", slot = "Left",
+                        texture = "rbxassetid://8943878058", rate = 5,
+                        lifetime = NumberRange.new(0.2), speed = NumberRange.new(0.014),
+                        size = wingNumberSequence({ { 0, 15.75 }, { 0.5, 19.8 }, { 1, 23.62 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.62, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), lightEmission = 1, brightness = 1,
+                    },
+                    {
+                        name = "Water Initial", slot = "Right",
+                        texture = "rbxassetid://17256185841", rate = 5,
+                        lifetime = NumberRange.new(0.3, 0.45), speed = NumberRange.new(0.02),
+                        size = wingNumberSequence({ { 0, 12, 8 }, { 0.5, 22, 8 }, { 1, 32, 8 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.15 }, { 0.68, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), brightness = 2,
+                    },
+                    {
+                        name = "Water Spiral", slot = "Top",
+                        texture = "rbxassetid://11846119288", rate = 5,
+                        lifetime = NumberRange.new(0.2, 0.3), speed = NumberRange.new(0.009),
+                        size = wingNumberSequence({ { 0, 8.75 }, { 0.5, 16.2 }, { 1, 23.33 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.08 }, { 0.72, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        brightness = 2,
+                    },
+                    {
+                        name = "Water Spray", slots = { "OuterLeft", "OuterRight" },
+                        texture = "rbxassetid://12828727111", rate = 4,
+                        lifetime = NumberRange.new(0.15, 0.5), speed = NumberRange.new(8, 18),
+                        size = wingNumberSequence({ { 0, 9.3 }, { 0.55, 12 }, { 1, 13.95 } }),
+                        transparency = wingNumberSequence({ { 0, 0.7 }, { 0.58, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), spread = Vector2.new(15, 15),
+                        lightEmission = 0.8, brightness = 2,
+                    },
+                    {
+                        name = "Water Mist", slot = "Center",
+                        texture = "rbxassetid://12685367098", rate = 3,
+                        lifetime = NumberRange.new(1, 2.5), speed = NumberRange.new(0.03),
+                        size = wingNumberSequence({ { 0, 16, 8 }, { 0.5, 34, 8 }, { 1, 48, 8 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.62, 0.55 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), rotSpeed = NumberRange.new(-30, 30),
+                        spread = Vector2.new(25, 25), lightEmission = 1, brightness = 1,
+                    },
+                },
+            },
+        }
+        local wingEffectNames = { "Off", "Angel Aura", "Dracula", "Frozen Bloom", "Magic Aura", "Water Vortex" }
+        local fx = { objects = {}, conns = {}, busy = false, ticket = 0, preloaded = {} }
 
         local function rootPart(char)
             return char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
@@ -6128,11 +6432,192 @@ end, 6)
             own(weld)
             return weld
         end
+        local function scaleWingSequence(sequence, factor)
+            local keypoints = {}
+            for i, point in ipairs(sequence.Keypoints) do
+                keypoints[i] = NumberSequenceKeypoint.new(
+                    point.Time,
+                    point.Value * factor,
+                    point.Envelope * factor
+                )
+            end
+            return NumberSequence.new(keypoints)
+        end
+        local function makeFallbackWings(data)
+            local model = Instance.new("Model")
+            model.Name = "InertiaToolboxWings"
+            local tint = (data and data.tint) or WHITE_VFX
+            for side = -1, 1, 2 do
+                for index = 1, 5 do
+                    local feather = Instance.new("Part")
+                    feather.Name = side < 0 and ("LeftFeather" .. index) or ("RightFeather" .. index)
+                    feather.Material = Enum.Material.Neon
+                    feather.Color = tint
+                    feather.Transparency = 0.08
+                    feather.Size = Vector3.new(0.16, 0.58 + index * 0.16, 0.1)
+                    feather.CFrame = CFrame.new(
+                        side * (0.3 + index * 0.2),
+                        0.28 - index * 0.12,
+                        0
+                    ) * CFrame.Angles(0, 0, math.rad(side * (18 + index * 8)))
+                    prepPart(feather, false)
+                    feather.Parent = model
+                    model.PrimaryPart = model.PrimaryPart or feather
+                end
+            end
+            return model
+        end
+        local function preloadWingEffect(effectName, preset)
+            if fx.preloaded[effectName] then return end
+            fx.preloaded[effectName] = true
+            local content = {}
+            local seen = {}
+            for _, def in ipairs(preset.particles or {}) do
+                if def.texture and not seen[def.texture] then
+                    seen[def.texture] = true
+                    table.insert(content, def.texture)
+                end
+            end
+            for _, def in ipairs(preset.beams or {}) do
+                if def.texture and not seen[def.texture] then
+                    seen[def.texture] = true
+                    table.insert(content, def.texture)
+                end
+            end
+            if #content > 0 then
+                task.spawn(function()
+                    pcall(function() Svc.ContentProvider:PreloadAsync(content) end)
+                end)
+            end
+        end
+        local function buildPulseWingEffect(model, root, effectName)
+            local preset = PULSE_WING_FX[effectName]
+            if not (preset and model and root) then return end
+            preloadWingEffect(effectName, preset)
+
+            local boundsCF, boundsSize = root.CFrame, Vector3.new(3, 3, 1)
+            pcall(function()
+                boundsCF, boundsSize = model:GetBoundingBox()
+            end)
+
+            local carrier = Instance.new("Part")
+            carrier.Name = "InertiaWingFXCarrier"
+            carrier.Size = Vector3.new(0.05, 0.05, 0.05)
+            carrier.CFrame = boundsCF
+            prepPart(carrier, true)
+            carrier.Parent = model
+
+            local carrierWeld = Instance.new("Weld")
+            carrierWeld.Name = "InertiaWingFXWeld"
+            carrierWeld.Part0 = root
+            carrierWeld.Part1 = carrier
+            carrierWeld.C0 = root.CFrame:ToObjectSpace(carrier.CFrame)
+            carrierWeld.Parent = carrier
+
+            local horizontal = math.clamp(boundsSize.X * 0.3, 0.68, 1.45)
+            local vertical = math.clamp(boundsSize.Y * 0.28, 0.55, 1.25)
+            local slotFrames = {
+                Center = CFrame.new(0, 0.05, -0.03),
+                Left = CFrame.new(-horizontal * 0.62, 0.08, 0),
+                Right = CFrame.new(horizontal * 0.62, 0.08, 0),
+                OuterLeft = CFrame.new(-horizontal, -0.02, 0),
+                OuterRight = CFrame.new(horizontal, -0.02, 0),
+                Top = CFrame.new(0, vertical, 0),
+                -- Under the feet. boundsCF sits at the model centre, so dropping a full half-height
+                -- lands on the floor.
+                Ground = CFrame.new(0, -(boundsSize.Y * 0.5), 0),
+            }
+            local attachments = {}
+            for slot, frame in pairs(slotFrames) do
+                local attachment = Instance.new("Attachment")
+                attachment.Name = "InertiaWingFX_" .. slot
+                attachment.CFrame = frame
+                attachment.Parent = carrier
+                attachments[slot] = attachment
+            end
+
+            local power = math.clamp(tonumber(S.VFXWingPower) or 70, 10, 100) / 100
+            -- One multiplier over every emissive term. The old fixed values (LightEmission 1,
+            -- Brightness 4, glow layers mirrored on both wings) blew out to a white blob that hid
+            -- the wing shape entirely, so this defaults well under half.
+            local bloom = math.clamp(tonumber(S.VFXBloom) or 35, 0, 100) / 100
+            local wingScale = math.clamp(tonumber(S.VFXWingScale) or 100, 10, 200) / 100
+            local sizeScale = (preset.sizeScale or 1)
+                * math.clamp(wingScale, 0.35, 1.65)
+                * (MOBILE and 0.82 or 1)
+            local rateScale = power * (MOBILE and 0.48 or 1)
+            local rateCap = MOBILE and 8 or 20
+
+            for _, def in ipairs(preset.particles or {}) do
+                local slots = def.slots or { def.slot or "Center" }
+                -- Ground Aura moves the effect to the floor ring rather than emitting a second copy
+                -- there: two full sets at once is exactly the effect spam this is meant to avoid.
+                if S.VFXGroundAura then slots = { "Ground" } end
+                for _, slot in ipairs(slots) do
+                    local attachment = attachments[slot] or attachments.Center
+                    local emitter = Instance.new("ParticleEmitter")
+                    emitter.Name = "InertiaWingFX_" .. tostring(def.name or effectName)
+                    emitter.Texture = def.texture or ""
+                    emitter.Color = def.color or ColorSequence.new(Color3.new(1, 1, 1))
+                    emitter.Size = scaleWingSequence(def.size or NumberSequence.new(1), sizeScale)
+                    emitter.Transparency = def.transparency or wingNumberSequence({ { 0, 1 }, { 0.12, 0 }, { 1, 1 } })
+                    emitter.Lifetime = def.lifetime or NumberRange.new(1)
+                    emitter.Rate = math.clamp((def.rate or 1) * rateScale, 0.25, rateCap)
+                    emitter.Speed = def.speed or NumberRange.new(0)
+                    emitter.Rotation = def.rotation or NumberRange.new(0)
+                    emitter.RotSpeed = def.rotSpeed or NumberRange.new(0)
+                    emitter.SpreadAngle = def.spread or Vector2.new(0, 0)
+                    emitter.Acceleration = def.acceleration or Vector3.new(0, 0, 0)
+                    emitter.Drag = def.drag or 0
+                    emitter.LightEmission = math.clamp((def.lightEmission or 0.35) * bloom, 0, 1)
+                    emitter.LightInfluence = 0
+                    emitter.Brightness = math.clamp((def.brightness or 1) * (0.55 + power * 0.65) * bloom, 0, 5)
+                    emitter.LockedToPart = true
+                    emitter.VelocityInheritance = 0
+                    emitter.ZOffset = 0.05
+                    emitter.Parent = attachment
+                end
+            end
+
+            for index, def in ipairs(preset.beams or {}) do
+                local from = attachments[def.from or "Left"] or attachments.Left
+                local to = attachments[def.to or "Right"] or attachments.Right
+                local beam = Instance.new("Beam")
+                beam.Name = "InertiaWingFX_" .. tostring(def.name or ("Beam" .. index))
+                beam.Attachment0 = from
+                beam.Attachment1 = to
+                beam.Texture = def.texture or ""
+                beam.TextureMode = Enum.TextureMode.Wrap
+                beam.TextureLength = def.textureLength or 1
+                beam.TextureSpeed = def.textureSpeed or 1
+                beam.Color = def.color or ColorSequence.new(Color3.new(1, 1, 1))
+                beam.Transparency = def.transparency or NumberSequence.new(0.25)
+                local width = math.clamp((def.width or 1) * sizeScale, 0.15, MOBILE and 1.8 or 3.5)
+                beam.Width0 = width
+                beam.Width1 = width
+                beam.Segments = MOBILE and 4 or 8
+                beam.FaceCamera = def.faceCamera == true
+                beam.LightEmission = 0.85
+                beam.LightInfluence = 0
+                beam.Parent = from
+            end
+
+            if preset.light then
+                local light = Instance.new("PointLight")
+                light.Name = "InertiaWingFX_Light"
+                light.Color = preset.light.color or Color3.new(1, 1, 1)
+                light.Brightness = math.clamp((preset.light.brightness or 1) * power * bloom, 0, MOBILE and 1.6 or 3)
+                light.Range = math.clamp((preset.light.range or 6) * math.sqrt(power) * (0.5 + bloom * 0.5), 2, MOBILE and 6 or 9)
+                light.Shadows = false
+                light.Parent = carrier
+            end
+        end
         local function rebuild()
             clean()
             local char, root = LP.Character, rootPart(LP.Character)
             if not (char and root) then return end
             local wingData = WINGS[S.VFXWingStyle] or WINGS["White 02 Angel Rig"]
+            local effectName = PULSE_WING_FX[S.VFXWingEffect] and S.VFXWingEffect or "Off"
             if not S.VFXWings then return end
             local ticket = fx.ticket
             fx.busy = true
@@ -6140,21 +6625,26 @@ end, 6)
                 if S.VFXWings and wingData then
                     local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. wingData.id) end)
                     char, root = LP.Character, rootPart(LP.Character)
-                    if ok and type(loaded) == "table" and #loaded > 0 and ticket == fx.ticket and char and root then
-                        local model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
+                    if ticket == fx.ticket and char and root then
+                        local model
+                        if ok and type(loaded) == "table" and #loaded > 0 then
+                            model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
+                        end
+                        model = model or makeFallbackWings(wingData)
                         if model then
                             sanitize(model, wingData)
                             model.Parent = char
                             local weld = weldModel(model, root, wingData.offset, wingData)
                             if weld then
+                                if effectName ~= "Off" then
+                                    buildPulseWingEffect(model, root, effectName)
+                                end
                                 own(model)
                             else
                                 model:Destroy()
                                 Notify("VFX Wings", "Asset has no attachable parts.", 3)
                             end
                         end
-                    elseif ticket == fx.ticket then
-                        Notify("VFX Wings", "Asset load failed: " .. wingData.id, 3)
                     end
                 end
                 fx.busy = false
@@ -6166,10 +6656,12 @@ end, 6)
                 if S.VFXWings then rebuild() end
             end)
         end))
-        local secWings = mkSection(Pages.Visuals, "Wings", 4.7)
+        local secWings = UI.mkSection(Pages.Visuals, "Wings", 4.7)
         table.insert(S._CustomsSections, secWings)
-        mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
-        mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        UI.mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
+        UI.mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        UI.mkCycle(secWings, "VFX Wing Effect", wingEffectNames, "Angel Aura", function(v) S.VFXWingEffect = v; rebuild() end, 8.05)
+        mkSlider(secWings, "Wing Effect Power", 10, 100, 70, function(v) S.VFXWingPower = v; rebuild() end, 8.08)
         -- Wing placement is per-asset and the marketplace models disagree wildly about scale and
         -- pivot, so the built-in numbers can only ever be an average. These three expose the same
         -- knobs the code already used internally: the size cap, and the torso-relative Y and Z of
@@ -6179,10 +6671,13 @@ end, 6)
         mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
         mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
         mkSlider(secWings, "Wing Back Offset", -150, 150, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
+        UI.mkToggle(secWings, "Ground Aura", false, function(v) S.VFXGroundAura = v; rebuild() end, 8.4)
+        mkSlider(secWings, "Bloom (%)", 0, 100, 35, function(v) S.VFXBloom = v; rebuild() end, 8.5)
         -- Permanently discard removed aura settings so an old autoload cannot resurrect the floor FX.
         S.VFXAura, S.AuraColor, S.AuraDensity, S.AuraSize = nil, nil, nil, nil
     end
-    -- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
+
+-- Removed low-quality FX Aura and explicit Wiwi prop blocks. Keep this page focused on
     -- avatar cosmetics, assets, crosshair, wings, and knife-effect visuals.
 
 
@@ -6249,9 +6744,9 @@ end, 6)
                 else
                     radius = radius > 0 and math.max(1, px(radius)) or 0
                 end
-                if radius > 0 then Corner(item, radius) end
+                if radius > 0 then UI.Corner(item, radius) end
                 if not noOutline then
-                    Stroke(item, Color3.fromRGB(0, 0, 0), math.max(1, px(1)), 0.3)
+                    UI.Stroke(item, Color3.fromRGB(0, 0, 0), math.max(1, px(1)), 0.3)
                 end
                 return item
             end
@@ -6269,8 +6764,8 @@ end, 6)
                 item.Size = UDim2.fromOffset(px(diameter), px(diameter))
                 item.BackgroundTransparency = 1
                 item.ZIndex = 4001
-                Corner(item, 999)
-                Stroke(item, color, math.max(1, px(thickness)), transparency or 0.05)
+                UI.Corner(item, 999)
+                UI.Stroke(item, color, math.max(1, px(thickness)), transparency or 0.05)
                 return item
             end
 
@@ -6287,7 +6782,7 @@ end, 6)
             elseif style == "DiamondGrid" then
                 local diamond = part(16, 16, 0, 0, 45, nil, 0, true)
                 diamond.BackgroundTransparency = 1
-                Stroke(diamond, color, math.max(1, px(2)), 0.05)
+                UI.Stroke(diamond, color, math.max(1, px(2)), 0.05)
                 dot(3, 0, 0)
             elseif style == "Brackets" then
                 -- Each arm is offset by half its length so it runs INWARD from the corner. Centring
@@ -6321,7 +6816,7 @@ end, 6)
             elseif style == "SquareDot" then
                 local square = part(18, 18, 0, 0, 0, nil, 2, true)
                 square.BackgroundTransparency = 1
-                Stroke(square, color, math.max(1, px(2)), 0.05)
+                UI.Stroke(square, color, math.max(1, px(2)), 0.05)
                 dot(3, 0, 0)
             elseif style == "MinimalPlus" then
                 line(2, 18, 0, 0)
@@ -6388,18 +6883,18 @@ end, 6)
         -- the screen and so lines up once the inset is subtracted.
         local GuiSvc = game:GetService("GuiService")
         local function cursorSpot()
-            local loc = UIS:GetMouseLocation()
+            local loc = Svc.UIS:GetMouseLocation()
             local inset = GuiSvc:GetGuiInset()
             return loc.X - inset.X, loc.Y - inset.Y
         end
 
         S._RefreshCustomCursor = function()
-            local mouse = Players.LocalPlayer:GetMouse()
+            local mouse = Svc.Players.LocalPlayer:GetMouse()
             if not S.CustomCrosshair then
                 if cursorGui.Visible or vectorCursorGui.Visible then
                     cursorGui.Visible = false
                     vectorCursorGui.Visible = false
-                    UIS.MouseIconEnabled = true
+                    Svc.UIS.MouseIconEnabled = true
                 end
                 lastVectorKey = ""
                 -- Undo any icon a previous build left behind.
@@ -6440,33 +6935,47 @@ end, 6)
                 cursorGui.Position = UDim2.fromOffset(cx, cy)
                 cursorGui.Visible = true
             end
-            UIS.MouseIconEnabled = menuOpen
+            Svc.UIS.MouseIconEnabled = menuOpen
         end
-        tc(RunService.RenderStepped:Connect(S._RefreshCustomCursor))
+        tc(Svc.RunService.RenderStepped:Connect(S._RefreshCustomCursor))
 
         SG.Destroying:Connect(function()
-            pcall(function() UIS.MouseIconEnabled = true end)
+            pcall(function() Svc.UIS.MouseIconEnabled = true end)
         end)
     end
 
-    local sec1 = mkSection(Pages.Visuals, "ESP", 1)
-    mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 1)
-    mkToggle(sec1, "Name ESP", false, function(v) S.NameESP = v end, 2)
-    mkToggle(sec1, "Distance ESP", false, function(v) S.DistanceESP = v end, 3)
-    mkToggle(sec1, "Role ESP", false, function(v) S.RoleESP = v end, 4)
-    mkToggle(sec1, "Box ESP", false, function(v) S.BoxESP = v end, 5)
-    mkCycle(sec1, "Box Style", {"Full", "Corner", "3D"}, "Full", function(v) S.BoxStyle = v end, 6)
-    mkCycle(sec1, "Box Fill", {"None", "Solid", "Gradient", "Rainbow"}, "None", function(v) S.BoxFillStyle = v end, 7)
-    mkToggle(sec1, "Tracers", false, function(v) S.TracerESP = v end, 8)
-    mkToggle(sec1, "Head Dot", false, function(v) S.HeadDot = v end, 9)
-    mkCycle(sec1, "Tracer Origin", {"Bottom", "Center", "Top", "Mouse"}, "Bottom", function(v) S.TracerOrigin = v end, 10)
+    local sec1 = UI.mkSection(Pages.Visuals, "ESP", 1)
+    UI.mkToggle(sec1, "Role Chams", false, function(v) S.RoleChams = v end, 1)
+    UI.mkToggle(sec1, "Name ESP", false, function(v) S.NameESP = v end, 2)
+    UI.mkToggle(sec1, "Distance ESP", false, function(v) S.DistanceESP = v end, 3)
+    UI.mkToggle(sec1, "Role ESP", false, function(v) S.RoleESP = v end, 4)
+    UI.mkToggle(sec1, "Box ESP", false, function(v) S.BoxESP = v end, 5)
+    UI.mkCycle(sec1, "Box Style", {"Full", "Corner", "3D"}, "Full", function(v) S.BoxStyle = v end, 6)
+    UI.mkCycle(sec1, "Box Fill", {"None", "Solid", "Gradient", "Rainbow"}, "None", function(v) S.BoxFillStyle = v end, 7)
+    UI.mkToggle(sec1, "Tracers", false, function(v) S.TracerESP = v end, 8)
+    UI.mkToggle(sec1, "Head Dot", false, function(v) S.HeadDot = v end, 9)
+    UI.mkCycle(sec1, "Tracer Origin", {"Bottom", "Center", "Top", "Mouse"}, "Bottom", function(v) S.TracerOrigin = v end, 10)
     mkSlider(sec1, "ESP Max Dist", 100, 2000, 1000, function(v) S.ESPMaxDist = v end, 11)
 
-    local sec5 = mkSection(Pages.Visuals, "Alerts", 4)
-    mkToggle(sec5, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 1)
+    local sec5 = UI.mkSection(Pages.Visuals, "Alerts", 4)
+    UI.mkToggle(sec5, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 1)
+
+    -- ---- Item chams ----
+    -- Gun Chams is the dropped gun only -- the pickup lying on the floor, which is the one worth
+    -- finding across a map. Held Gun Chams is the separate case of a gun already in someone's hand.
+    local secItemChams = UI.mkSection(Pages.Visuals, "Item Chams", 4.5)
+    UI.mkToggle(secItemChams, "Gun Chams (dropped)", false, function(v) S.GunDropChams = v end, 1)
+    UI.mkToggle(secItemChams, "Held Gun Chams", false, function(v) S.GunHeldChams = v end, 2)
+    UI.mkCycle(secItemChams, "Chams Mode",
+        { "Outline", "Highlight", "Solid", "Fill", "Both", "ForceField", "Neon", "Glass", "Maze", "Mirror" },
+        "Outline", function(v) S.ItemChamsMode = v end, 3)
+    UI.mkCycle(secItemChams, "Chams Colour",
+        { "White", "Black", "Pink", "Magenta", "Red", "Green", "Blue", "Yellow" },
+        "White", function(v) S.ItemChamsColor = v end, 4)
+    UI.mkToggle(secItemChams, "Chams Rainbow", false, function(v) S.ItemChamsRainbow = v end, 5)
 
 
-    RunService.RenderStepped:Connect(function()
+    Svc.RunService.RenderStepped:Connect(function()
         if S.StretchEnabled then
             local cam = workspace.CurrentCamera
             if cam then
@@ -6476,10 +6985,10 @@ end, 6)
         end
     end)
 
-    local secFx = mkSection(Pages.Visuals, "Color & Stretch", 7)
+    local secFx = UI.mkSection(Pages.Visuals, "Color & Stretch", 7)
     mkSlider(secFx, "Saturation", -100, 100, 0, function(v) S.Saturation = v end, 1)
     mkSlider(secFx, "Contrast", -100, 100, 0, function(v) S.Contrast = v end, 2)
-    mkToggle(secFx, "Stretch Resolution", false, function(v) S.StretchEnabled = v end, 3)
+    UI.mkToggle(secFx, "Stretch Resolution", false, function(v) S.StretchEnabled = v end, 3)
     mkSlider(secFx, "Stretch Amount", 10, 100, 75, function(v) S.StretchAmount = v / 100 end, 4)
     -- Camera FOV control removed.
 
@@ -6487,11 +6996,12 @@ end, 6)
 
 
 
-    local secShaders = mkSection(Pages.Visuals, "Shader Presets", 11)
+    local secShaders = UI.mkSection(Pages.Visuals, "Shader Presets", 11)
     local SHADER_LIST = {
-        "RTX Low", "RTX Medium", "RTX High", "RTX Ultra", "Night Shaders", "Pink Shaders",
-        "Cinematic", "Golden Hour", "Arctic", "Neon", "Noir",
-        "Clean HDR", "Performance", "Vibrant", "Retro Film",
+        "RTX Low", "RTX Medium", "RTX High", "RTX Ultra",
+        "Ray Trace", "Ray Trace Ultra", "Soft Blur", "Tilt Shift", "Dreamy", "Midnight",
+        "Night Shaders", "Pink Shaders", "Cinematic", "Golden Hour", "Arctic", "Neon", "Noir",
+        "Clean HDR", "Performance", "Vibrant", "Retro Film", "Custom",
     }
     local shaderToggles = {}
     local function clearOtherToggles(exceptName)
@@ -6503,7 +7013,7 @@ end, 6)
         end
     end
     for i, nm in ipairs(SHADER_LIST) do
-        shaderToggles[nm] = mkToggle(secShaders, nm, false, function(v)
+        shaderToggles[nm] = UI.mkToggle(secShaders, nm, false, function(v)
             if v then
                 clearOtherToggles(nm)
                 applyShader(nm)
@@ -6512,195 +7022,43 @@ end, 6)
             end
         end, i)
     end
-    mkAction(secShaders, "Disable Shaders", function()
+    UI.mkAction(secShaders, "Disable Shaders", function()
         clearOtherToggles(nil)
         applyShader("None")
         Notify("Shaders", "All shaders disabled", 2)
     end, #SHADER_LIST + 1)
 
-    local secKnifeEffects = mkSection(Pages.Visuals, "Knife Effects", 13)
-    mkToggle(secKnifeEffects, "Unlock All Knife Effects (Visual)", false, function(v)
-        S.UnlockAllKnifeEffects = v
-        -- Off the caller's thread on purpose. Refreshing the catalog requires MM2's own ItemModule
-        -- and Database.Sync, and requiring a game module from our thread leaves that thread unable
-        -- to touch the hub's GUI afterwards ("cannot access 'Instance'"). The boot config restore
-        -- applies every control from ONE thread, so when this control's turn came it poisoned the
-        -- rest of the run: measured, controls 1-52 applied cleanly and 53 onwards -- this one --
-        -- all failed, which is why ~14 toggles booted drawn opposite to their value and ate the
-        -- first click. Spawning keeps the damage inside a throwaway thread.
-        if S._RefreshKnifeEffectCatalog then task.spawn(S._RefreshKnifeEffectCatalog) end
-    end, 1)
-
-    -- ---- Knife trail: styles and colours ----
-    -- The unlock above only reveals the game's own effects, and they are whatever the game ships.
-    -- This is a separate, purely local trail drawn on the knife handle, so it works on every knife
-    -- including the default one and needs nothing unlocked.
-    do
-        -- Its own palette. Borrowing S._ChamColorMap looked tidy but that table only defines ten
-        -- names -- Crimson, Orange, Gold, Lime, Mint, Teal, Sky, Indigo and Lavender are not in it --
-        -- so nine of the twenty picks silently fell through to the same fallback. That fallback is a
-        -- teal, which is exactly the "why is it green" every time.
-        local FX_COLORS = {
-            Cyan = Color3.fromRGB(80, 220, 230),   White = Color3.fromRGB(245, 245, 245),
-            Red = Color3.fromRGB(255, 60, 60),     Crimson = Color3.fromRGB(180, 25, 45),
-            Pink = Color3.fromRGB(255, 120, 200),  Magenta = Color3.fromRGB(255, 60, 170),
-            Orange = Color3.fromRGB(255, 140, 40), Gold = Color3.fromRGB(255, 200, 60),
-            Yellow = Color3.fromRGB(255, 235, 90), Lime = Color3.fromRGB(170, 255, 60),
-            Green = Color3.fromRGB(60, 210, 90),   Mint = Color3.fromRGB(140, 255, 200),
-            Teal = Color3.fromRGB(40, 190, 180),   Sky = Color3.fromRGB(120, 200, 255),
-            Blue = Color3.fromRGB(70, 140, 255),   Indigo = Color3.fromRGB(90, 80, 230),
-            Purple = Color3.fromRGB(180, 120, 255), Lavender = Color3.fromRGB(210, 180, 255),
-            Black = Color3.fromRGB(20, 20, 20),
-        }
-        local KNIFE_FX_COLORS = {
-            "Rainbow", "Cyan", "White", "Red", "Crimson", "Pink", "Magenta", "Orange",
-            "Gold", "Yellow", "Lime", "Green", "Mint", "Teal", "Sky", "Blue",
-            "Indigo", "Purple", "Lavender", "Black",
-        }
-        local KNIFE_FX_STYLES = {
-            "Trail", "Neon", "Wide", "Ghost", "Sparks", "Flame", "Comet", "Ribbon", "Aura", "Smoke",
-        }
-        local trail, a0, a1, emitter
-
-        local function fxColor()
-            if S.KnifeFXColor == "Rainbow" then
-                return Color3.fromHSV((tick() * 0.4) % 1, 0.9, 1)
-            end
-            return FX_COLORS[S.KnifeFXColor] or FX_COLORS.Cyan
-        end
-
-        local function clearFX()
-            for _, o in ipairs({ trail, emitter, a0, a1 }) do
-                if o then pcall(function() o:Destroy() end) end
-            end
-            trail, emitter, a0, a1 = nil, nil, nil, nil
-        end
-
-        local function heldKnife()
-            local char = LP.Character
-            if not char then return nil end
-            for _, t in ipairs(char:GetChildren()) do
-                if t:IsA("Tool") and t:FindFirstChild("Handle") then return t.Handle end
-            end
-        end
-
-        local function applyFX()
-            local handle = heldKnife()
-            if not S.KnifeFX or not handle then clearFX() return end
-            if not trail or not trail.Parent or a0.Parent ~= handle then
-                clearFX()
-                a0 = Instance.new("Attachment")
-                a0.Position = Vector3.new(0, handle.Size.Y / 2, 0)
-                a0.Parent = handle
-                a1 = Instance.new("Attachment")
-                a1.Position = Vector3.new(0, -handle.Size.Y / 2, 0)
-                a1.Parent = handle
-                trail = Instance.new("Trail")
-                trail.Attachment0 = a0
-                trail.Attachment1 = a1
-                trail.Parent = handle
-                pcall(function() own(trail) end)
-            end
-            local style = S.KnifeFXStyle or "Trail"
-            local col = fxColor()
-
-            -- Each style is a distinct combination, not the same trail with a slightly different
-            -- number. The first version only nudged lifetime and light emission, which is why they
-            -- all looked the same.
-            --   width  : how thick the ribbon starts
-            --   taper  : width at the tail (1 = parallel-sided ribbon, 0 = pointed)
-            --   life   : how long the streak hangs in the air
-            --   light  : self-illumination
-            --   alpha  : head transparency
-            --   tex    : streak texture
-            --   parts  : particle rate, 0 for none
-            local P = {
-                Trail  = { width = 1.0, taper = 0, life = 0.45, light = 0.2, alpha = 0.10, tex = "",       parts = 0 },
-                Neon   = { width = 1.2, taper = 0, life = 0.55, light = 1.0, alpha = 0.00, tex = "",       parts = 0 },
-                Wide   = { width = 2.8, taper = 0, life = 0.50, light = 0.4, alpha = 0.15, tex = "",       parts = 0 },
-                Ghost  = { width = 1.6, taper = 0, life = 1.10, light = 0.0, alpha = 0.65, tex = "",       parts = 0 },
-                Sparks = { width = 0.8, taper = 0, life = 0.35, light = 0.9, alpha = 0.20, tex = "sparkle", parts = 90 },
-                Flame  = { width = 1.4, taper = 0, life = 0.40, light = 1.0, alpha = 0.05, tex = "",       parts = 130 },
-                Comet  = { width = 1.8, taper = 0, life = 1.80, light = 0.8, alpha = 0.00, tex = "",       parts = 45 },
-                Ribbon = { width = 1.0, taper = 1, life = 0.90, light = 0.1, alpha = 0.10, tex = "",       parts = 0 },
-                Aura   = { width = 3.6, taper = 1, life = 0.25, light = 0.7, alpha = 0.55, tex = "",       parts = 60 },
-                Smoke  = { width = 2.2, taper = 1, life = 1.40, light = 0.0, alpha = 0.70, tex = "smoke",  parts = 35 },
-            }
-            local p = P[style] or P.Trail
-
-            trail.Color = ColorSequence.new(col)
-            trail.Lifetime = p.life
-            trail.WidthScale = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, p.width),
-                NumberSequenceKeypoint.new(1, p.taper),
-            })
-            trail.LightEmission = p.light
-            trail.LightInfluence = (style == "Ghost" or style == "Smoke") and 1 or 0
-            trail.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, p.alpha),
-                NumberSequenceKeypoint.new(1, 1),
-            })
-            trail.Texture = (p.tex == "sparkle" and "rbxasset://textures/particles/sparkles_main.dds")
-                or (p.tex == "smoke" and "rbxasset://textures/particles/smoke_main.dds")
-                or ""
-            trail.FaceCamera = style ~= "Ribbon"
-
-            -- Particles. A Trail is a stretched ribbon and can never look granular on its own, which
-            -- is why "no particles" was a fair complaint -- there were none to have.
-            if p.parts > 0 then
-                if not emitter or not emitter.Parent then
-                    emitter = Instance.new("ParticleEmitter")
-                    emitter.Parent = handle
-                    pcall(function() own(emitter) end)
-                end
-                emitter.Enabled = true
-                emitter.Rate = p.parts
-                emitter.Color = ColorSequence.new(col)
-                emitter.Lifetime = NumberRange.new(0.25, p.life)
-                emitter.Speed = NumberRange.new(style == "Flame" and 1 or 3, style == "Flame" and 4 or 9)
-                emitter.SpreadAngle = Vector2.new(style == "Aura" and 180 or 35, style == "Aura" and 180 or 35)
-                emitter.Size = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, style == "Smoke" and 0.9 or 0.35),
-                    NumberSequenceKeypoint.new(1, style == "Smoke" and 1.8 or 0),
-                })
-                emitter.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, style == "Smoke" and 0.5 or 0.1),
-                    NumberSequenceKeypoint.new(1, 1),
-                })
-                emitter.LightEmission = p.light
-                emitter.Texture = (p.tex == "smoke" and "rbxasset://textures/particles/smoke_main.dds")
-                    or "rbxasset://textures/particles/sparkles_main.dds"
-                emitter.Acceleration = Vector3.new(0, style == "Smoke" and 4 or -8, 0)
-            elseif emitter then
-                emitter.Enabled = false
-            end
-        end
-        S._ApplyKnifeFX = applyFX
-
-        -- 4 Hz, not per frame. The Trail follows its attachments on the engine side, so this only has
-        -- to notice a new knife or a changed setting; always-on per-frame work is what made this hub
-        -- stutter before. Rainbow is the one case that needs a repaint, and only while it is picked.
-        task.spawn(function()
-            while SG and SG.Parent do
-                pcall(applyFX)
-                task.wait(S.KnifeFX and S.KnifeFXColor == "Rainbow" and 0.06 or 0.25)
-            end
-            clearFX()
-        end)
-
-        mkToggle(secKnifeEffects, "Knife Trail FX", false, function(v)
-            S.KnifeFX = v
-            pcall(applyFX)
-        end, 2)
-        mkCycle(secKnifeEffects, "Trail Style", KNIFE_FX_STYLES, "Trail", function(v)
-            S.KnifeFXStyle = v
-            pcall(applyFX)
-        end, 3)
-        mkCycle(secKnifeEffects, "Trail Color", KNIFE_FX_COLORS, "Rainbow", function(v)
-            S.KnifeFXColor = v
-            pcall(applyFX)
-        end, 4)
+    -- ---- Custom shader pack ----
+    -- Own section so the preset list stays a plain list. Every knob writes a scalar on S, which is
+    -- what buildConfig already persists, so a built pack survives relaunches with no extra plumbing.
+    -- Re-applying only when Custom is the active shader keeps a slider drag from stealing a preset.
+    local secShCustom = UI.mkSection(Pages.Visuals, "Custom Shader Pack", 11.5)
+    if S._RegisterVisualsShaderSection then pcall(S._RegisterVisualsShaderSection, secShCustom) end
+    local function reShade()
+        if S.ActiveShader == "Custom" then applyShader("Custom") end
     end
+    mkSlider(secShCustom, "Time of Day (x0.1h)", 0, 240, 140, function(v) S.ShTime = v; reShade() end, 1)
+    mkSlider(secShCustom, "Brightness (%)", 0, 400, 200, function(v) S.ShBrightness = v; reShade() end, 2)
+    mkSlider(secShCustom, "Ambient", 0, 255, 96, function(v) S.ShAmbient = v; reShade() end, 3)
+    mkSlider(secShCustom, "Outdoor Ambient", 0, 255, 140, function(v) S.ShOutdoor = v; reShade() end, 4)
+    mkSlider(secShCustom, "Exposure (%)", -50, 50, 0, function(v) S.ShExposure = v; reShade() end, 5)
+    mkSlider(secShCustom, "Blur", 0, 40, 0, function(v) S.ShBlur = v; reShade() end, 6)
+    mkSlider(secShCustom, "Bloom (%)", 0, 200, 45, function(v) S.ShBloom = v; reShade() end, 7)
+    mkSlider(secShCustom, "Bloom Size", 4, 56, 24, function(v) S.ShBloomSize = v; reShade() end, 8)
+    mkSlider(secShCustom, "Bloom Threshold (%)", 20, 300, 150, function(v) S.ShBloomThresh = v; reShade() end, 9)
+    mkSlider(secShCustom, "Contrast (%)", -50, 100, 10, function(v) S.ShContrast = v; reShade() end, 10)
+    mkSlider(secShCustom, "Saturation (%)", -100, 150, 10, function(v) S.ShSaturation = v; reShade() end, 11)
+    mkSlider(secShCustom, "Colour Brightness (%)", -30, 30, 0, function(v) S.ShCCBright = v; reShade() end, 12)
+    UI.mkToggle(secShCustom, "Global Shadows", true, function(v) S.ShShadows = v; reShade() end, 13)
+    UI.mkAction(secShCustom, "Apply Custom Pack", function()
+        clearOtherToggles("Custom")
+        if shaderToggles.Custom then
+            shaderToggles.Custom.state = true
+            shaderToggles.Custom.updateVisuals()
+        end
+        applyShader("Custom")
+        Notify("Shaders", "Custom pack applied", 2)
+    end, 14)
 
     -- Dual Wield: removed
 
@@ -6724,10 +7082,10 @@ end, 6)
         local isEnvironment = activeVisualsSubTab == "Environment"
         local isShaders = activeVisualsSubTab == "Shaders"
         local isCustoms = activeVisualsSubTab == "Customs"
-        styleSubTabActive(espBtn, espStroke, isESP)
-        styleSubTabActive(envBtn, envStroke, isEnvironment)
-        styleSubTabActive(shaderBtn, shaderStroke, isShaders)
-        styleSubTabActive(customBtn, customStroke, isCustoms)
+        UI.styleSubTabActive(espBtn, espStroke, isESP)
+        UI.styleSubTabActive(envBtn, envStroke, isEnvironment)
+        UI.styleSubTabActive(shaderBtn, shaderStroke, isShaders)
+        UI.styleSubTabActive(customBtn, customStroke, isCustoms)
 
         -- select("#", ...) rather than ipairs, and that is the whole fix for "cards repeat under
         -- every subtab". Removed features left nil holes in these lists -- sec2 and sec4 no longer
@@ -6740,10 +7098,10 @@ end, 6)
                 if section and section.Parent then section.Parent.Visible = vis end
             end
         end
-        setVisible(isESP, sec1, sec2, sec5)
+        setVisible(isESP, sec1, sec2, sec5, secItemChams)
         setVisible(isEnvironment, sec4, secFx)
-        setVisible(isShaders, secShaders, secHandShaders)
-        setVisible(isCustoms, secCustoms, secKnifeEffects)
+        setVisible(isShaders, secShaders, secHandShaders, secShCustom)
+        setVisible(isCustoms, secCustoms)
         for _, section in ipairs(S._CustomsSections) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
         end
@@ -6776,9 +7134,9 @@ end, 6)
         updateVisualsSubTabs()
     end)
     updateVisualsSubTabs()
-end
+end)()
 
-do
+;(function()
     local combatSubTabBar = Instance.new("Frame")
     combatSubTabBar.Name = "SubTabBar"
     combatSubTabBar.LayoutOrder = 0
@@ -6801,37 +7159,39 @@ do
     local murdererBtn = Instance.new("TextButton")
     local survivorsBtn = Instance.new("TextButton")
 
-    local sheriffStroke = mkSubTabBtn(combatSubTabBar, sheriffBtn, "Sheriff", 1, 1 / 3, -6)
-    local murdererStroke = mkSubTabBtn(combatSubTabBar, murdererBtn, "Murderer", 2, 1 / 3, -6)
-    local survivorsStroke = mkSubTabBtn(combatSubTabBar, survivorsBtn, "Survivors", 3, 1 / 3, -6)
+    local sheriffStroke = UI.mkSubTabBtn(combatSubTabBar, sheriffBtn, "Sheriff", 1, 1 / 3, -6)
+    local murdererStroke = UI.mkSubTabBtn(combatSubTabBar, murdererBtn, "Murderer", 2, 1 / 3, -6)
+    local survivorsStroke = UI.mkSubTabBtn(combatSubTabBar, survivorsBtn, "Survivors", 3, 1 / 3, -6)
 
-    local secSheriffAim = mkSection(Pages.Combat, "Sheriff Aim", 1)
+    local secSheriffAim = UI.mkSection(Pages.Combat, "Sheriff Aim", 1)
     secSheriffAim.Parent:SetAttribute("ConfigSection", "Silent Aim")
-    mkToggle(secSheriffAim, "Silent Aim", false, function(v) S.SheriffSilentAim = v end, 1, "Sheriff")
-    mkToggle(secSheriffAim, "Piercing Bullet", false, function(v) S.SheriffSilentAimPiercing = v end, 2)
-    mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
+    UI.mkToggle(secSheriffAim, "Silent Aim", false, function(v) S.SheriffSilentAim = v end, 1, "Sheriff")
+    UI.mkToggle(secSheriffAim, "Piercing Bullet", false, function(v) S.SheriffSilentAimPiercing = v end, 2)
+    UI.mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
+    UI.mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 3.1)
+    mkSlider(secSheriffAim, "Anti-Desync Samples", 2, 32, 12, function(v) S.AntiDesyncSamples = v end, 3.2)
 
-    local secKnifeAim = mkSection(Pages.Combat, "Knife Aim", 2)
+    local secKnifeAim = UI.mkSection(Pages.Combat, "Knife Aim", 2)
     secKnifeAim.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
-    mkToggle(secKnifeAim, "Silent Aim", false, function(v) S.KnifeSilentAim = v end, 1, "Knife Silent Aim")
-    mkToggle(secKnifeAim, "Wall Check", false, function(v) S.KnifeSilentAimWallCheck = v end, 2)
-    mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
+    UI.mkToggle(secKnifeAim, "Silent Aim", false, function(v) S.KnifeSilentAim = v end, 1, "Knife Silent Aim")
+    UI.mkToggle(secKnifeAim, "Wall Check", false, function(v) S.KnifeSilentAimWallCheck = v end, 2)
+    UI.mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
     -- Prediction controls. "Perfect" already folds in velocity, acceleration and gravity; "Adaptive"
     -- adds a ping-jitter margin on top, which is what actually costs hits when the connection is
     -- uneven rather than merely slow. Amount is a percentage of the computed lead, so 100 means
     -- "trust the model", lower means "aim shorter".
-    mkCycle(secKnifeAim, "Prediction", { "Off", "Standard", "Lag Comp", "Perfect", "Adaptive" },
+    UI.mkCycle(secKnifeAim, "Prediction", { "Off", "Standard", "Lag Comp", "Perfect", "Adaptive" },
         "Perfect", function(v) S.KnifePredictMode = v end, 5)
     mkSlider(secKnifeAim, "Prediction Amount (%)", 0, 200, 100, function(v) S.KnifePredictAmount = v end, 6)
     mkSlider(secKnifeAim, "Ping Offset (ms)", -100, 200, 0, function(v) S.KnifePingOffset = v end, 7)
 
-    local secKnifeThrow = mkSection(Pages.Combat, "Knife Throw", 3)
+    local secKnifeThrow = UI.mkSection(Pages.Combat, "Knife Throw", 3)
     secKnifeThrow.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
-    mkToggle(secKnifeThrow, "Fast Throw", false, function(v)
+    UI.mkToggle(secKnifeThrow, "Fast Throw", false, function(v)
         S.FastThrow = v
         pcall(function() if S._ReapplyThrowSpeed then S._ReapplyThrowSpeed() end end)
     end, 1, "Fast Knife Throw")
-    mkToggle(secKnifeThrow, "No Throw Animation", false, function(v)
+    UI.mkToggle(secKnifeThrow, "No Throw Animation", false, function(v)
         S.NoKnifeAnim = v
         pcall(function() if S._ReapplyThrowSpeed then S._ReapplyThrowSpeed() end end)
     end, 2, "No Knife Anim")
@@ -6846,34 +7206,34 @@ do
         pcall(function() if S._ReapplyKnifeFlightSpeed then S._ReapplyKnifeFlightSpeed() end end)
     end, 4)
 
-    local secMurder = mkSection(Pages.Combat, "Kill Suite", 4)
+    local secMurder = UI.mkSection(Pages.Combat, "Kill Suite", 4)
     secMurder.Parent:SetAttribute("ConfigSection", "Murderer Kill Suite")
-    mkToggle(secMurder, "Auto Kill Sheriff / Hero", false, function(v) S.AutoKillSheriff = v end, 1)
-    mkToggle(secMurder, "Auto Kill Nearest", false, function(v) S.AutoKillNearest = v end, 2)
-    mkToggle(secMurder, "Kill Aura", false, function(v) S.KillAura = v end, 3)
+    UI.mkToggle(secMurder, "Auto Kill Sheriff / Hero", false, function(v) S.AutoKillSheriff = v end, 1)
+    UI.mkToggle(secMurder, "Auto Kill Nearest", false, function(v) S.AutoKillNearest = v end, 2)
+    UI.mkToggle(secMurder, "Kill Aura", false, function(v) S.KillAura = v end, 3)
     mkSlider(secMurder, "Kill Aura Range", 5, 60, 18, function(v) S.KillAuraRange = v end, 4)
-    mkToggle(secMurder, "Click to Kill", false, function(v) S.ClickKill = v end, 5)
-    mkAction(secMurder, "Kill Nearest", function()
+    UI.mkToggle(secMurder, "Click to Kill", false, function(v) S.ClickKill = v end, 5)
+    UI.mkAction(secMurder, "Kill Nearest", function()
         local n = S._MurdererNearest and S._MurdererNearest()
         if n and S._MurdererKill then
             if S._MurdererKill(n) then Notify("Murderer", "Killed " .. n.Name, 2)
             else Notify("Murderer", "Hold the Knife first (be the Murderer)", 2) end
         else Notify("Murderer", "No target", 2) end
     end, 6)
-    mkAction(secMurder, "Kill All", function()
+    UI.mkAction(secMurder, "Kill All", function()
         if S._MurdererKillAll then S._MurdererKillAll() else Notify("Murderer", "Not ready", 2) end
     end, 7)
 
-    local secSurvival = mkSection(Pages.Combat, "Gun Recovery & Evade", 5)
+    local secSurvival = UI.mkSection(Pages.Combat, "Gun Recovery & Evade", 5)
     secSurvival.Parent:SetAttribute("ConfigSection", "Innocent Survival")
-    mkToggle(secSurvival, "Auto Grab Gun", false, function(v)
+    UI.mkToggle(secSurvival, "Auto Grab Gun", false, function(v)
         S.AutoGrabGun = v
         if v and S.GrabGunNow then S.GrabGunNow(true) end
     end, 1)
-    mkAction(secSurvival, "Grab Gun Now", function()
+    UI.mkAction(secSurvival, "Grab Gun Now", function()
         if S.GrabGunNow then S.GrabGunNow(false) end
     end, 2)
-    mkToggle(secSurvival, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 3)
+    UI.mkToggle(secSurvival, "Gun Drop Notify", false, function(v) S.GunNotify = v end, 3)
 
     local activeSubTab = "Sheriff"
     local function updateSubTabs()
@@ -6881,9 +7241,9 @@ do
         local isMurderer = activeSubTab == "Murderer"
         local isSurvivors = activeSubTab == "Survivors"
 
-        styleSubTabActive(sheriffBtn, sheriffStroke, isSheriff)
-        styleSubTabActive(murdererBtn, murdererStroke, isMurderer)
-        styleSubTabActive(survivorsBtn, survivorsStroke, isSurvivors)
+        UI.styleSubTabActive(sheriffBtn, sheriffStroke, isSheriff)
+        UI.styleSubTabActive(murdererBtn, murdererStroke, isMurderer)
+        UI.styleSubTabActive(survivorsBtn, survivorsStroke, isSurvivors)
 
         secSheriffAim.Parent.Visible = isSheriff
         secKnifeAim.Parent.Visible = isMurderer
@@ -6910,14 +7270,14 @@ do
     end)
 
     updateSubTabs()
-end
+end)()
 do
     silentAimTargetChar = function(mode, fovCheck, wallCheck, aimPartName)
         local cam = workspace.CurrentCamera
         if not cam then return nil end
         mode = mode or "Nearest"
         local radius = S.FOVRadius or 360
-        local m = UIS:GetMouseLocation()
+        local m = Svc.UIS:GetMouseLocation()
         local center = Vector2.new(m.X, m.Y)
         local best, bestScore = nil, math.huge
         local rp
@@ -6926,7 +7286,7 @@ do
             rp.FilterType = Enum.RaycastFilterType.Exclude
             rp.FilterDescendantsInstances = { LP.Character }
         end
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character and not isWhitelisted(p) then
                 local hum = p.Character:FindFirstChildOfClass("Humanoid")
                 if not hum or hum.Health <= 0 then continue end
@@ -6996,7 +7356,7 @@ do
         end
         return best
     end
-do
+;(function()
     -- Piercing keeps its server-side point-blank origin, but the game's GunFired beam would otherwise
 -- visibly start beside the target. Wrap the existing beam callback and draw that local beam from the
     -- real GunRaycastAttachment instead. This uses the exact GunFired/CreateBeam path from the dump.
@@ -7045,8 +7405,8 @@ do
             task.wait(0.5)
         end
     end)
-end
-do
+end)()
+;(function()
     -- ===== SILENT AIM — dead simple, rebuilt from scratch off the raw Cobalt FireServer dumps =====
     -- Wire format (verified live from the dumps given): Gun.Shoot:FireServer(originCF, targetCF)
     --   arg 1 = HumanoidRootPart.GunRaycastAttachment.WorldCFrame (the muzzle) — LEFT ALONE
@@ -7056,7 +7416,7 @@ do
     -- no prediction, no lead time, no FOV/wall gating, no clever origin math. Plainest possible
     -- redirect, matching the exact request: "just find the murderer and shoot him."
     local function getMurdererChar()
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character and not isWhitelisted(p) and getRole(p) == "Murderer" then
                 local hum = p.Character:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Health > 0 and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -7077,6 +7437,42 @@ do
         return CFrame.lookAt(hitPos + back, hitPos)
     end
 
+    -- ---- Anti-Desync ----
+    -- A desyncing target displaces its own HumanoidRootPart by a fresh random offset every
+    -- Heartbeat and restores it on the next render step, so what replicates to us -- and to the
+    -- server -- jitters around the real body instead of tracking it. The offsets are drawn fresh
+    -- each frame and are zero-mean, so averaging a short window of replicated samples cancels them
+    -- and converges on the position the target actually occupies. No prediction, no guesswork about
+    -- their offset span: just the mean of what we were already shown.
+    local ADBuf, ADHead, ADName = {}, 0, nil
+    local AD_MAX = 32
+    tc(Svc.RunService.Heartbeat:Connect(function()
+        if not S.SheriffAntiDesync then
+            if ADHead ~= 0 then ADBuf, ADHead, ADName = {}, 0, nil end
+            return
+        end
+        local char = getMurdererChar()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        -- A new target invalidates the window: averaging across two bodies aims between them.
+        if ADName ~= char.Name then ADBuf, ADHead, ADName = {}, 0, char.Name end
+        ADHead = ADHead % AD_MAX + 1
+        ADBuf[ADHead] = hrp.Position
+    end))
+    local function antiDesyncPos(char, fallback)
+        if not (S.SheriffAntiDesync and char and ADName == char.Name) then return fallback end
+        local want = math.clamp(tonumber(S.AntiDesyncSamples) or 12, 2, AD_MAX)
+        local sum, count = Vector3.new(), 0
+        for i = 1, AD_MAX do
+            local v = ADBuf[i]
+            if v then sum += v; count += 1 end
+            if count >= want then break end
+        end
+        -- Too few samples yet: a mean of two frames is noisier than the live position.
+        if count < 3 then return fallback end
+        return sum / count
+    end
+
     local function handleFireServer(self, ...)
     local args = {...}
 
@@ -7085,7 +7481,7 @@ do
         local targetChar = getMurdererChar()
         if not targetChar then return nil end
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-        local pos = hrp.Position
+        local pos = antiDesyncPos(targetChar, hrp.Position)
         if S.SheriffSilentAimPiercing then
             args[1] = piercingOrigin(pos, targetChar)
         end
@@ -7140,9 +7536,9 @@ if hookmetamethod then
     end))
 end
 
-end
+end)()
 
-do
+;(function()
     local MSP = {History = {}, Latency = 0, Jitter = 0}
     S._MSP = MSP
     local function getPing()
@@ -7167,7 +7563,7 @@ do
     -- One frame of knife-chams cleanup after the toggle goes off, so turning it
     -- off still removes the highlights without scanning workspace forever.
     local knifeChamsWasOn = false
-    tc(RunService.Heartbeat:Connect(function()
+    tc(Svc.RunService.Heartbeat:Connect(function()
         -- This history is read ONLY by getPredictedPosition (knife silent aim).
         -- It used to run unconditionally and REPLACE a table per player per frame:
         -- on a full server that is a steady allocation drip straight into the GC,
@@ -7178,7 +7574,7 @@ do
             MSP.Latency = pingMs / 1000
             trackJitter(pingMs)
             local now = tick()
-            for _, p in ipairs(Players:GetPlayers()) do
+            for _, p in ipairs(Svc.Players:GetPlayers()) do
                 local character = p.Character
                 local hrp = character and character:FindFirstChild("HumanoidRootPart")
                 if hrp then
@@ -7285,7 +7681,7 @@ do
         end
         return pos
     end
-end
+end)()
 do
     -- Subtab bar (same pattern as Combat): Movement holds the movement-tweak sections built in this
     -- do-block (plus Movement Tricks, registered later via the bridge below); Targets holds player
@@ -7306,17 +7702,17 @@ do
 
     local moveBtn = Instance.new("TextButton")
     local targetsBtn = Instance.new("TextButton")
-    local moveStroke = mkSubTabBtn(motionSubTabBar, moveBtn, "Movement", 1)
-    local targetsStroke = mkSubTabBtn(motionSubTabBar, targetsBtn, "Targets", 2)
+    local moveStroke = UI.mkSubTabBtn(motionSubTabBar, moveBtn, "Movement", 1)
+    local targetsStroke = UI.mkSubTabBtn(motionSubTabBar, targetsBtn, "Targets", 2)
     local activeMotionSubTab = "Movement"
 
-    local sec1 = mkSection(Pages.Motion, "Speed & Jump", 1)
+    local sec1 = UI.mkSection(Pages.Motion, "Speed & Jump", 1)
     
     mkSlider(sec1, "WalkSpeed", 16, 100, 16, function(v) S.CustomWalkSpeed = v end, 1)
     mkSlider(sec1, "JumpPower", 50, 150, 50, function(v) S.CustomJumpPower = v end, 2)
-    local sec2 = mkSection(Pages.Motion, "Movement", 2)
-    mkToggle(sec2, "No Clip", false, function(v) S.NoClip = v end, 1)
-    mkToggle(sec2, "Fly", false, function(v)
+    local sec2 = UI.mkSection(Pages.Motion, "Movement", 2)
+    UI.mkToggle(sec2, "No Clip", false, function(v) S.NoClip = v end, 1)
+    UI.mkToggle(sec2, "Fly", false, function(v)
         S.Fly = v
         if not v then local c = LP.Character; if c then local hrp = c:FindFirstChild("HumanoidRootPart")
             if hrp then for _, n in ipairs({"FlyBV","FlyBG"}) do local x = hrp:FindFirstChild(n); if x then x:Destroy() end end
@@ -7327,12 +7723,12 @@ do
     mkSlider(sec2, "Fly Speed", 10, 200, 50, function(v) S.FlySpeed = v end, 3)
     -- Walk On Water: removed
 
-    local secMomentum = mkSection(Pages.Motion, "Momentum", 2.5)
+    local secMomentum = UI.mkSection(Pages.Motion, "Momentum", 2.5)
     secMomentum.Parent:SetAttribute("ConfigSection", "Movement")
     -- Pixel Surf: removed
-    mkToggle(secMomentum, "Bhop", false, function(v) S.Bhop = v end, 5)
+    UI.mkToggle(secMomentum, "Bhop", false, function(v) S.Bhop = v end, 5)
     mkSlider(secMomentum, "Bhop Max Speed", 16, 200, 28, function(v) S.BhopMax = v end, 6)
-    mkToggle(secMomentum, "Speed Glitch", false, function(v) S.SpeedGlitch = v end, 7)
+    UI.mkToggle(secMomentum, "Speed Glitch", false, function(v) S.SpeedGlitch = v end, 7)
     mkSlider(secMomentum, "Air Speed", 20, 150, 50, function(v) S.AirSpeed = v end, 8)
     -- Fake Lag: removed
 
@@ -7353,8 +7749,8 @@ do
     local function updateMotionSubTabs()
         local isMove = (activeMotionSubTab == "Movement")
         local isTargets = (activeMotionSubTab == "Targets")
-        styleSubTabActive(moveBtn, moveStroke, isMove)
-        styleSubTabActive(targetsBtn, targetsStroke, isTargets)
+        UI.styleSubTabActive(moveBtn, moveStroke, isMove)
+        UI.styleSubTabActive(targetsBtn, targetsStroke, isTargets)
         if sec1 and sec1.Parent then sec1.Parent.Visible = isMove end
         if sec2 and sec2.Parent then sec2.Parent.Visible = isMove end
         if secMomentum and secMomentum.Parent then secMomentum.Parent.Visible = isMove end
@@ -7378,7 +7774,7 @@ do
     -- connection anchoring the character forever).
     local fakeLagTicks = 0
     task.spawn(function()
-        tc(RunService.Heartbeat:Connect(function()
+        tc(Svc.RunService.Heartbeat:Connect(function()
             if S.FakeLag then
                 local c = LP.Character
                 local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -7422,9 +7818,9 @@ do
     local protectionBtn, utilityBtn = Instance.new("TextButton"), Instance.new("TextButton")
     local musicBtn = Instance.new("TextButton")
     -- Three subtabs now, so each takes a third of the bar.
-    local protectionStroke = mkSubTabBtn(miscSubTabBar, protectionBtn, "Protection", 1, 1/3, -6)
-    local utilityStroke = mkSubTabBtn(miscSubTabBar, utilityBtn, "Utility", 2, 1/3, -6)
-    local musicStroke = mkSubTabBtn(miscSubTabBar, musicBtn, "Music", 3, 1/3, -6)
+    local protectionStroke = UI.mkSubTabBtn(miscSubTabBar, protectionBtn, "Protection", 1, 1/3, -6)
+    local utilityStroke = UI.mkSubTabBtn(miscSubTabBar, utilityBtn, "Utility", 2, 1/3, -6)
+    local musicStroke = UI.mkSubTabBtn(miscSubTabBar, musicBtn, "Music", 3, 1/3, -6)
 
     local miscGroups = { Protection = {}, Utility = {}, Music = {} }
     local activeMiscSubTab = "Protection"
@@ -7433,9 +7829,9 @@ do
         if sec and sec.Parent then sec.Parent.Visible = (activeMiscSubTab == group) end
     end
     local function updateMiscSubTabs()
-        styleSubTabActive(protectionBtn, protectionStroke, activeMiscSubTab == "Protection")
-        styleSubTabActive(utilityBtn, utilityStroke, activeMiscSubTab == "Utility")
-        styleSubTabActive(musicBtn, musicStroke, activeMiscSubTab == "Music")
+        UI.styleSubTabActive(protectionBtn, protectionStroke, activeMiscSubTab == "Protection")
+        UI.styleSubTabActive(utilityBtn, utilityStroke, activeMiscSubTab == "Utility")
+        UI.styleSubTabActive(musicBtn, musicStroke, activeMiscSubTab == "Music")
         for group, secs in pairs(miscGroups) do
             for _, sec in ipairs(secs) do
                 if sec and sec.Parent then sec.Parent.Visible = (activeMiscSubTab == group) end
@@ -7450,9 +7846,9 @@ do
     -- background remains gray until the first click.
     updateMiscSubTabs()
 
-    local sec3 = mkSection(Pages.Misc, "Camera", 3)
+    local sec3 = UI.mkSection(Pages.Misc, "Camera", 3)
     S._RegisterMiscSection(sec3, "Protection")
-    mkToggle(sec3, "X-Ray Map", false, function(v) S.XrayOn = v
+    UI.mkToggle(sec3, "X-Ray Map", false, function(v) S.XrayOn = v
         for _, pt in pairs(workspace:GetDescendants()) do if pt:IsA("BasePart") and pt.Name ~= "Baseplate" then
             local pr = pt.Parent; if pr and not pr:FindFirstChild("Humanoid") then
                 if v then if not S.OriginalTransparencies[pt] then S.OriginalTransparencies[pt] = pt.Transparency end; pt.Transparency = 0.7
@@ -7460,17 +7856,17 @@ do
             end
         end end
     end, 1)
-    mkToggle(sec3, "Camera Clip", false, function(v) S.CamClip = v
+    UI.mkToggle(sec3, "Camera Clip", false, function(v) S.CamClip = v
         LP.DevCameraOcclusionMode = v and Enum.DevCameraOcclusionMode.Invisicam or Enum.DevCameraOcclusionMode.Zoom
     end, 2)
-    mkToggle(sec3, "No Camera Limit", false, function(v) S.NoCamLimit = v
+    UI.mkToggle(sec3, "No Camera Limit", false, function(v) S.NoCamLimit = v
         LP.CameraMaxZoomDistance = v and 100000 or _origMaxZoom
     end, 3)
     -- The screen going black on death/respawn is PlayerGui.Fade.Frame: SharedServices.FadeService
     -- tweens that frame's BackgroundTransparency to 0. Force it back to clear whenever it moves,
     -- rather than disabling the ScreenGui, because the game re-enables and re-parents it -- the
     -- property guard survives that, an Enabled=false does not.
-    mkToggle(sec3, "No Blackout", false, function(v)
+    UI.mkToggle(sec3, "No Blackout", false, function(v)
         S.NoBlackout = v
         if not v then return end
         task.spawn(function()
@@ -7483,23 +7879,23 @@ do
                         frame.BackgroundTransparency = 1
                     end
                 end)
-                RunService.RenderStepped:Wait()
+                Svc.RunService.RenderStepped:Wait()
             end
         end)
     end, 4)
-    local sec4 = mkSection(Pages.Misc, "Protection", 4)
+    local sec4 = UI.mkSection(Pages.Misc, "Protection", 4)
     S._RegisterMiscSection(sec4, "Protection")
-    mkToggle(sec4, "Anti-Fling", false, function(v) S.AntiFling = v end, 1)
-    mkToggle(sec4, "Anti-Void", false, function(v) S.AntiVoid = v end, 2)
-    mkToggle(sec4, "Anti-AFK", false, function(v) S.AntiAFK = v end, 3)
-    mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 4)
-    local sec6 = mkSection(Pages.Misc, "Performance", 5)
+    UI.mkToggle(sec4, "Anti-Fling", false, function(v) S.AntiFling = v end, 1)
+    UI.mkToggle(sec4, "Anti-Void", false, function(v) S.AntiVoid = v end, 2)
+    UI.mkToggle(sec4, "Anti-AFK", false, function(v) S.AntiAFK = v end, 3)
+    UI.mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 4)
+    local sec6 = UI.mkSection(Pages.Misc, "Performance", 5)
     S._RegisterMiscSection(sec6, "Protection")
-    mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
+    UI.mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
 
-    local sec5 = mkSection(Pages.Teleport, "Server Actions", 4)
-    mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 2)
-    mkAction(sec5, "Server Hop", function() serverHop() end, 3)
+    local sec5 = UI.mkSection(Pages.Teleport, "Server Actions", 4)
+    UI.mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 2)
+    UI.mkAction(sec5, "Server Hop", function() serverHop() end, 3)
 
 
     -- Custom Goto Player row
@@ -7508,7 +7904,7 @@ do
     row.LayoutOrder = 7
     row.Size = UDim2.new(1, 0, 0, 30)
     row.BackgroundTransparency = 1
-    Corner(row, 6)
+    UI.Corner(row, 6)
     
     local lbl = Instance.new("TextLabel")
     lbl.Parent = row
@@ -7535,9 +7931,9 @@ do
     box.Text = ""
     box.ClearTextOnFocus = false
     box.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(box, 4)
-    Stroke(box, T.Bd2, 1, 0.5)
-    Pad(box, 0, 0, 6, 6)
+    UI.Corner(box, 4)
+    UI.Stroke(box, T.Bd2, 1, 0.5)
+    UI.Pad(box, 0, 0, 6, 6)
     
     local btn = Instance.new("TextButton")
     btn.Parent = row
@@ -7551,21 +7947,21 @@ do
     btn.TextColor3 = T.Tx; pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
     btn.Text = "Go"
     btn.AutoButtonColor = false
-    Corner(btn, 4)
-    Stroke(btn, T.Bd2, 1, 0.5)
+    UI.Corner(btn, 4)
+    UI.Stroke(btn, T.Bd2, 1, 0.5)
     
     btn.MouseEnter:Connect(function()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play()
     end)
     btn.MouseLeave:Connect(function()
-        TweenService.Create(TweenService, btn, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play()
+        Svc.TweenService.Create(Svc.TweenService, btn, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play()
     end)
     
     btn.MouseButton1Click:Connect(function()
         local text = box.Text:lower()
         if text == "" then return end
         local found = nil
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and string.find(p.Name:lower(), text, 1, true) then
                 found = p
                 break
@@ -7589,10 +7985,10 @@ do
             end
         end)
 
-    local secSocial = mkSection(Pages.Misc, "Social & HUD", 8)
+    local secSocial = UI.mkSection(Pages.Misc, "Social & HUD", 8)
     S._RegisterMiscSection(secSocial, "Utility")
-    mkToggle(secSocial, "Auto Say GG", false, function(v) S.AutoGG = v end, 2)
-    mkToggle(secSocial, "Use Custom Phrase", false, function(v) S.UseCustomGG = v end, 3)
+    UI.mkToggle(secSocial, "Auto Say GG", false, function(v) S.AutoGG = v end, 2)
+    UI.mkToggle(secSocial, "Use Custom Phrase", false, function(v) S.UseCustomGG = v end, 3)
     
     local rowGG = Instance.new("Frame")
     rowGG.Parent = secSocial
@@ -7600,7 +7996,7 @@ do
     rowGG.Size = UDim2.new(1, 0, 0, 52)
     rowGG.BackgroundTransparency = 1
     rowGG.ClipsDescendants = true
-    Corner(rowGG, 6)
+    UI.Corner(rowGG, 6)
     
     local lblGG = Instance.new("TextLabel")
     lblGG.Parent = rowGG
@@ -7631,24 +8027,24 @@ do
     boxGG.Text = S.CustomGGText or "GG!"
     boxGG.ClearTextOnFocus = false
     boxGG.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(boxGG, 4)
-    Stroke(boxGG, T.Bd2, 1, 0.5)
-    Pad(boxGG, 0, 0, 6, 6)
+    UI.Corner(boxGG, 4)
+    UI.Stroke(boxGG, T.Bd2, 1, 0.5)
+    UI.Pad(boxGG, 0, 0, 6, 6)
     boxGG:GetPropertyChangedSignal("Text"):Connect(function()
         S.CustomGGText = boxGG.Text
         pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
     end)
-    -- Unlike mkToggle/mkSlider (which auto-register), this raw TextBox never had a ConfigControls
-    -- entry, so buildConfig() never saved it and applyConfig() had nothing to restore it from — the
+    -- Unlike UI.mkToggle/mkSlider (which auto-register), this raw TextBox never had a ConfigControls
+    -- entry, so Cfg.buildConfig() never saved it and applyConfig() had nothing to restore it from — the
     -- toggle for Auto Say GG persisted fine, but the phrase itself reset to "GG!" every launch.
-    local secAIChat = mkSection(Pages.Misc, "AI Chat", 8.5)
+    local secAIChat = UI.mkSection(Pages.Misc, "AI Chat", 8.5)
     S._RegisterMiscSection(secAIChat, "Utility")
     
-    mkToggle(secAIChat, "AI Chat Enabled", false, function(v)
+    UI.mkToggle(secAIChat, "AI Chat Enabled", false, function(v)
         S.AIChatEnabled = v
         pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
     end, 1)
-    mkCycle(secAIChat, "AI Provider", {"DeepSeek", "Groq", "Gemini"}, "DeepSeek", function(v)
+    UI.mkCycle(secAIChat, "AI Provider", {"DeepSeek", "Groq", "Gemini"}, "DeepSeek", function(v)
         S.AIChatProvider = v
     end, 1.5)
 
@@ -7658,7 +8054,7 @@ do
     rowAPI.Size = UDim2.new(1, 0, 0, 52)
     rowAPI.BackgroundTransparency = 1
     rowAPI.ClipsDescendants = true
-    Corner(rowAPI, 6)
+    UI.Corner(rowAPI, 6)
     
     local lblAPI = Instance.new("TextLabel")
     lblAPI.Parent = rowAPI
@@ -7689,9 +8085,9 @@ do
     boxAPI.Text = S.AIChatAPIKey or ""
     boxAPI.ClearTextOnFocus = false
     boxAPI.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(boxAPI, 4)
-    Stroke(boxAPI, T.Bd2, 1, 0.5)
-    Pad(boxAPI, 0, 0, 6, 6)
+    UI.Corner(boxAPI, 4)
+    UI.Stroke(boxAPI, T.Bd2, 1, 0.5)
+    UI.Pad(boxAPI, 0, 0, 6, 6)
     boxAPI:GetPropertyChangedSignal("Text"):Connect(function()
         S.AIChatAPIKey = boxAPI.Text
         pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
@@ -7719,20 +8115,20 @@ do
     aiLiveStatus.TextColor3 = T.Tx2; pcall(function() aiLiveStatus:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
     aiLiveStatus.TextXAlignment = Enum.TextXAlignment.Left
     aiLiveStatus.Text = "AI chat: off"
-    Corner(aiLiveStatus, 6)
-    local aiLiveStatusStroke = Stroke(aiLiveStatus, T.Bd2, 1, 0.55)
+    UI.Corner(aiLiveStatus, 6)
+    local aiLiveStatusStroke = UI.Stroke(aiLiveStatus, T.Bd2, 1, 0.55)
     pcall(function() aiLiveStatusStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-    Pad(aiLiveStatus, 0, 0, 8, 8)
+    UI.Pad(aiLiveStatus, 0, 0, 8, 8)
     S._SetAIChatLiveStatus = function(text)
         if aiLiveStatus and aiLiveStatus.Parent then aiLiveStatus.Text = tostring(text or "") end
     end
 
-    mkCycle(secAIChat, "AI Chat Style", {"Casual", "Troll", "Kawaii Anime", "Nerd", "Chill", "Competitive", "Short & Direct"}, "Casual", function(v)
+    UI.mkCycle(secAIChat, "AI Chat Style", {"Casual", "Troll", "Kawaii Anime", "Nerd", "Chill", "Competitive", "Short & Direct"}, "Casual", function(v)
         S.AIChatPersonality = v
         S.AIChatStyleRevision = (tonumber(S.AIChatStyleRevision) or 0) + 1
         pcall(function() if S._UpdateAIChatLiveStatus then S._UpdateAIChatLiveStatus() end end)
     end, 5)
-    mkAction(secAIChat, "Clear Chat Memory", function()
+    UI.mkAction(secAIChat, "Clear Chat Memory", function()
         pcall(function() if S._ClearAIChatHistory then S._ClearAIChatHistory() end end)
     end, 6)
 
@@ -7816,7 +8212,7 @@ do
                     end
                 end
                 local alive = 0
-                for _, player in ipairs(Players:GetPlayers()) do
+                for _, player in ipairs(Svc.Players:GetPlayers()) do
                     local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 then alive = alive + 1 end
                 end
@@ -8216,7 +8612,7 @@ do
                     captureOwnChatMessage(textMessage.Text)
                     return
                 end
-                local senderPlayer = Players:GetPlayerByUserId(sender.UserId)
+                local senderPlayer = Svc.Players:GetPlayerByUserId(sender.UserId)
                 local senderName = (senderPlayer and senderPlayer.Name) or sender.Name or "Unknown"
                 captureIncomingChatMessage(senderName, textMessage.Text, messageKey)
             end))
@@ -8287,7 +8683,7 @@ do
             end
         end
         local function refreshMutes()
-            for _, r in ipairs({ workspace, SoundService, game:GetService("ReplicatedStorage") }) do
+            for _, r in ipairs({ workspace, Svc.SoundService, game:GetService("ReplicatedStorage") }) do
                 pcall(function()
                     for _, v in ipairs(r:GetDescendants()) do if v:IsA("Sound") then applyMute(v) end end
                 end)
@@ -8307,14 +8703,14 @@ do
             end
         end))
 
-        local secSnd = mkSection(Pages.Misc, "Sound Mutes", 9)
+        local secSnd = UI.mkSection(Pages.Misc, "Sound Mutes", 9)
         S._RegisterMiscSection(secSnd, "Utility")
-        mkToggle(secSnd, "Mute Gun Sound",     false, function(v) S.MuteGun = v;        refreshMutes() end, 1)
-        mkToggle(secSnd, "Mute Reload",        false, function(v) S.MuteReload = v;     refreshMutes() end, 1.5)
-        mkToggle(secSnd, "Mute Coin Sound",    false, function(v) S.MuteCoin = v;       refreshMutes() end, 2)
-        mkToggle(secSnd, "Mute Kill Sound",    false, function(v) S.MuteKill = v;       refreshMutes() end, 3)
-        mkToggle(secSnd, "Mute Kill Effect Sound", false, function(v) S.MuteKillEffect = v; refreshMutes() end, 4)
-        mkToggle(secSnd, "Mute Kill Notify",   false, function(v) S.MuteKillNotify = v; refreshMutes() end, 5)
+        UI.mkToggle(secSnd, "Mute Gun Sound",     false, function(v) S.MuteGun = v;        refreshMutes() end, 1)
+        UI.mkToggle(secSnd, "Mute Reload",        false, function(v) S.MuteReload = v;     refreshMutes() end, 1.5)
+        UI.mkToggle(secSnd, "Mute Coin Sound",    false, function(v) S.MuteCoin = v;       refreshMutes() end, 2)
+        UI.mkToggle(secSnd, "Mute Kill Sound",    false, function(v) S.MuteKill = v;       refreshMutes() end, 3)
+        UI.mkToggle(secSnd, "Mute Kill Effect Sound", false, function(v) S.MuteKillEffect = v; refreshMutes() end, 4)
+        UI.mkToggle(secSnd, "Mute Kill Notify",   false, function(v) S.MuteKillNotify = v; refreshMutes() end, 5)
 
         -- This used to be one very tall card. In the three-column Misc layout it extended below the
         -- content viewport, so split weapon and round audio while retaining the old config namespace.
@@ -8329,7 +8725,7 @@ do
             row.Size = UDim2.new(1, 0, 0, 52)
             row.BackgroundTransparency = 1
             row.ClipsDescendants = true
-            Corner(row, 6)
+            UI.Corner(row, 6)
             
             local lbl = Instance.new("TextLabel")
             lbl.Parent = row
@@ -8360,9 +8756,9 @@ do
             box.Text = getId() or ""
             box.ClearTextOnFocus = false
             box.TextXAlignment = Enum.TextXAlignment.Left
-            Corner(box, 4)
-            Stroke(box, T.Bd2, 1, 0.4)
-            Pad(box, 0, 0, 7, 7)
+            UI.Corner(box, 4)
+            UI.Stroke(box, T.Bd2, 1, 0.4)
+            UI.Pad(box, 0, 0, 7, 7)
             
             box.FocusLost:Connect(function()
                 local t = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
@@ -8371,16 +8767,16 @@ do
             end)
             
             table.insert(ConfigControls, {
-                id = _cfgId(parent, label),
+                id = Cfg._cfgId(parent, label),
                 get = function() return getId() end,
                 set = function(v) setId(tostring(v)); box.Text = tostring(v) end,
             })
             
             row.MouseEnter:Connect(function()
-                TweenService.Create(TweenService, row, TweenInfo.new(0.12), { BackgroundTransparency = 0.8 }):Play()
+                Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.12), { BackgroundTransparency = 0.8 }):Play()
             end)
             row.MouseLeave:Connect(function()
-                TweenService.Create(TweenService, row, TweenInfo.new(0.12), { BackgroundTransparency = 1 }):Play()
+                Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.12), { BackgroundTransparency = 1 }):Play()
             end)
             
             return box
@@ -8405,7 +8801,7 @@ do
         local function mkSoundPresetCycle(parent, label, order, presets, box, setId)
             local names = {}
             for _, p in ipairs(presets) do table.insert(names, p.name) end
-            mkCycle(parent, label, names, names[1], function(name)
+            UI.mkCycle(parent, label, names, names[1], function(name)
                 for _, p in ipairs(presets) do
                     if p.name == name then
                         setId(p.id)
@@ -8420,7 +8816,7 @@ do
     end
 
 end
-do
+;(function()
     -- Subtab bar (same pattern as Combat): Teleport / Autofarm merged into one page.
     local teleportSubTabBar = Instance.new("Frame")
     teleportSubTabBar.Name = "SubTabBar"
@@ -8438,15 +8834,15 @@ do
     local teleportBtn = Instance.new("TextButton")
     local autofarmBtn = Instance.new("TextButton")
 
-    local teleportStroke = mkSubTabBtn(teleportSubTabBar, teleportBtn, "Teleport", 1)
-    local autofarmStroke = mkSubTabBtn(teleportSubTabBar, autofarmBtn, "Autofarm", 2)
+    local teleportStroke = UI.mkSubTabBtn(teleportSubTabBar, teleportBtn, "Teleport", 1)
+    local autofarmStroke = UI.mkSubTabBtn(teleportSubTabBar, autofarmBtn, "Autofarm", 2)
 
     local teleportSections, autofarmSections = {}, {}
     local activeTpSubTab = "Teleport"
     local function updateTpSubTabs()
         local isTeleport = (activeTpSubTab == "Teleport")
-        styleSubTabActive(teleportBtn, teleportStroke, isTeleport)
-        styleSubTabActive(autofarmBtn, autofarmStroke, not isTeleport)
+        UI.styleSubTabActive(teleportBtn, teleportStroke, isTeleport)
+        UI.styleSubTabActive(autofarmBtn, autofarmStroke, not isTeleport)
         for _, s in ipairs(teleportSections) do if s and s.Parent then s.Parent.Visible = isTeleport end end
         for _, s in ipairs(autofarmSections) do if s and s.Parent then s.Parent.Visible = not isTeleport end end
     end
@@ -8463,25 +8859,25 @@ do
     teleportBtn.MouseButton1Click:Connect(function() SFX.Click(); activeTpSubTab = "Teleport"; updateTpSubTabs() end)
     autofarmBtn.MouseButton1Click:Connect(function() SFX.Click(); activeTpSubTab = "Autofarm"; updateTpSubTabs() end)
 
-    local sec1 = mkSection(Pages.Teleport, "Roles", 1)
+    local sec1 = UI.mkSection(Pages.Teleport, "Roles", 1)
     S._RegisterTeleportSection(sec1)
-    mkAction(sec1, "Go to Murderer", function()
-        for _, p in pairs(Players:GetPlayers()) do if p ~= LP and p.Character and getRole(p) == "Murderer" then
+    UI.mkAction(sec1, "Go to Murderer", function()
+        for _, p in pairs(Svc.Players:GetPlayers()) do if p ~= LP and p.Character and getRole(p) == "Murderer" then
             local pr = p.Character:FindFirstChild("HumanoidRootPart"); if pr then
                 local c = LP.Character; if c and c:FindFirstChild("HumanoidRootPart") then
                     S._SafeTeleportSelf(pr.CFrame + Vector3.new(0,0,3)); Notify("Moved","> "..p.Name,2) end; return end end end
         Notify("Notify","Murderer not found",2)
     end, 1)
-    mkAction(sec1, "Go to Sheriff", function()
-        for _, p in pairs(Players:GetPlayers()) do if p ~= LP and p.Character and (getRole(p) == "Sheriff" or getRole(p) == "Hero") then
+    UI.mkAction(sec1, "Go to Sheriff", function()
+        for _, p in pairs(Svc.Players:GetPlayers()) do if p ~= LP and p.Character and (getRole(p) == "Sheriff" or getRole(p) == "Hero") then
             local pr = p.Character:FindFirstChild("HumanoidRootPart"); if pr then
                 local c = LP.Character; if c and c:FindFirstChild("HumanoidRootPart") then
                     S._SafeTeleportSelf(pr.CFrame + Vector3.new(0,0,3)); Notify("Moved","> "..p.Name,2) end; return end end end
         Notify("Notify","Sheriff not found",2)
     end, 2)
-    local sec2 = mkSection(Pages.Teleport, "Location", 2)
+    local sec2 = UI.mkSection(Pages.Teleport, "Location", 2)
     S._RegisterTeleportSection(sec2)
-    mkAction(sec2, "Go to Lobby", function()
+    UI.mkAction(sec2, "Go to Lobby", function()
         local lb = workspace:FindFirstChild("Lobby") or workspace:FindFirstChild("LobbySpawn")
         if lb then local sp = lb:FindFirstChildOfClass("SpawnLocation") or lb:FindFirstChildOfClass("BasePart")
             if sp then local c = LP.Character; if c and c:FindFirstChild("HumanoidRootPart") then
@@ -8491,7 +8887,7 @@ do
                 S._SafeTeleportSelf(v.CFrame + Vector3.new(0,3,0)); Notify("Moved","Spawn",2); return end end end
         Notify("Notify","Lobby not found",2)
     end, 1)
-    mkAction(sec2, "Go to Map", function()
+    UI.mkAction(sec2, "Go to Map", function()
         -- isRoundActive() (the same round-state check already used by Kill Feed/Auto Dodge Knife) is
         -- only true once a real round is underway — i.e. an actual map is loaded. Without this check,
         -- calling this during intermission/lobby found the lobby's OWN big flat floor (the only large
@@ -8514,7 +8910,7 @@ do
                 if not (lobbyModel and v:IsDescendantOf(lobbyModel)) then
                 -- skip parts that belong to player characters
                 local isChar = false
-                for _, p in ipairs(Players:GetPlayers()) do
+                for _, p in ipairs(Svc.Players:GetPlayers()) do
                     if p.Character and v:IsDescendantOf(p.Character) then isChar = true; break end
                 end
                 if not isChar then
@@ -8536,7 +8932,7 @@ do
         end
         -- Strategy 2 (fallback): geometric center of ALL alive players (not LP)
         local sum, count = Vector3.zero, 0
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character then
                 local pr = p.Character:FindFirstChild("HumanoidRootPart")
                 if pr then sum = sum + pr.Position; count = count + 1 end
@@ -8549,8 +8945,8 @@ do
             Notify("Go to Map", "No reference point found", 2)
         end
     end, 2)
-    mkToggle(sec2, "Click TP (press E)", false, function(v) S.ClickTP = v end, 3)
-    local sec3 = mkSection(Pages.Teleport, "Players", 3)
+    UI.mkToggle(sec2, "Click TP (press E)", false, function(v) S.ClickTP = v end, 3)
+    local sec3 = UI.mkSection(Pages.Teleport, "Players", 3)
     S._RegisterTeleportSection(sec3)
     local pScroll = Instance.new("ScrollingFrame")
     pScroll.Name = "PList"
@@ -8563,16 +8959,16 @@ do
     pScroll.ScrollBarThickness = 0
     pScroll.ScrollBarImageColor3 = T.Tx3; pcall(function() pScroll:SetAttribute("ThemeColorRole_ScrollBarImageColor3", "Tx3") end)
     pScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    Corner(pScroll, 8)
-    Stroke(pScroll, T.Bd, 1, 0.4)
+    UI.Corner(pScroll, 8)
+    UI.Stroke(pScroll, T.Bd, 1, 0.4)
     local pLayout = Instance.new("UIListLayout")
     pLayout.Parent = pScroll
     pLayout.SortOrder = Enum.SortOrder.Name
     pLayout.Padding = UDim.new(0, 4)
-    Pad(pScroll, 6, 6, 6, 6)
+    UI.Pad(pScroll, 6, 6, 6, 6)
     local function refreshPL()
         for _, ch in pairs(pScroll:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
-        for _, p in pairs(Players:GetPlayers()) do if p ~= LP then
+        for _, p in pairs(Svc.Players:GetPlayers()) do if p ~= LP then
             local b = Instance.new("TextButton")
             b.Name = p.Name
             b.AutoButtonColor = false
@@ -8584,12 +8980,12 @@ do
             b.Size = UDim2.new(1, 0, 0, 32)
             b.Text = "  " .. p.Name
             b.Parent = pScroll
-            Corner(b, 6)
+            UI.Corner(b, 6)
             b.MouseEnter:Connect(function()
-                TweenService.Create(TweenService, b, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play()
+                Svc.TweenService.Create(Svc.TweenService, b, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play()
             end)
             b.MouseLeave:Connect(function()
-                TweenService.Create(TweenService, b, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play()
+                Svc.TweenService.Create(Svc.TweenService, b, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play()
             end)
             b.MouseButton1Click:Connect(function()
                 if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -8602,18 +8998,18 @@ do
         end end
     end
     refreshPL()
-    tc(Players.PlayerAdded:Connect(function() task.wait(1); refreshPL() end))
-    tc(Players.PlayerRemoving:Connect(function() task.wait(0.5); refreshPL() end))
+    tc(Svc.Players.PlayerAdded:Connect(function() task.wait(1); refreshPL() end))
+    tc(Svc.Players.PlayerRemoving:Connect(function() task.wait(0.5); refreshPL() end))
     updateTpSubTabs()
-end
-do
+end)()
+;(function()
     -- Teleport utilities: waypoint (save/load a position) and a forward blink.
     local savedPos
 
-end
+end)()
 -- ============ TARGETS (merged into Combat > Targets subtab: pick one player for Fun functions) ============
-do
-    local sec1 = mkSection(Pages.Motion, "Manual Target", 4)
+;(function()
+    local sec1 = UI.mkSection(Pages.Motion, "Manual Target", 4)
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(sec1) end
     local info = Instance.new("TextLabel")
     info.Parent = sec1
@@ -8640,9 +9036,9 @@ do
     searchBox.Text = ""
     searchBox.ClearTextOnFocus = false
     searchBox.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(searchBox, 6)
-    Stroke(searchBox, T.Bd2, 1, 0.4)
-    Pad(searchBox, 0, 0, 8, 8)
+    UI.Corner(searchBox, 6)
+    UI.Stroke(searchBox, T.Bd2, 1, 0.4)
+    UI.Pad(searchBox, 0, 0, 8, 8)
     local tScroll = Instance.new("ScrollingFrame")
     tScroll.Parent = sec1
     tScroll.LayoutOrder = 3
@@ -8653,13 +9049,13 @@ do
     tScroll.ScrollBarThickness = 0
     tScroll.ScrollBarImageColor3 = T.Tx3; pcall(function() tScroll:SetAttribute("ThemeColorRole_ScrollBarImageColor3", "Tx3") end)
     tScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    Corner(tScroll, 8)
-    Stroke(tScroll, T.Bd, 1, 0.4)
+    UI.Corner(tScroll, 8)
+    UI.Stroke(tScroll, T.Bd, 1, 0.4)
     local tLayout = Instance.new("UIListLayout")
     tLayout.Parent = tScroll
     tLayout.SortOrder = Enum.SortOrder.LayoutOrder
     tLayout.Padding = UDim.new(0, 4)
-    Pad(tScroll, 6, 6, 6, 6)
+    UI.Pad(tScroll, 6, 6, 6, 6)
     local rowRefreshers = {}
     local searchQ = ""
     local function refreshTargets()
@@ -8687,7 +9083,7 @@ do
             b.Text = "  " .. labelText
             b.TextXAlignment = Enum.TextXAlignment.Left
             b.Parent = tScroll
-            Corner(b, 6)
+            UI.Corner(b, 6)
             -- Role tag on the right (Murderer/Sheriff/Hero/Innocent), coloured by role. Player rows only.
             local roleLbl = Instance.new("TextLabel")
             roleLbl.Name = "RoleTag"
@@ -8753,7 +9149,7 @@ do
             b.MouseEnter:Connect(function()
                 -- Only plain rows get the hover tint; selected (blue) and whitelisted (green) rows keep
                 -- their colour so it doesn't flicker away on hover.
-                if not isSelected() and not isWL() then TweenService.Create(TweenService, b, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play() end
+                if not isSelected() and not isWL() then Svc.TweenService.Create(Svc.TweenService, b, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play() end
             end)
             b.MouseLeave:Connect(function() refreshVis() end)
             b.MouseButton1Click:Connect(function()
@@ -8781,7 +9177,7 @@ do
             table.insert(rowRefreshers, refreshVis)
         end
         mkRow("Auto (role / nearest)", nil, nil)
-        for _, p in pairs(Players:GetPlayers()) do
+        for _, p in pairs(Svc.Players:GetPlayers()) do
             if p ~= LP and (searchQ == "" or string.find(string.lower(p.Name), searchQ, 1, true)) then
                 mkRow(p.Name, p.Name, p)
             end
@@ -8800,8 +9196,8 @@ do
         searchQ = string.lower(searchBox.Text)
         refreshTargets()
     end)
-    tc(Players.PlayerAdded:Connect(function() task.wait(1); refreshTargets() end))
-    tc(Players.PlayerRemoving:Connect(function(p)
+    tc(Svc.Players.PlayerAdded:Connect(function() task.wait(1); refreshTargets() end))
+    tc(Svc.Players.PlayerRemoving:Connect(function(p)
         if S.ManualTargets then S.ManualTargets[p.Name] = nil end
         if S.Whitelist then S.Whitelist[p.Name] = nil end
         task.wait(0.5); refreshTargets()
@@ -8821,7 +9217,7 @@ do
             refreshTargets()
         end,
     })
-end
+end)()
 -- ============ FUN MODULE (swim / walltp / bang / orbit / freecam / invisible / etc.) ============
 -- Wrapped in a do-block so its ~35 locals free up after (Luau has a 200-local limit
 -- per function); toggle callbacks keep the functions alive via upvalue capture.
@@ -8845,7 +9241,7 @@ local function funTarget()
     local sel = S.ManualTargets
     local picking = next(sel) ~= nil
     local best, bestD
-    for _, p in pairs(Players:GetPlayers()) do
+    for _, p in pairs(Svc.Players:GetPlayers()) do
         if p ~= LP and p.Character and (not picking or sel[p.Name]) then
             local r = getRoot(p.Character)
             local h = p.Character:FindFirstChildOfClass("Humanoid")
@@ -8869,7 +9265,7 @@ local function startHeadSit()
     local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if not target or not hum then Notify("Head Sit", "No target", 2); S.HeadSit = false; return end
     hum.Sit = true
-    headSitConn = tc(RunService.Heartbeat:Connect(function()
+    headSitConn = tc(Svc.RunService.Heartbeat:Connect(function()
         local tRoot = target.Character and getRoot(target.Character)
         local myRoot = getRoot(LP.Character)
         local myHum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
@@ -8892,7 +9288,7 @@ local function startOrbit()
         Notify("Orbit", "No target", 2); S.Orbit = false; return
     end
     local rotation = 0
-    orbitConns.a = tc(RunService.Heartbeat:Connect(function()
+    orbitConns.a = tc(Svc.RunService.Heartbeat:Connect(function()
         pcall(function()
             rotation = rotation + (S.OrbitSpeed or 20) / 100
             local troot = getRoot(target.Character)
@@ -8926,7 +9322,7 @@ local function startBang()
     end)
     if target and target.Character then
         local offset = CFrame.new(0, 0, 1.1)
-        bangConn = tc(RunService.Stepped:Connect(function()
+        bangConn = tc(Svc.RunService.Stepped:Connect(function()
             pcall(function()
                 local otherRoot = getTorso(target.Character)
                 local myRoot = getRoot(LP.Character)
@@ -8972,7 +9368,7 @@ local function startBlockJump()
     end
     myHum.PlatformStand = true
     blockJumpHumanoid = myHum
-    blockJumpConn = tc(RunService.Stepped:Connect(function()
+    blockJumpConn = tc(Svc.RunService.Stepped:Connect(function()
         pcall(function()
             local tChar = target.Character
             local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
@@ -9051,7 +9447,7 @@ end
 -- the swap-back ever fails it force-respawns you, so you can't get stranded. Wrapped in a do-block so
 -- only the two toggle functions are top-level locals (stays under the 200-local limit).
 local startInvisibleFE, stopInvisibleFE, toggleInvisible, toggleBlink
-do
+;(function()
     local running = false
     local conns = {}
     local realChar, cloneChar = nil, nil
@@ -9108,11 +9504,11 @@ do
             -- Also tracked via tc() (not just the local `conns` table stopInvisibleFE disconnects via
             -- disconnectAll): if the script gets re-injected while Invisible is still ON, nothing
             -- would otherwise call stopInvisibleFE, and this Stepped connection — plus the
-            -- leftover clone parented in Lighting — would keep running forever, compounding with every
+            -- leftover clone parented in Svc.Lighting — would keep running forever, compounding with every
             -- re-inject during a testing session (the likely source of the reported micro-stutter).
             if ch then table.insert(conns, tc(ch.Died:Connect(function() stopInvisibleFE() end))) end
             local Void = workspace.FallenPartsDestroyHeight
-            table.insert(conns, tc(RunService.Stepped:Connect(function()
+            table.insert(conns, tc(Svc.RunService.Stepped:Connect(function()
                 local r = cloneChar and cloneChar:FindFirstChild("HumanoidRootPart")
                 if r and r.Position.Y <= Void + 5 then stopInvisibleFE() end
             end)))
@@ -9127,10 +9523,10 @@ do
             Notify("Invisible", "Invisible to others — you CAN'T shoot while on (for hiding)", 4)
         end
     end
-end
+end)()
 -- Blink: lag switch clone teleport
 local startBlink, stopBlink
-do
+;(function()
     local running = false
     local conns = {}
     local realChar, cloneChar = nil, nil
@@ -9184,7 +9580,7 @@ do
             local ch = clone:FindFirstChildOfClass("Humanoid")
             if ch then table.insert(conns, tc(ch.Died:Connect(function() stopBlink() end))) end
             local Void = workspace.FallenPartsDestroyHeight
-            table.insert(conns, tc(RunService.Stepped:Connect(function()
+            table.insert(conns, tc(Svc.RunService.Stepped:Connect(function()
                 local r = cloneChar and cloneChar:FindFirstChild("HumanoidRootPart")
                 if r and r.Position.Y <= Void + 5 then stopBlink() end
             end)))
@@ -9199,10 +9595,10 @@ do
             Notify("Blink", "Blink active — move to teleport", 4)
         end
     end
-end
+end)()
 -- Free Cam (adapted from Infinite Yield)
 local startFreecam, stopFreecam
-do
+;(function()
     local ContextActionService = game:GetService("ContextActionService")
     local Camera = workspace.CurrentCamera
     workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
@@ -9234,7 +9630,7 @@ do
     local function InputVel(dt)
         navSpeed = math.clamp(navSpeed + dt * (keyboard.Up - keyboard.Down) * NAV_ADJ_SPEED, 0.01, 4)
         local k = Vector3.new(keyboard.D - keyboard.A, keyboard.E - keyboard.Q, keyboard.S - keyboard.W)
-        local shift = UIS:IsKeyDown(Enum.KeyCode.LeftShift)
+        local shift = Svc.UIS:IsKeyDown(Enum.KeyCode.LeftShift)
         return k * (navSpeed * (shift and NAV_SHIFT_MUL or 1))
     end
     local function InputPan() local m = mouseD * PAN_MOUSE_SPEED; mouseD = Vector2.new(); return m end
@@ -9289,14 +9685,14 @@ do
         velSpring:Reset(Vector3.new()); panSpring:Reset(Vector2.new())
         saved.fov = Camera.FieldOfView; saved.type = Camera.CameraType
         saved.cf = Camera.CFrame; saved.focus = Camera.Focus
-        saved.mib = UIS.MouseBehavior; saved.mie = UIS.MouseIconEnabled
+        saved.mib = Svc.UIS.MouseBehavior; saved.mie = Svc.UIS.MouseIconEnabled
         Camera.FieldOfView = 70; Camera.CameraType = Enum.CameraType.Custom
-        UIS.MouseIconEnabled = true; UIS.MouseBehavior = Enum.MouseBehavior.Default
+        Svc.UIS.MouseIconEnabled = true; Svc.UIS.MouseBehavior = Enum.MouseBehavior.Default
         ContextActionService:BindActionAtPriority("MM2FreecamKb", Keypress, false, INPUT_PRIORITY,
             Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
             Enum.KeyCode.E, Enum.KeyCode.Q, Enum.KeyCode.Up, Enum.KeyCode.Down)
         ContextActionService:BindActionAtPriority("MM2FreecamPan", MousePan, false, INPUT_PRIORITY, Enum.UserInputType.MouseMovement)
-        RunService:BindToRenderStep("MM2Freecam", Enum.RenderPriority.Camera.Value, StepFreecam)
+        Svc.RunService:BindToRenderStep("MM2Freecam", Enum.RenderPriority.Camera.Value, StepFreecam)
         fcRunning = true
         Notify("Free Cam", "WASD move, Q/E up-down, Shift slow", 4)
     end
@@ -9307,41 +9703,41 @@ do
         mouseD = Vector2.new()
         pcall(function() ContextActionService:UnbindAction("MM2FreecamKb") end)
         pcall(function() ContextActionService:UnbindAction("MM2FreecamPan") end)
-        pcall(function() RunService:UnbindFromRenderStep("MM2Freecam") end)
+        pcall(function() Svc.RunService:UnbindFromRenderStep("MM2Freecam") end)
         pcall(function()
             Camera.FieldOfView = saved.fov or 70
             Camera.CameraType = saved.type or Enum.CameraType.Custom
-            UIS.MouseIconEnabled = saved.mie
-            UIS.MouseBehavior = saved.mib or Enum.MouseBehavior.Default
+            Svc.UIS.MouseIconEnabled = saved.mie
+            Svc.UIS.MouseBehavior = saved.mib or Enum.MouseBehavior.Default
             local c = LP.Character
             if c then Camera.CameraSubject = c:FindFirstChildOfClass("Humanoid") end
         end)
         fcRunning = false
     end
-end
-do
-    local secM = mkSection(Pages.Motion, "Movement Tricks", 3)
+end)()
+;(function()
+    local secM = UI.mkSection(Pages.Motion, "Movement Tricks", 3)
     if S._RegisterMotionMovementSection then S._RegisterMotionMovementSection(secM) end
 
-    mkAction(secM, "Trip", function() doTrip() end, 4)
+    UI.mkAction(secM, "Trip", function() doTrip() end, 4)
     -- startInvisibleFE/stopInvisibleFE have existed all along, but the row that drove them was
     -- deleted with the old "Camera & Body" section, leaving the whole feature unreachable and
     -- `toggleInvisible` permanently nil — which also broke Blink, since startBlink turns Invisible
     -- off through exactly that handle.
-    toggleInvisible = mkToggle(secM, "Invisible", false, function(v)
+    toggleInvisible = UI.mkToggle(secM, "Invisible", false, function(v)
         if v then startInvisibleFE() else stopInvisibleFE() end
     end, 6)
-    local secTr = mkSection(Pages.Motion, "Troll", 12)
+    local secTr = UI.mkSection(Pages.Motion, "Troll", 12)
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(secTr) end
-    mkToggle(secTr, "Spinbot", false, function(v) S.Spinbot = v end, 1)
+    UI.mkToggle(secTr, "Spinbot", false, function(v) S.Spinbot = v end, 1)
     mkSlider(secTr, "Spin Speed", 5, 1000, 20, function(v) S.SpinSpeed = v end, 2)
-    mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then startJerk() else stopJerk() end end, 3)
-    mkToggle(secTr, "Click Fling", false, function(v) S.ClickFling = v end, 4)
+    UI.mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then startJerk() else stopJerk() end end, 3)
+    UI.mkToggle(secTr, "Click Fling", false, function(v) S.ClickFling = v end, 4)
     -- Touch Fling is kept separate from the targeted actions. The targeted actions (All/Murderer/
     -- Sheriff/Target/Click) reuse the 'fling' spin engine as their
     -- base (the reference has no concept of "fling THIS specific player" — that targeting/homing part
     -- is necessarily this script's own addition on top of the verbatim spin).
-    mkToggle(secTr, "Touch Fling", false, function(v)
+    UI.mkToggle(secTr, "Touch Fling", false, function(v)
         S.TouchFling = v
         if S._TouchFlingToggle then S._TouchFlingToggle(v) end
     end, 5)
@@ -9349,9 +9745,9 @@ do
     -- Longer = the spin keeps ramming them for more time, so they get launched harder and it doesn't
     -- give up early on a target that's briefly stuck on geometry.
     mkSlider(secTr, "Fling Duration (s)", 1, 15, 6, function(v) S.FlingDuration = v end, 7)
-    mkAction(secTr, "Fling All", function() if S._FlingAll then S._FlingAll() end end, 8)
-    mkAction(secTr, "Fling Murderer", function() if S._FlingRole then S._FlingRole("Murderer") end end, 9)
-    mkAction(secTr, "Fling Sheriff", function() if S._FlingRole then S._FlingRole("Sheriff") end end, 10)
+    UI.mkAction(secTr, "Fling All", function() if S._FlingAll then S._FlingAll() end end, 8)
+    UI.mkAction(secTr, "Fling Murderer", function() if S._FlingRole then S._FlingRole("Murderer") end end, 9)
+    UI.mkAction(secTr, "Fling Sheriff", function() if S._FlingRole then S._FlingRole("Sheriff") end end, 10)
     -- Camera & Body (Free Cam / Invisible (FE) / Blink): removed
 
     -- NOTE: the old hardcoded "Animations" / "Dance R15" / "Mockery Animation" pack lists lived here.
@@ -9363,16 +9759,16 @@ do
     -- start/stop helpers + funTarget/skidFling). They all act on the player picked in the Targets
     -- list; with "Auto" selected that resolves to the nearest player.
     local function currentTarget() return funTarget() end
-    local secTgt = mkSection(Pages.Motion, "Target Actions", 5)
+    local secTgt = UI.mkSection(Pages.Motion, "Target Actions", 5)
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(secTgt) end
     -- Flings EVERY player selected in the Targets list (multi-select), skipping whitelisted ones.
-    mkAction(secTgt, "Fling Target", function()
+    UI.mkAction(secTgt, "Fling Target", function()
         task.spawn(function()
             local c = LP.Character
             local hrp = c and c:FindFirstChild("HumanoidRootPart")
             if not hrp then Notify("Fling Target", "No character", 3); return end
             local targets = {}
-            for _, p in pairs(Players:GetPlayers()) do
+            for _, p in pairs(Svc.Players:GetPlayers()) do
                 if p ~= LP and p.Character and S.ManualTargets[p.Name] and not isWhitelisted(p) then
                     local th = p.Character:FindFirstChildOfClass("Humanoid")
                     if th and th.Health > 0 then table.insert(targets, p) end
@@ -9402,7 +9798,7 @@ do
     -- "TP to Selected Target" / "Goto Target" moved here from the old Manual Target section — same
     -- picked-player logic (currentTarget()/funTarget honors the Targets list selection, or nearest
     -- alive player when nothing's picked), just relocated so all target-driven actions live together.
-    mkAction(secTgt, "TP to Selected Target", function()
+    UI.mkAction(secTgt, "TP to Selected Target", function()
         local t = currentTarget()
         local troot = t and t.Character and getRoot(t.Character)
         local myroot = getRoot(LP.Character)
@@ -9414,7 +9810,7 @@ do
     local followConnection = nil
     local function startFollowTarget()
         if followConnection then return end
-        followConnection = RunService.Heartbeat:Connect(function()
+        followConnection = Svc.RunService.Heartbeat:Connect(function()
             if not S.FollowTarget then
                 if followConnection then followConnection:Disconnect(); followConnection = nil end
                 return
@@ -9465,19 +9861,19 @@ do
     S.FollowSpeed = 24
     S.FollowMirrorActions = true
     -- Follow Target / Mirror Actions: removed
-    mkToggle(secTgt, "Orbit Target", false, function(v) S.Orbit = v; if v then startOrbit() else stopOrbit() end end, 4)
+    UI.mkToggle(secTgt, "Orbit Target", false, function(v) S.Orbit = v; if v then startOrbit() else stopOrbit() end end, 4)
     mkSlider(secTgt, "Orbit Speed", 5, 1000, 20, function(v) S.OrbitSpeed = v end, 5)
     mkSlider(secTgt, "Orbit Distance", 3, 30, 6, function(v) S.OrbitDist = v end, 6)
     mkSlider(secTgt, "Orbit Height", -30, 30, 0, function(v) S.OrbitHeight = v end, 7)
-    mkToggle(secTgt, "Sit on Target", false, function(v) S.HeadSit = v; if v then startHeadSit() else stopHeadSit() end end, 8)
-    mkToggle(secTgt, "Bang Target", false, function(v) S.Bang = v; if v then startBang() else stopBang() end end, 9)
+    UI.mkToggle(secTgt, "Sit on Target", false, function(v) S.HeadSit = v; if v then startHeadSit() else stopHeadSit() end end, 8)
+    UI.mkToggle(secTgt, "Bang Target", false, function(v) S.Bang = v; if v then startBang() else stopBang() end end, 9)
     mkSlider(secTgt, "Bang Speed", 1, 10, 3, function(v) S.BangSpeed = v end, 10)
     -- Block Jump: removed
-end
+end)()
 end -- end FUN MODULE do-block
 local HUD = {}
 local HUDEls = {}
-local function attachHUDDrag(frame, handle)
+function UI.attachHUDDrag(frame, handle)
     local dragHandle = handle or frame
     local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
     local moved, startOrigin = false, nil
@@ -9495,18 +9891,18 @@ local function attachHUDDrag(frame, handle)
     local stroke = frame:FindFirstChildOfClass("UIStroke")
     local restStrokeTransparency = stroke and stroke.Transparency or 0.24
     local function dragVisual(active)
-        TweenService:Create(scale, TweenInfo.new(active and 0.14 or 0.2, active and Enum.EasingStyle.Quad or Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Svc.TweenService:Create(scale, TweenInfo.new(active and 0.14 or 0.2, active and Enum.EasingStyle.Quad or Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
             -- Relative to the base, or finishing a drag would snap a mobile plate back to full size.
             Scale = hudBase * (active and 1.018 or 1)
         }):Play()
         if stroke then
-            TweenService:Create(stroke, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Svc.TweenService:Create(stroke, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 Color = active and T.Accent or T.Bd2,
                 Transparency = active and 0.06 or restStrokeTransparency
             }):Play()
         end
         if dragHandle ~= frame and dragHandle:IsA("GuiObject") then
-            TweenService:Create(dragHandle, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Svc.TweenService:Create(dragHandle, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 BackgroundColor3 = active and T.ActiveBg or T.Elev
             }):Play()
         end
@@ -9525,7 +9921,7 @@ local function attachHUDDrag(frame, handle)
             dragVisual(true)
         end
     end)
-    tc(UIS.InputChanged:Connect(function(input)
+    tc(Svc.UIS.InputChanged:Connect(function(input)
         if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseMovement) and dragStart and startPos then
             local delta = input.Position - dragStart
             -- Tap vs drag: swallow the first few pixels. The Dynamic Island opens the
@@ -9556,7 +9952,7 @@ local function attachHUDDrag(frame, handle)
             end
         end
     end))
-    tc(UIS.InputEnded:Connect(function(input)
+    tc(Svc.UIS.InputEnded:Connect(function(input)
         if dragging and (input == activeInput or input.UserInputType == Enum.UserInputType.MouseButton1) then
             dragging = false
             activeInput = nil
@@ -9567,16 +9963,16 @@ local function attachHUDDrag(frame, handle)
     end))
     dragHandle.MouseEnter:Connect(function()
         if stroke and not dragging then
-            TweenService:Create(stroke, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0.1 }):Play()
+            Svc.TweenService:Create(stroke, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0.1 }):Play()
         end
     end)
     dragHandle.MouseLeave:Connect(function()
         if stroke and not dragging then
-            TweenService:Create(stroke, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = restStrokeTransparency }):Play()
+            Svc.TweenService:Create(stroke, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = restStrokeTransparency }):Play()
         end
     end)
 end
-local function mkDragHUD(name, pos, size, z)
+function UI.mkDragHUD(name, pos, size, z)
     local f = Instance.new("Frame")
     f.Name = "HUD_"..name
     -- Registered so the glass sheen reaches HUD panels too. They are matched by name for
@@ -9593,10 +9989,10 @@ local function mkDragHUD(name, pos, size, z)
     f.BorderSizePixel = 0
     f.Visible = false
     f.ZIndex = z or 850
-    Corner(f, 11)
-    local fSt = Stroke(f, T.Bd2, 1, 0.22); fSt:SetAttribute("ThemeColorRole_Color", "Bd2")
-    Shadow(f, 0.76)
-    local surfaceGrad = Grad(f, T.White:Lerp(T.Accent, 0.12), T.White:Lerp(T.Elev, 0.08), 90)
+    UI.Corner(f, 11)
+    local fSt = UI.Stroke(f, T.Bd2, 1, 0.22); fSt:SetAttribute("ThemeColorRole_Color", "Bd2")
+    UI.Shadow(f, 0.76)
+    local surfaceGrad = UI.Grad(f, T.White:Lerp(T.Accent, 0.12), T.White:Lerp(T.Elev, 0.08), 90)
     surfaceGrad.Name = "HUDSurfaceGradient"
     local tb = Instance.new("Frame")
     tb.Name = "tb"
@@ -9606,8 +10002,8 @@ local function mkDragHUD(name, pos, size, z)
     tb.BackgroundTransparency = 0.025
     tb.Size = UDim2.new(1, 0, 0, 28)
     tb.ZIndex = z + 1
-    Corner(tb, 10)
-    local headerGrad = Grad(tb, T.White:Lerp(T.Accent, 0.14), T.White:Lerp(T.Card, 0.06), 0)
+    UI.Corner(tb, 10)
+    local headerGrad = UI.Grad(tb, T.White:Lerp(T.Accent, 0.14), T.White:Lerp(T.Card, 0.06), 0)
     headerGrad.Name = "HUDHeaderGradient"
     local tbLine = Instance.new("Frame")
     tbLine.Name = "tbLine"
@@ -9627,7 +10023,7 @@ local function mkDragHUD(name, pos, size, z)
     tick.Position = UDim2.new(0, 8, 0.5, -6)
     tick.Size = UDim2.new(0, 2, 0, 12)
     tick.ZIndex = z + 2
-    Corner(tick, 2)
+    UI.Corner(tick, 2)
     local tl = Instance.new("TextLabel")
     tl.Name = "tl"
     tl.Parent = tb
@@ -9650,20 +10046,20 @@ local function mkDragHUD(name, pos, size, z)
     ct.Position = UDim2.new(0, 10, 0, 33)
     ct.Size = UDim2.new(1, -20, 1, -40)
     ct.ZIndex = z + 1
-    attachHUDDrag(f, tb)
+    UI.attachHUDDrag(f, tb)
     HUDEls[name] = { frame = f, content = ct }
     return HUDEls[name]
 end
-HUD.hBinds = mkDragHUD("Keybinds", UDim2.new(0, 10, 0, 370), UDim2.fromOffset(260, 150), 851)
-do
+HUD.hBinds = UI.mkDragHUD("Keybinds", UDim2.new(0, 10, 0, 370), UDim2.fromOffset(260, 150), 851)
+;(function()
     local bindsLayout = Instance.new("UIListLayout", HUD.hBinds.content)
     bindsLayout.Padding = UDim.new(0, 4)
     -- UIListLayout's real default is SortOrder.Name, not LayoutOrder. This section's rows are all
     -- unnamed ("Frame"), so it happened to render correctly by coincidence (ties preserve creation
     -- order) — pinning it explicitly so it can't silently break the same way.
     bindsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-end
-HUD.hGun = mkDragHUD("Gun Status", UDim2.new(1, -272, 0, 200), UDim2.fromOffset(260, 96), 852)
+end)()
+HUD.hGun = UI.mkDragHUD("Gun Status", UDim2.new(1, -272, 0, 200), UDim2.fromOffset(260, 96), 852)
 HUD.gunLbl = Instance.new("TextLabel")
 HUD.gunLbl.Parent = HUD.hGun.content
 HUD.gunLbl.BackgroundTransparency = 1
@@ -9679,7 +10075,7 @@ HUD.gunLbl.TextWrapped = true
 HUD.gunLbl.Text = "..."
 HUD.gunLbl.ZIndex = 853
 
-HUD.hRole = mkDragHUD("Role HUD", UDim2.new(0, 10, 0, 100), UDim2.fromOffset(260, 118), 856)
+HUD.hRole = UI.mkDragHUD("Role HUD", UDim2.new(0, 10, 0, 100), UDim2.fromOffset(260, 118), 856)
 HUD.roleLbl = Instance.new("TextLabel")
 HUD.roleLbl.Parent = HUD.hRole.content
 HUD.roleLbl.BackgroundTransparency = 1
@@ -9697,7 +10093,7 @@ HUD.roleLbl.ZIndex = 857
 -- Compact single-line stat pill: small gray tag on the left, mono value on the right. Styled to
 -- match the watermark (same dark plate / corner radius / stroke) so every floating readout reads
 -- as one family instead of a pile of mini-windows. Drag anywhere on the pill to move it.
-local function mkStatHUD(name, pos, w, z)
+function UI.mkStatHUD(name, pos, w, z)
     local f = Instance.new("Frame")
     f.Name = "HUD_" .. name
     pcall(function() f:SetAttribute("InertiaHudSurface", true) end)
@@ -9712,10 +10108,11 @@ local function mkStatHUD(name, pos, w, z)
     f.BorderSizePixel = 0
     f.Visible = false
     f.ZIndex = z
-    Corner(f, 9)
-    local st = Stroke(f, T.Bd2, 1, 0.24); pcall(function() st:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-    Shadow(f, 0.76)
-    local surfaceGrad = Grad(f, T.White:Lerp(T.Accent, 0.12), T.White:Lerp(T.Elev, 0.08), 0)
+    f.ClipsDescendants = true
+    UI.Corner(f, 9)
+    local st = UI.Stroke(f, T.Bd2, 1, 0.24); pcall(function() st:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+    UI.Shadow(f, 0.76)
+    local surfaceGrad = UI.Grad(f, T.White:Lerp(T.Accent, 0.12), T.White:Lerp(T.Elev, 0.08), 0)
     surfaceGrad.Name = "HUDSurfaceGradient"
     local accent = Instance.new("Frame")
     accent.Name = "HUDAccent"
@@ -9727,7 +10124,7 @@ local function mkStatHUD(name, pos, w, z)
     accent.BackgroundTransparency = 0.16
     accent.BorderSizePixel = 0
     accent.ZIndex = z + 1
-    Corner(accent, 2)
+    UI.Corner(accent, 2)
     local tag = Instance.new("TextLabel")
     tag.Name = "tag"
     tag.Parent = f
@@ -9757,20 +10154,20 @@ local function mkStatHUD(name, pos, w, z)
     lbl.TextYAlignment = Enum.TextYAlignment.Center
     lbl.Text = "\u{2014}"
     lbl.ZIndex = z + 1
-    attachHUDDrag(f)
+    UI.attachHUDDrag(f)
     HUDEls[name] = { frame = f, content = f }
     return HUDEls[name], lbl
 end
 -- Right-edge stat stack starts at y=290: Roblox's own top-right social panel (Friends Playing /
 -- Trade Requests) covers roughly y=30-200 in that corner and sits ABOVE our GUI, so anything placed
 -- higher would be hidden behind it (verified live via screenshot).
-HUD.hFps, HUD.fpsLbl = mkStatHUD("FPS", UDim2.new(1, -142, 0, 290), 130, 854)
+HUD.hFps, HUD.fpsLbl = UI.mkStatHUD("FPS", UDim2.new(1, -142, 0, 290), 130, 854)
 -- Responsive sidebar summary. It occupies only the free area below the navigation and disappears
 -- automatically when the window is too short, so it never overlaps the bottom status bar.
-do
+;(function()
     HUD.quickFrame = Instance.new("Frame")
     HUD.quickFrame.Name = "HUD_QuickStatus"
-    -- Named directly rather than through mkDragHUD, so it needs its own registration or the glass
+    -- Named directly rather than through UI.mkDragHUD, so it needs its own registration or the glass
     -- pass never reaches it (measured: hudGlass=false while every dragged panel had one).
     pcall(function() HUD.quickFrame:SetAttribute("InertiaHudSurface", true) end)
     S._MarkSurface(HUD.quickFrame)
@@ -9791,9 +10188,9 @@ do
     HUD.quickFrame.BorderSizePixel = 0
     HUD.quickFrame.ClipsDescendants = true
     HUD.quickFrame.ZIndex = 25
-    Corner(HUD.quickFrame, 10)
-    local quickStroke = Stroke(HUD.quickFrame, T.Bd2, 1, 0.32); pcall(function() quickStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-    local quickGrad = Grad(HUD.quickFrame, T.White:Lerp(T.Accent, 0.16), T.White:Lerp(T.Elev, 0.08), 90)
+    UI.Corner(HUD.quickFrame, 10)
+    local quickStroke = UI.Stroke(HUD.quickFrame, T.Bd2, 1, 0.32); pcall(function() quickStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+    local quickGrad = UI.Grad(HUD.quickFrame, T.White:Lerp(T.Accent, 0.16), T.White:Lerp(T.Elev, 0.08), 90)
     quickGrad.Name = "QuickStatusGradient"
 
     local head = Instance.new("Frame")
@@ -9813,7 +10210,7 @@ do
     headLine.BackgroundTransparency = 0.12
     headLine.BorderSizePixel = 0
     headLine.ZIndex = 27
-    Corner(headLine, 2)
+    UI.Corner(headLine, 2)
     local headText = Instance.new("TextLabel")
     headText.Parent = head
     headText.Position = UDim2.new(0, 17, 0, 0)
@@ -9936,16 +10333,16 @@ do
         if show and not HUD.quickFrame.Visible then
             HUD.quickFrame.Visible = true
             quickScale.Scale = 0.96
-            TweenService:Create(quickScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+            Svc.TweenService:Create(quickScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
         elseif not show then
             HUD.quickFrame.Visible = false
         end
     end
     tc(Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(S._ResizeQuickStatus))
     task.defer(S._ResizeQuickStatus)
-end
+end)()
 -- Compact Dynamic Island. The HUDEls key remains "Watermark" for config compatibility.
-local function mkWatermark()
+function UI.mkWatermark()
     local f = Instance.new("TextButton")
     f.AutoButtonColor = false
     f.Text = ""
@@ -9963,10 +10360,10 @@ local function mkWatermark()
     f.BorderSizePixel = 0
     f.Visible = false
     f.ZIndex = 864
-    Corner(f, 15)
-    local wmStroke = Stroke(f, T.Bd2, 1, 0.18); pcall(function() wmStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-    Shadow(f, 0.82)
-    local wmGrad = Grad(f, T.White:Lerp(T.Accent, 0.14), T.White:Lerp(T.Card, 0.08), 0)
+    UI.Corner(f, 15)
+    local wmStroke = UI.Stroke(f, T.Bd2, 1, 0.18); pcall(function() wmStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+    UI.Shadow(f, 0.82)
+    local wmGrad = UI.Grad(f, T.White:Lerp(T.Accent, 0.14), T.White:Lerp(T.Card, 0.08), 0)
     wmGrad.Name = "DynamicIslandGradient"
     local dot = Instance.new("Frame")
     dot.Name = "HUDAccent"
@@ -9978,7 +10375,7 @@ local function mkWatermark()
     dot.BackgroundTransparency = 0.05
     dot.BorderSizePixel = 0
     dot.ZIndex = 866
-    Corner(dot, 4)
+    UI.Corner(dot, 4)
     HUD.islandDot = dot
     HUD.islandDotScale = Instance.new("UIScale")
     HUD.islandDotScale.Parent = dot
@@ -10040,7 +10437,7 @@ local function mkWatermark()
     HUD.islandSession = metric(303, 60, "TIME")
     -- Draggable on mobile too now that a tap is distinguished from a drag by an
     -- 8px threshold; it used to be pinned, so a badly placed island stayed there.
-    attachHUDDrag(f)
+    UI.attachHUDDrag(f)
     HUDEls["Watermark"] = { frame = f, content = f }
     
     local startPos, startTick
@@ -10097,28 +10494,110 @@ local function mkWatermark()
         local scaler = f:FindFirstChild("HUDScale")
         if not scaler then return end
         local base = tonumber(f:GetAttribute("MobileFit")) or 1
-        TweenService.Create(TweenService, scaler, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {
+        Svc.TweenService.Create(Svc.TweenService, scaler, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {
             Scale = base * (outward and 1.1 or 0.9),
         }):Play()
         task.delay(0.12, function()
             if f.Parent then
-                TweenService.Create(TweenService, scaler, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = base }):Play()
+                Svc.TweenService.Create(Svc.TweenService, scaler, TweenInfo.new(0.22, Enum.EasingStyle.Back), { Scale = base }):Play()
             end
         end)
     end
     return f, lbl
 end
-HUD.hPing, HUD.pingLbl = mkStatHUD("Ping", UDim2.new(1, -142, 0, 326), 130, 856)
-HUD.hSession, HUD.sessionLbl = mkStatHUD("Session", UDim2.new(1, -142, 0, 362), 130, 863)
-HUD.hSpeed, HUD.speedLbl = mkStatHUD("Speed", UDim2.new(1, -142, 0, 398), 130, 861)
-HUD.hCoords, HUD.coordLbl = mkStatHUD("Coords", UDim2.new(0, 10, 0, 540), 190, 857)
-HUD.hWatermark, HUD.watermarkLbl = mkWatermark()
+HUD.hPing, HUD.pingLbl = UI.mkStatHUD("Ping", UDim2.new(1, -142, 0, 326), 130, 856)
+HUD.hSession, HUD.sessionLbl = UI.mkStatHUD("Session", UDim2.new(1, -142, 0, 362), 130, 863)
+HUD.hSpeed, HUD.speedLbl = UI.mkStatHUD("Speed", UDim2.new(1, -142, 0, 398), 130, 861)
+HUD.hCoords, HUD.coordLbl = UI.mkStatHUD("Coords", UDim2.new(0, 10, 0, 540), 252, 857)
+HUD.hWatermark, HUD.watermarkLbl = UI.mkWatermark()
 -- Pinned Emotes: a small draggable HUD tray of emote icons pinned from the Player > Emotes list.
 -- Starts empty/hidden; each pin adds an icon button here (click plays that emote), each unpin removes
 -- it. Registered in HUDEls like the other HUD boxes, but its own logic lives with the Emotes tab code.
 -- A compact four-column card grid keeps labels readable and lets the tray grow without becoming
 -- an oversized horizontal strip.
-HUD.hPinnedEmotes = mkDragHUD("Pinned Emotes", UDim2.new(0, 230, 0, 540), UDim2.fromOffset(130, 112), 865)
+HUD.hPinnedEmotes = UI.mkDragHUD("Pinned Emotes", UDim2.new(0, 230, 0, 540), UDim2.fromOffset(130, 112), 865)
+
+-- ---- Motion Graph ----
+-- One continuous polyline, not a bar chart. Roblox GUI has no line primitive, so each segment is a
+-- thin Frame rotated to join two consecutive samples: with AnchorPoint on the left-middle edge,
+-- placing it at point A and rotating by atan2(dy, dx) makes its far end land exactly on point B.
+-- Segments are allocated once and only moved/resized afterwards, so a moving graph creates no
+-- instances per frame.
+HUD.hMotion = UI.mkDragHUD("Motion Graph", UDim2.new(0, 10, 0, 620), UDim2.fromOffset(240, 118), 858)
+;(function()
+    local SEG, THICK = 47, 2
+    local plot = Instance.new("Frame")
+    plot.Name = "plot"
+    plot.Parent = HUD.hMotion.content
+    plot.BackgroundTransparency = 1
+    plot.Size = UDim2.new(1, -16, 1, -10)
+    plot.Position = UDim2.fromOffset(8, 4)
+    plot.ClipsDescendants = true
+    plot.ZIndex = 859
+
+    local readout = Instance.new("TextLabel")
+    readout.Parent = plot
+    readout.BackgroundTransparency = 1
+    readout.Size = UDim2.new(1, 0, 0, 13)
+    readout.Font = FB
+    readout.TextSize = 11
+    readout.TextXAlignment = Enum.TextXAlignment.Left
+    readout.TextColor3 = T.Tx3
+    readout:SetAttribute("ThemeColorRole_TextColor3", "Tx3")
+    readout.Text = "0 sps"
+    readout.ZIndex = 861
+
+    local segs = {}
+    for i = 1, SEG do
+        local s = Instance.new("Frame")
+        s.Parent = plot
+        s.AnchorPoint = Vector2.new(0, 0.5)
+        s.BorderSizePixel = 0
+        s.BackgroundColor3 = T.Accent
+        s:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent")
+        s.Size = UDim2.fromOffset(0, THICK)
+        s.ZIndex = 860
+        s.Visible = false
+        segs[i] = s
+    end
+
+    local hist = table.create(SEG + 1, 0)
+    task.spawn(function()
+        while S.Gui and S.Gui.Parent do
+            task.wait(0.1)
+            local el = HUD.hMotion
+            if el and el.frame.Visible then
+                local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                local v = 0
+                if hrp then
+                    local av = hrp.AssemblyLinearVelocity
+                    v = Vector3.new(av.X, 0, av.Z).Magnitude
+                end
+                table.remove(hist, 1)
+                hist[SEG + 1] = v
+                local span = math.max(1, tonumber(S.MotionGraphSpan) or 100)
+                readout.Text = string.format("%d sps", math.floor(v + 0.5))
+                local w, h = plot.AbsoluteSize.X, plot.AbsoluteSize.Y - 16
+                if w > 0 and h > 0 then
+                    local step = w / SEG
+                    for i = 1, SEG do
+                        local a = math.clamp((hist[i] or 0) / span, 0, 1)
+                        local b = math.clamp((hist[i + 1] or 0) / span, 0, 1)
+                        local x1, y1 = (i - 1) * step, 16 + h - a * h
+                        local dx, dy = step, (16 + h - b * h) - y1
+                        local len = math.sqrt(dx * dx + dy * dy)
+                        local sg = segs[i]
+                        sg.Position = UDim2.fromOffset(x1, y1)
+                        sg.Size = UDim2.fromOffset(math.ceil(len), THICK)
+                        sg.Rotation = math.deg(math.atan2(dy, dx))
+                        sg.BackgroundColor3 = (a >= 0.99) and T.RoleMurderer or T.Accent
+                        sg.Visible = true
+                    end
+                end
+            end
+        end
+    end)
+end)()
 HUD.hPinnedEmotes.frame.Visible = false
 HUD.hPinnedEmotes.frame:SetAttribute("ContentDrivenVisibility", true)
 HUD.pinnedCount = Instance.new("TextLabel")
@@ -10138,7 +10617,7 @@ HUD.pinnedCount.TextColor3 = T.Tx; pcall(function()
 end)
 HUD.pinnedCount.Text = "0"
 HUD.pinnedCount.ZIndex = 867
-Corner(HUD.pinnedCount, 5)
+UI.Corner(HUD.pinnedCount, 5)
 -- "PINNED EMOTES" at this label's normal font/size needs ~172px to render in full, wider than
 -- this card (130-168px) ever is, so without truncation it silently overflowed past its own -52
 -- reserved width straight into the count badge — the "crooked" header. Truncate it properly.
@@ -10146,13 +10625,13 @@ pcall(function()
     HUD.hPinnedEmotes.frame.tb.tl.Size = UDim2.new(1, -52, 1, 0)
     HUD.hPinnedEmotes.frame.tb.tl.TextTruncate = Enum.TextTruncate.AtEnd
 end)
-local pinnedEmotesGrid = Instance.new("UIGridLayout")
-pinnedEmotesGrid.CellSize = UDim2.fromOffset(58, 66)
-pinnedEmotesGrid.CellPadding = UDim2.fromOffset(6, 6)
-pinnedEmotesGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-pinnedEmotesGrid.VerticalAlignment = Enum.VerticalAlignment.Top
-pinnedEmotesGrid.SortOrder = Enum.SortOrder.LayoutOrder
-pinnedEmotesGrid.Parent = HUD.hPinnedEmotes.content
+Em.pinnedEmotesGrid = Instance.new("UIGridLayout")
+Em.pinnedEmotesGrid.CellSize = UDim2.fromOffset(58, 66)
+Em.pinnedEmotesGrid.CellPadding = UDim2.fromOffset(6, 6)
+Em.pinnedEmotesGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+Em.pinnedEmotesGrid.VerticalAlignment = Enum.VerticalAlignment.Top
+Em.pinnedEmotesGrid.SortOrder = Enum.SortOrder.LayoutOrder
+Em.pinnedEmotesGrid.Parent = HUD.hPinnedEmotes.content
 local function fitPinnedEmotesHUD()
     local count = 0
     for _, child in ipairs(HUD.hPinnedEmotes.content:GetChildren()) do
@@ -10160,7 +10639,7 @@ local function fitPinnedEmotesHUD()
     end
     local columns = math.clamp(count, 1, 4)
     local rows = math.max(1, math.ceil(math.max(count, 1) / columns))
-    pinnedEmotesGrid.FillDirectionMaxCells = columns
+    Em.pinnedEmotesGrid.FillDirectionMaxCells = columns
     local gridWidth = columns * 58 + math.max(0, columns - 1) * 6
     local gridHeight = rows * 66 + math.max(0, rows - 1) * 6
     local frameWidth = math.max(130, gridWidth + 20)
@@ -10172,9 +10651,9 @@ local function fitPinnedEmotesHUD()
     HUD.hPinnedEmotes.frame.AutomaticSize = Enum.AutomaticSize.None
     if HUD.hPinnedEmotes.frame.Visible then
         if S._PinnedSizeTween then pcall(function() S._PinnedSizeTween:Cancel() end) end
-        S._PinnedSizeTween = TweenService:Create(HUD.hPinnedEmotes.frame, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = targetFrameSize })
+        S._PinnedSizeTween = Svc.TweenService:Create(HUD.hPinnedEmotes.frame, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = targetFrameSize })
         S._PinnedSizeTween:Play()
-        TweenService:Create(HUD.hPinnedEmotes.content, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService:Create(HUD.hPinnedEmotes.content, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = targetPosition,
             Size = targetContentSize
         }):Play()
@@ -10184,14 +10663,14 @@ local function fitPinnedEmotesHUD()
         HUD.hPinnedEmotes.frame.Size = targetFrameSize
     end
 end
-tc(pinnedEmotesGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitPinnedEmotesHUD))
+tc(Em.pinnedEmotesGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitPinnedEmotesHUD))
 task.defer(fitPinnedEmotesHUD)
 -- Kill Feed stays chrome-free (no big panel/background) so with no recent kills nothing is drawn —
 -- but it needs to be re-positionable, so a small always-visible grip pill sits above the card list.
--- Only the grip is draggable (same drag pattern as mkDragHUD's titlebar); the auto-sizing card list
+-- Only the grip is draggable (same drag pattern as UI.mkDragHUD's titlebar); the auto-sizing card list
 -- lives below it and is NOT part of the drag hitbox, so clicking through cards never moves it by
 -- accident. Position drags/saves on the OUTER frame, exactly like every other HUD element.
-do
+;(function()
     local f = Instance.new("Frame")
     f.Name = "HUD_Kill Feed"
     f.Parent = SG
@@ -10215,8 +10694,8 @@ do
     grip.BackgroundTransparency = 0.25
     grip.BorderSizePixel = 0
     grip.ZIndex = 865
-    Corner(grip, 6)
-    local gripStroke = Stroke(grip, T.Bd2, 1, 0.5); pcall(function() gripStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+    UI.Corner(grip, 6)
+    local gripStroke = UI.Stroke(grip, T.Bd2, 1, 0.5); pcall(function() gripStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
     local gripDot = Instance.new("Frame")
     gripDot.Parent = grip
     gripDot.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -10225,9 +10704,9 @@ do
     gripDot.BackgroundColor3 = T.Tx3; pcall(function() gripDot:SetAttribute("ThemeColorRole_BackgroundColor3", "Tx3") end)
     gripDot.BorderSizePixel = 0
     gripDot.ZIndex = 866
-    Corner(gripDot, 2)
-    grip.MouseEnter:Connect(function() TweenService.Create(TweenService, grip, TweenInfo.new(0.1), { BackgroundTransparency = 0.05 }):Play() end)
-    grip.MouseLeave:Connect(function() TweenService.Create(TweenService, grip, TweenInfo.new(0.1), { BackgroundTransparency = 0.25 }):Play() end)
+    UI.Corner(gripDot, 2)
+    grip.MouseEnter:Connect(function() Svc.TweenService.Create(Svc.TweenService, grip, TweenInfo.new(0.1), { BackgroundTransparency = 0.05 }):Play() end)
+    grip.MouseLeave:Connect(function() Svc.TweenService.Create(Svc.TweenService, grip, TweenInfo.new(0.1), { BackgroundTransparency = 0.25 }):Play() end)
 
     local kfContentFrame = Instance.new("Frame")
     kfContentFrame.Name = "Content"
@@ -10244,11 +10723,11 @@ do
     kfl.HorizontalAlignment = Enum.HorizontalAlignment.Right
     kfl.VerticalAlignment = Enum.VerticalAlignment.Top
 
-    attachHUDDrag(f, grip)
+    UI.attachHUDDrag(f, grip)
 
     HUDEls["Kill Feed"] = { frame = f, content = kfContentFrame }
     HUD.hKillFeed = HUDEls["Kill Feed"]
-end
+end)()
 S._SetHUDVisible = function(el, visible)
     local frame = el and el.frame
     if not frame then return end
@@ -10274,18 +10753,18 @@ S._SetHUDVisible = function(el, visible)
         frame.Visible = true
         scale.Scale = 0.94 * fit
         frame.BackgroundTransparency = math.min(1, restTransparency + 0.16)
-        TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = fit }):Play()
-        TweenService:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Svc.TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = fit }):Play()
+        Svc.TweenService:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             BackgroundTransparency = restTransparency
         }):Play()
         local stroke = frame:FindFirstChildOfClass("UIStroke")
         if stroke then
             stroke.Transparency = 0.04
-            TweenService:Create(stroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0.24 }):Play()
+            Svc.TweenService:Create(stroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0.24 }):Play()
         end
     else
-        TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.97 * fit }):Play()
-        TweenService:Create(frame, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Svc.TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.97 * fit }):Play()
+        Svc.TweenService:Create(frame, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             BackgroundTransparency = math.min(1, restTransparency + 0.18)
         }):Play()
         task.delay(0.13, function()
@@ -10297,37 +10776,37 @@ S._SetHUDVisible = function(el, visible)
         end)
     end
 end
-do
-    local sec = mkSection(Pages.Misc, "HUD Elements", 11)
+;(function()
+    local sec = UI.mkSection(Pages.Misc, "HUD Elements", 11)
     S._RegisterMiscSection(sec, "Utility")
     -- Keybinds don't exist on the touch build, so neither does their HUD toggle.
     if not MOBILE then
-        mkToggle(sec, "Keybind HUD", false, function(v)
+        UI.mkToggle(sec, "Keybind HUD", false, function(v)
             S.HUD_Keybinds = v
             S._SetHUDVisible(HUDEls["Keybinds"], v)
         end, 2)
     end
-    mkToggle(sec, "Gun Status", false, function(v)
+    UI.mkToggle(sec, "Gun Status", false, function(v)
         S.HUD_GunStatus = v
         S._SetHUDVisible(HUDEls["Gun Status"], v)
     end, 3)
-    mkToggle(sec, "FPS HUD", false, function(v)
+    UI.mkToggle(sec, "FPS HUD", false, function(v)
         S.HUD_FPS = v
         S._SetHUDVisible(HUDEls["FPS"], v)
     end, 4)
-    mkToggle(sec, "Ping HUD", false, function(v)
+    UI.mkToggle(sec, "Ping HUD", false, function(v)
         S.HUD_Ping = v
         S._SetHUDVisible(HUDEls["Ping"], v)
     end, 5)
-    mkToggle(sec, "Coords HUD", false, function(v)
+    UI.mkToggle(sec, "Coords HUD", false, function(v)
         S.HUD_Coords = v
         S._SetHUDVisible(HUDEls["Coords"], v)
     end, 6)
     -- On by default on mobile: it is that build's only always-on HUD, and the
-    -- menu animates in and out of it.  mkToggle does not fire its callback for
+    -- menu animates in and out of it.  UI.mkToggle does not fire its callback for
     -- the initial state, so the HUD itself is shown right after this.
     local islandToggle
-    islandToggle = mkToggle(sec, "Dynamic Island", MOBILE, function(v)
+    islandToggle = UI.mkToggle(sec, "Dynamic Island", MOBILE, function(v)
         if MOBILE and not v then
             S.HUD_Watermark = true
             S._SetHUDVisible(HUDEls["Watermark"], true)
@@ -10357,19 +10836,24 @@ do
         S.HUD_Watermark = true
         S._SetHUDVisible(HUDEls["Watermark"], true)
     end
-    mkToggle(sec, "Speed HUD", false, function(v)
+    UI.mkToggle(sec, "Speed HUD", false, function(v)
         S.HUD_Speed = v
         S._SetHUDVisible(HUDEls["Speed"], v)
     end, 10)
-    mkToggle(sec, "Session HUD", false, function(v)
+    UI.mkToggle(sec, "Session HUD", false, function(v)
         S.HUD_Session = v
         S._SetHUDVisible(HUDEls["Session"], v)
     end, 11)
-    mkToggle(sec, "Kill Feed", false, function(v)
+    UI.mkToggle(sec, "Kill Feed", false, function(v)
         S.HUD_KillFeed = v
         S._SetHUDVisible(HUDEls["Kill Feed"], v)
     end, 12)
-    mkToggle(sec, "Role HUD", false, function(v)
+    UI.mkToggle(sec, "Motion Graph", false, function(v)
+        S.HUD_MotionGraph = v
+        S._SetHUDVisible(HUDEls["Motion Graph"], v)
+    end, 12.5)
+    mkSlider(sec, "Motion Graph Ceiling", 20, 400, 100, function(v) S.MotionGraphSpan = v end, 12.6)
+    UI.mkToggle(sec, "Role HUD", false, function(v)
         S.RoleHUDEnabled = v
         if HUD.hRole and HUD.hRole.frame then
             S._SetHUDVisible(HUD.hRole, v and isRoundActive())
@@ -10385,18 +10869,18 @@ do
     info.TextColor3 = T.Tx4; pcall(function() info:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
     info.TextXAlignment = Enum.TextXAlignment.Left
     info.Text = "Drag HUD elements by their header"
-end
+end)()
 -- ============ PRESENTATION / LIGHTING (shaders and safe environment restoration) ============
-local Lighting = game:GetService("Lighting")
+Svc.Lighting = game:GetService("Lighting")
 local savedLighting = {}
 local function saveLighting()
     if savedLighting.done then return end
-    savedLighting.Brightness = Lighting.Brightness
-    savedLighting.ClockTime = Lighting.ClockTime
-    savedLighting.FogEnd = Lighting.FogEnd
-    savedLighting.GlobalShadows = Lighting.GlobalShadows
-    savedLighting.Ambient = Lighting.Ambient
-    savedLighting.OutdoorAmbient = Lighting.OutdoorAmbient
+    savedLighting.Brightness = Svc.Lighting.Brightness
+    savedLighting.ClockTime = Svc.Lighting.ClockTime
+    savedLighting.FogEnd = Svc.Lighting.FogEnd
+    savedLighting.GlobalShadows = Svc.Lighting.GlobalShadows
+    savedLighting.Ambient = Svc.Lighting.Ambient
+    savedLighting.OutdoorAmbient = Svc.Lighting.OutdoorAmbient
     savedLighting.done = true
 end
 -- Snapshot pristine map lighting immediately (before any shader/sky/fog can touch it) so that
@@ -10436,27 +10920,159 @@ S._ApplySimpleShader = function(name)
             time = 16.3, brightness = 1.85, ambient = Color3.fromRGB(104, 96, 88), outdoor = Color3.fromRGB(148, 136, 120), exposure = 0.02,
             bloom = { intensity = 0.28, size = 16, threshold = 1.85 }, cc = { brightness = -0.01, contrast = 0.25, saturation = -0.12, tint = Color3.fromRGB(255, 235, 205) },
         },
+        -- Ray Trace: long shadows plus a tight, high-threshold bloom so only true speculars flare.
+        -- Every preset below went through the same tuning pass: threshold raised so bloom picks out
+        -- real speculars instead of washing the whole frame, saturation pulled back off the "more is
+        -- better" values, and a tint that leans the grade rather than dyeing it. Ambient and outdoor
+        -- ambient are kept a few points apart so shadowed faces do not go flat.
+        ["RTX Low"] = {
+            time = 14, brightness = 1.85, ambient = Color3.fromRGB(88, 92, 101), outdoor = Color3.fromRGB(130, 135, 146), exposure = 0.03, shadows = true,
+            bloom = { intensity = 0.34, size = 20, threshold = 1.85 },
+            cc = { brightness = 0.005, contrast = 0.1, saturation = 0.12, tint = Color3.fromRGB(255, 252, 247) },
+        },
+        ["RTX Medium"] = {
+            time = 14.5, brightness = 2.05, ambient = Color3.fromRGB(92, 98, 110), outdoor = Color3.fromRGB(136, 142, 156), exposure = 0.06, shadows = true,
+            bloom = { intensity = 0.5, size = 24, threshold = 1.7 }, sun = { intensity = 0.06, spread = 0.7 },
+            cc = { brightness = 0.008, contrast = 0.14, saturation = 0.18, tint = Color3.fromRGB(255, 250, 243) },
+        },
+        ["RTX High"] = {
+            time = 15, brightness = 2.35, ambient = Color3.fromRGB(72, 80, 96), outdoor = Color3.fromRGB(128, 138, 156), exposure = 0.09, shadows = true,
+            bloom = { intensity = 0.72, size = 28, threshold = 1.5 }, sun = { intensity = 0.11, spread = 0.85 },
+            cc = { brightness = 0.012, contrast = 0.18, saturation = 0.22, tint = Color3.fromRGB(250, 250, 252) },
+        },
+        ["RTX Ultra"] = {
+            time = 15.4, brightness = 2.75, ambient = Color3.fromRGB(56, 66, 86), outdoor = Color3.fromRGB(120, 134, 158), exposure = 0.13, shadows = true,
+            bloom = { intensity = 0.98, size = 34, threshold = 1.3 }, sun = { intensity = 0.17, spread = 0.95 },
+            dof = { focus = 55, inFocus = 80, far = 0.2, near = 0 },
+            cc = { brightness = 0.015, contrast = 0.22, saturation = 0.26, tint = Color3.fromRGB(247, 249, 255) },
+        },
+        ["Night Shaders"] = {
+            time = 22.6, brightness = 1.25, ambient = Color3.fromRGB(34, 40, 62), outdoor = Color3.fromRGB(58, 68, 102), exposure = -0.03, shadows = true,
+            bloom = { intensity = 0.78, size = 30, threshold = 1.15 },
+            cc = { brightness = -0.015, contrast = 0.2, saturation = -0.05, tint = Color3.fromRGB(186, 206, 255) },
+        },
+        ["Pink Shaders"] = {
+            time = 17.6, brightness = 2.05, ambient = Color3.fromRGB(112, 82, 108), outdoor = Color3.fromRGB(162, 122, 156), exposure = 0.05,
+            bloom = { intensity = 0.68, size = 30, threshold = 1.4 },
+            cc = { brightness = 0.01, contrast = 0.12, saturation = 0.24, tint = Color3.fromRGB(255, 214, 240) },
+        },
+        ["Cinematic"] = {
+            time = 16.8, brightness = 1.95, ambient = Color3.fromRGB(74, 78, 92), outdoor = Color3.fromRGB(124, 130, 148), exposure = 0.04, shadows = true,
+            bloom = { intensity = 0.46, size = 26, threshold = 1.75 },
+            dof = { focus = 34, inFocus = 44, far = 0.34, near = 0.06 },
+            cc = { brightness = -0.005, contrast = 0.26, saturation = 0.06, tint = Color3.fromRGB(238, 244, 255) },
+        },
+        ["Golden Hour"] = {
+            time = 17.2, brightness = 2.2, ambient = Color3.fromRGB(112, 92, 72), outdoor = Color3.fromRGB(176, 142, 104), exposure = 0.08,
+            bloom = { intensity = 0.66, size = 30, threshold = 1.5 }, sun = { intensity = 0.16, spread = 1.0 },
+            cc = { brightness = 0.012, contrast = 0.16, saturation = 0.24, tint = Color3.fromRGB(255, 226, 176) },
+        },
+        ["Arctic"] = {
+            time = 13.4, brightness = 2.4, ambient = Color3.fromRGB(104, 116, 130), outdoor = Color3.fromRGB(158, 174, 192), exposure = 0.07,
+            bloom = { intensity = 0.6, size = 28, threshold = 1.6 },
+            cc = { brightness = 0.015, contrast = 0.14, saturation = -0.08, tint = Color3.fromRGB(222, 240, 255) },
+        },
+        ["Neon"] = {
+            time = 0.2, brightness = 1.5, ambient = Color3.fromRGB(46, 34, 70), outdoor = Color3.fromRGB(78, 58, 118), exposure = 0.02,
+            bloom = { intensity = 1.05, size = 36, threshold = 1.05 },
+            cc = { brightness = 0.01, contrast = 0.22, saturation = 0.34, tint = Color3.fromRGB(206, 168, 255) },
+        },
+        ["Noir"] = {
+            time = 16, brightness = 1.75, ambient = Color3.fromRGB(88, 88, 90), outdoor = Color3.fromRGB(128, 128, 132), exposure = 0, shadows = true,
+            bloom = { intensity = 0.3, size = 18, threshold = 1.9 },
+            cc = { brightness = -0.02, contrast = 0.38, saturation = -1, tint = Color3.fromRGB(255, 255, 255) },
+        },
+        ["Ray Trace"] = {
+            time = 15.6, brightness = 2.6, ambient = Color3.fromRGB(58, 64, 78), outdoor = Color3.fromRGB(126, 138, 158), exposure = 0.08, shadows = true,
+            bloom = { intensity = 0.85, size = 30, threshold = 1.35 }, sun = { intensity = 0.14, spread = 0.9 },
+            cc = { brightness = 0.015, contrast = 0.2, saturation = 0.22, tint = Color3.fromRGB(248, 250, 255) },
+        },
+        ["Ray Trace Ultra"] = {
+            time = 15.2, brightness = 3.0, ambient = Color3.fromRGB(44, 52, 70), outdoor = Color3.fromRGB(118, 134, 160), exposure = 0.12, shadows = true,
+            bloom = { intensity = 1.15, size = 36, threshold = 1.15 }, sun = { intensity = 0.2, spread = 1.0 },
+            dof = { focus = 42, inFocus = 62, far = 0.28, near = 0 },
+            cc = { brightness = 0.02, contrast = 0.26, saturation = 0.28, tint = Color3.fromRGB(246, 249, 255) },
+        },
+        ["Soft Blur"] = {
+            time = 14.4, brightness = 2.0, ambient = Color3.fromRGB(98, 100, 110), outdoor = Color3.fromRGB(140, 144, 156), exposure = 0.03,
+            blur = 8, bloom = { intensity = 0.5, size = 26, threshold = 1.6 },
+            cc = { brightness = 0.01, contrast = 0.08, saturation = 0.1, tint = Color3.fromRGB(252, 250, 255) },
+        },
+        ["Dreamy"] = {
+            time = 6.8, brightness = 1.95, ambient = Color3.fromRGB(112, 96, 124), outdoor = Color3.fromRGB(158, 138, 172), exposure = 0.06,
+            blur = 14, bloom = { intensity = 0.95, size = 34, threshold = 1.2 },
+            cc = { brightness = 0.02, contrast = 0.05, saturation = 0.2, tint = Color3.fromRGB(255, 240, 252) },
+        },
+        ["Tilt Shift"] = {
+            time = 14, brightness = 2.0, ambient = Color3.fromRGB(96, 100, 108), outdoor = Color3.fromRGB(138, 144, 154), exposure = 0.02,
+            dof = { focus = 22, inFocus = 18, far = 0.55, near = 0.25 },
+            bloom = { intensity = 0.35, size = 18, threshold = 1.8 },
+            cc = { brightness = 0, contrast = 0.18, saturation = 0.24, tint = Color3.fromRGB(255, 253, 250) },
+        },
+        ["Midnight"] = {
+            time = 0.4, brightness = 1.1, ambient = Color3.fromRGB(30, 36, 58), outdoor = Color3.fromRGB(52, 62, 96), exposure = -0.05, shadows = true,
+            bloom = { intensity = 0.7, size = 28, threshold = 1.1 },
+            cc = { brightness = -0.02, contrast = 0.22, saturation = -0.08, tint = Color3.fromRGB(196, 214, 255) },
+        },
     }
+    -- A pack the user built in the UI. Same shape as the presets, so it goes through the exact
+    -- same compositor -- nothing here is a special case.
+    if name == "Custom" then
+        packs.Custom = {
+            time = (tonumber(S.ShTime) or 140) / 10,
+            brightness = (tonumber(S.ShBrightness) or 200) / 100,
+            ambient = Color3.fromRGB(tonumber(S.ShAmbient) or 96, tonumber(S.ShAmbient) or 96, (tonumber(S.ShAmbient) or 96) + 8),
+            outdoor = Color3.fromRGB(tonumber(S.ShOutdoor) or 140, tonumber(S.ShOutdoor) or 140, (tonumber(S.ShOutdoor) or 140) + 10),
+            exposure = (tonumber(S.ShExposure) or 0) / 100,
+            shadows = S.ShShadows == true,
+            blur = tonumber(S.ShBlur) or 0,
+            bloom = (tonumber(S.ShBloom) or 0) > 0
+                and { intensity = (tonumber(S.ShBloom) or 0) / 100, size = tonumber(S.ShBloomSize) or 24, threshold = (tonumber(S.ShBloomThresh) or 150) / 100 }
+                or nil,
+            cc = {
+                brightness = (tonumber(S.ShCCBright) or 0) / 100,
+                contrast = (tonumber(S.ShContrast) or 10) / 100,
+                saturation = (tonumber(S.ShSaturation) or 10) / 100,
+                tint = Color3.fromRGB(255, 255, 255),
+            },
+        }
+    end
     local pack = packs[name]
     if not pack then return false end
-    Lighting.ClockTime = pack.time
-    Lighting.Brightness = pack.brightness
-    Lighting.Ambient = pack.ambient
-    Lighting.OutdoorAmbient = pack.outdoor
-    pcall(function() Lighting.ExposureCompensation = pack.exposure end)
+    Svc.Lighting.ClockTime = pack.time
+    Svc.Lighting.Brightness = pack.brightness
+    Svc.Lighting.Ambient = pack.ambient
+    Svc.Lighting.OutdoorAmbient = pack.outdoor
+    pcall(function() Svc.Lighting.ExposureCompensation = pack.exposure end)
+    if pack.shadows ~= nil then Svc.Lighting.GlobalShadows = pack.shadows end
+    if (pack.blur or 0) > 0 then
+        local blur = Instance.new("BlurEffect")
+        blur.Size = pack.blur
+        blur.Parent = Svc.Lighting
+        table.insert(shaderEffects, blur)
+    end
+    if pack.dof then
+        local dof = Instance.new("DepthOfFieldEffect")
+        dof.FocusDistance = pack.dof.focus or 40
+        dof.InFocusRadius = pack.dof.inFocus or 50
+        dof.FarIntensity = pack.dof.far or 0.25
+        dof.NearIntensity = pack.dof.near or 0
+        dof.Parent = Svc.Lighting
+        table.insert(shaderEffects, dof)
+    end
     if pack.bloom then
         local bloom = Instance.new("BloomEffect")
         bloom.Intensity = pack.bloom.intensity
         bloom.Size = pack.bloom.size
         bloom.Threshold = pack.bloom.threshold
-        bloom.Parent = Lighting
+        bloom.Parent = Svc.Lighting
         table.insert(shaderEffects, bloom)
     end
     if pack.sun then
         local sun = Instance.new("SunRaysEffect")
         sun.Intensity = pack.sun.intensity
         sun.Spread = pack.sun.spread
-        sun.Parent = Lighting
+        sun.Parent = Svc.Lighting
         table.insert(shaderEffects, sun)
     end
     local cc = Instance.new("ColorCorrectionEffect")
@@ -10464,7 +11080,7 @@ S._ApplySimpleShader = function(name)
     cc.Contrast = pack.cc.contrast
     cc.Saturation = pack.cc.saturation
     cc.TintColor = pack.cc.tint
-    cc.Parent = Lighting
+    cc.Parent = Svc.Lighting
     table.insert(shaderEffects, cc)
     return true
 end
@@ -10475,327 +11091,28 @@ applyShader = function(name)
     
     if name == "None" then
         S.ActiveShader = "None"
-        pcall(function() Lighting.ExposureCompensation = 0 end)
+        pcall(function() Svc.Lighting.ExposureCompensation = 0 end)
         if savedLighting.done then
-            Lighting.Brightness = savedLighting.Brightness
-            Lighting.ClockTime = savedLighting.ClockTime
-            Lighting.FogEnd = savedLighting.FogEnd
-            Lighting.GlobalShadows = savedLighting.GlobalShadows
-            Lighting.Ambient = savedLighting.Ambient
-            Lighting.OutdoorAmbient = savedLighting.OutdoorAmbient
-            Lighting.FogColor = Color3.fromRGB(192, 192, 192)
-            Lighting.FogStart = 0
+            Svc.Lighting.Brightness = savedLighting.Brightness
+            Svc.Lighting.ClockTime = savedLighting.ClockTime
+            Svc.Lighting.FogEnd = savedLighting.FogEnd
+            Svc.Lighting.GlobalShadows = savedLighting.GlobalShadows
+            Svc.Lighting.Ambient = savedLighting.Ambient
+            Svc.Lighting.OutdoorAmbient = savedLighting.OutdoorAmbient
+            Svc.Lighting.FogColor = Color3.fromRGB(192, 192, 192)
+            Svc.Lighting.FogStart = 0
         end
         if applyAtmo then pcall(applyAtmo) end
         return
     end
     
     S.ActiveShader = name
-    pcall(function() Lighting.ExposureCompensation = 0 end)
+    pcall(function() Svc.Lighting.ExposureCompensation = 0 end)
     if S._ApplySimpleShader and S._ApplySimpleShader(name) then
         if applyAtmo then pcall(applyAtmo) end
         return
     end
 
-    if name == "RTX Low" then
-        -- Clean, softly lit look: gentle bloom + subtle warm grade. No blown-out highlights.
-        Lighting.ClockTime = 14
-        Lighting.Brightness = 1.8
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(90, 94, 102)
-        Lighting.OutdoorAmbient = Color3.fromRGB(128, 132, 142)
-        pcall(function() Lighting.ExposureCompensation = 0.03 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.35
-        bloom.Size = 18
-        bloom.Threshold = 1.7
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.08
-        cc.Saturation = 0.12
-        cc.TintColor = Color3.fromRGB(255, 252, 246)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "RTX Medium" then
-        -- Balanced daylight with soft sun shafts and a warm cinematic tint.
-        Lighting.ClockTime = 14.5
-        Lighting.Brightness = 2.0
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(96, 100, 110)
-        Lighting.OutdoorAmbient = Color3.fromRGB(138, 142, 154)
-        pcall(function() Lighting.ExposureCompensation = 0.06 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.55
-        bloom.Size = 24
-        bloom.Threshold = 1.6
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.07
-        sunrays.Spread = 0.55
-        sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.12
-        cc.Saturation = 0.18
-        cc.TintColor = Color3.fromRGB(255, 250, 242)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "RTX High" then
-        -- Cinematic contrast + sun shafts + subtle depth-of-field. Tuned to avoid glare.
-        Lighting.ClockTime = 15.2
-        Lighting.Brightness = 2.2
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(100, 104, 116)
-        Lighting.OutdoorAmbient = Color3.fromRGB(144, 148, 162)
-        pcall(function() Lighting.ExposureCompensation = 0.08 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.8
-        bloom.Size = 30
-        bloom.Threshold = 1.5
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.11
-        sunrays.Spread = 0.65
-        sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.16
-        cc.Saturation = 0.22
-        cc.TintColor = Color3.fromRGB(255, 248, 236)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "RTX Ultra" then
-        -- Premium cinematic look: bright & vibrant with soft glowing highlights, gentle god-rays and a
-        -- light depth-of-field — WITHOUT blowing the scene out. Only genuinely bright spots bloom (high
-        -- threshold), exposure is modest, saturation is rich but not crushed. The animator just makes it
-        -- "breathe" softly instead of pulsing hard.
-        Lighting.ClockTime = 15.2
-        Lighting.Brightness = 2.3
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(104, 108, 122)
-        Lighting.OutdoorAmbient = Color3.fromRGB(150, 155, 170)
-        pcall(function() Lighting.ExposureCompensation = 0.09 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.9
-        bloom.Size = 34
-        bloom.Threshold = 1.4
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.16
-        sunrays.Spread = 0.7
-        sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
-
-        local dof = Instance.new("DepthOfFieldEffect")
-        dof.FarIntensity = 0.08
-        dof.FocusDistance = 45
-        dof.InFocusRadius = 55
-        dof.NearIntensity = 0.2
-        dof.Parent = Lighting
-        table.insert(shaderEffects, dof)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.18
-        cc.Saturation = 0.32
-        cc.TintColor = Color3.fromRGB(255, 251, 246)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-        -- Live references for the animator loop (cleared in clearShaderEffects).
-        S._ultraFX = { bloom = bloom, sunrays = sunrays, cc = cc }
-
-    elseif name == "Night Shaders" then
-        -- Moody moonlit blue with soft glow and a cool tint. Ambient lifted so
-        -- shadowed corners / indoors don't crush to black.
-        Lighting.ClockTime = 0
-        Lighting.Brightness = 1.7
-        Lighting.Ambient = Color3.fromRGB(72, 86, 122)
-        Lighting.OutdoorAmbient = Color3.fromRGB(88, 104, 146)
-        Lighting.GlobalShadows = true
-        pcall(function() Lighting.ExposureCompensation = 0.15 end)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.06
-        cc.TintColor = Color3.fromRGB(165, 186, 255)
-        cc.Contrast = 0.15
-        cc.Saturation = 0.28
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.7
-        bloom.Size = 24
-        bloom.Threshold = 1.2
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-    elseif name == "Pink Shaders" then
-        -- Dreamy sunset: warm pink/orange glow, soft blooming highlights.
-        Lighting.ClockTime = 17.4
-        Lighting.Brightness = 1.8
-        Lighting.Ambient = Color3.fromRGB(110, 86, 100)
-        Lighting.OutdoorAmbient = Color3.fromRGB(195, 145, 168)
-        Lighting.GlobalShadows = true
-        pcall(function() Lighting.ExposureCompensation = 0.06 end)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.TintColor = Color3.fromRGB(255, 205, 226)
-        cc.Contrast = 0.11
-        cc.Saturation = 0.18
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.7
-        bloom.Size = 26
-        bloom.Threshold = 1.4
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-    elseif name == "Cinematic" then
-        -- Film look: strong contrast, warm highlights, soft depth-of-field.
-        Lighting.ClockTime = 15.8
-        Lighting.Brightness = 2.0
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(92, 96, 106)
-        Lighting.OutdoorAmbient = Color3.fromRGB(138, 144, 156)
-        pcall(function() Lighting.ExposureCompensation = 0.05 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.5
-        bloom.Size = 22
-        bloom.Threshold = 1.6
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Contrast = 0.25
-        cc.Saturation = 0.10
-        cc.TintColor = Color3.fromRGB(255, 244, 228)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Golden Hour" then
-        -- Low warm sun, long golden light, heavy glow.
-        Lighting.ClockTime = 17.8
-        Lighting.Brightness = 2.3
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(140, 105, 70)
-        Lighting.OutdoorAmbient = Color3.fromRGB(215, 160, 105)
-        pcall(function() Lighting.ExposureCompensation = 0.08 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.9
-        bloom.Size = 32
-        bloom.Threshold = 1.35
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.18
-        sunrays.Spread = 0.8
-        sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Contrast = 0.12
-        cc.Saturation = 0.22
-        cc.TintColor = Color3.fromRGB(255, 214, 165)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Arctic" then
-        -- Crisp cold daylight: icy blue tint, slightly desaturated, bright and clean.
-        Lighting.ClockTime = 13
-        Lighting.Brightness = 2.4
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(120, 132, 148)
-        Lighting.OutdoorAmbient = Color3.fromRGB(170, 185, 205)
-        pcall(function() Lighting.ExposureCompensation = 0.04 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.45
-        bloom.Size = 20
-        bloom.Threshold = 1.6
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.03
-        cc.Contrast = 0.15
-        cc.Saturation = -0.08
-        cc.TintColor = Color3.fromRGB(205, 228, 255)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Neon" then
-        -- Cyberpunk night: deep purple ambient, saturated colours, heavy bloom on lights.
-        Lighting.ClockTime = 0
-        Lighting.Brightness = 1.4
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(55, 30, 85)
-        Lighting.OutdoorAmbient = Color3.fromRGB(80, 45, 130)
-        pcall(function() Lighting.ExposureCompensation = 0.0 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 1.1
-        bloom.Size = 34
-        bloom.Threshold = 1.1
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Contrast = 0.2
-        cc.Saturation = 0.35
-        cc.TintColor = Color3.fromRGB(200, 150, 255)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Noir" then
-        -- Black & white detective film: no colour, hard contrast, soft glow.
-        Lighting.ClockTime = 16
-        Lighting.Brightness = 1.7
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(90, 90, 90)
-        Lighting.OutdoorAmbient = Color3.fromRGB(130, 130, 130)
-        pcall(function() Lighting.ExposureCompensation = 0.0 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.3
-        bloom.Size = 16
-        bloom.Threshold = 1.8
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = -0.02
-        cc.Contrast = 0.35
-        cc.Saturation = -1
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-    end
 
     if applyAtmo then pcall(applyAtmo) end
 end
@@ -10825,7 +11142,7 @@ end)
 -- Roblox rule that drives the design: legacy fog (FogStart/End/Color) is IGNORED whenever any
 -- Atmosphere exists. So Fog uses legacy fog and parks any Atmosphere; Sky uses an Atmosphere for
 -- colour (only when Fog is off) plus ClockTime + Ambient + skybox removal so the change is obvious.
-do
+;(function()
     -- Base haze applied while a shader preset is active (only when sky/fog aren't managing it).
     local SHADER_ATMO = {
         ["RTX Low"]       = {density=0.20, offset=0.15, color=Color3.fromRGB(200,206,216), decay=Color3.fromRGB(120,140,182), glare=0.08, haze=1.1},
@@ -10883,12 +11200,12 @@ do
 
     local function getAtmo()
         if atmoRef and atmoRef.Parent then return atmoRef end
-        atmoRef = Lighting:FindFirstChild(ATMO_NAME)
+        atmoRef = Svc.Lighting:FindFirstChild(ATMO_NAME)
         if not atmoRef then
             atmoRef = Instance.new("Atmosphere")
             atmoRef.Name = ATMO_NAME
         end
-        atmoRef.Parent = Lighting
+        atmoRef.Parent = Svc.Lighting
         return atmoRef
     end
     local function clearAtmo()
@@ -10898,11 +11215,11 @@ do
     local function parkMapAtmo(on)
         if on then
             if not mapAtmoParked then
-                local a = Lighting:FindFirstChildOfClass("Atmosphere")
+                local a = Svc.Lighting:FindFirstChildOfClass("Atmosphere")
                 if a and a.Name ~= ATMO_NAME then mapAtmoParked = a; a.Parent = nil end
             end
         elseif mapAtmoParked then
-            pcall(function() mapAtmoParked.Parent = Lighting end)
+            pcall(function() mapAtmoParked.Parent = Svc.Lighting end)
             mapAtmoParked = nil
         end
     end
@@ -10910,23 +11227,23 @@ do
     local function removeSky(on)
         if on then
             if not removedSky then
-                local sk = Lighting:FindFirstChildOfClass("Sky")
+                local sk = Svc.Lighting:FindFirstChildOfClass("Sky")
                 if sk then removedSky = sk; sk.Parent = nil end
             end
         elseif removedSky then
-            pcall(function() removedSky.Parent = Lighting end)
+            pcall(function() removedSky.Parent = Svc.Lighting end)
             removedSky = nil
         end
     end
     local function saveFog()
-        if not savedFog then savedFog = {c = Lighting.FogColor, s = Lighting.FogStart, e = Lighting.FogEnd} end
+        if not savedFog then savedFog = {c = Svc.Lighting.FogColor, s = Svc.Lighting.FogStart, e = Svc.Lighting.FogEnd} end
     end
     local function restoreFog()
         if savedFog then
             pcall(function()
-                Lighting.FogColor = savedFog.c
-                Lighting.FogStart = savedFog.s
-                Lighting.FogEnd   = savedFog.e
+                Svc.Lighting.FogColor = savedFog.c
+                Svc.Lighting.FogStart = savedFog.s
+                Svc.Lighting.FogEnd   = savedFog.e
             end)
             savedFog = nil
         end
@@ -10957,9 +11274,9 @@ do
                 saveFog()
                 clearAtmo()
                 local fs = S.FogStart or 0
-                Lighting.FogColor = fogColor
-                Lighting.FogStart = fs
-                Lighting.FogEnd   = math.max(fs + 1, S.FogEnd or 500)
+                Svc.Lighting.FogColor = fogColor
+                Svc.Lighting.FogStart = fs
+                Svc.Lighting.FogEnd   = math.max(fs + 1, S.FogEnd or 500)
             else
                 restoreFog()
             end
@@ -10968,9 +11285,9 @@ do
             if S.SkyEnabled then
                 local p = SKY_PRESETS[S.SkyPreset] or SKY_PRESETS.Day
                 removeSky(true)
-                if not S.CustomTime then Lighting.ClockTime = p.clock end
-                Lighting.Ambient = p.ambient
-                Lighting.OutdoorAmbient = p.outdoor
+                if not S.CustomTime then Svc.Lighting.ClockTime = p.clock end
+                Svc.Lighting.Ambient = p.ambient
+                Svc.Lighting.OutdoorAmbient = p.outdoor
             else
                 removeSky(false)
             end
@@ -10979,12 +11296,14 @@ do
             if needOwnAtmo then
                 local a = getAtmo()
                 if atmoFog then
+                    -- Haze/Glare/Offset were fixed constants, which is why "soft fog" only ever had
+                    -- one look. Haze is the big one: it is what turns a flat grey wash into depth.
                     a.Density = math.clamp((S.FogDensity or 40) / 100, 0, 0.95)
-                    a.Offset  = 0
+                    a.Offset  = math.clamp((tonumber(S.FogOffset) or 0) / 100, -1, 1)
                     a.Color   = fogColor
                     a.Decay   = fogColor
-                    a.Glare   = 0
-                    a.Haze    = 2.4
+                    a.Glare   = math.clamp((tonumber(S.FogGlare) or 0) / 100 * 2, 0, 2)
+                    a.Haze    = math.clamp((tonumber(S.FogHaze) or 24) / 100 * 5, 0, 5)
                 elseif S.SkyEnabled then
                     local p = SKY_PRESETS[S.SkyPreset] or SKY_PRESETS.Day
                     a.Density = p.density
@@ -11026,9 +11345,9 @@ do
         pcall(clearAtmo)
         pcall(restoreFog)
     end)
-end
+end)()
 -- ============ HAND SHADERS (self highlight / outline for the local player only) ============
-do
+;(function()
     -- UI Section is now registered inside the Visuals page instead of the old Shaders page.
     local hl
     local function killHL()
@@ -11190,501 +11509,14 @@ do
         restoreHandMaterials()
     end
     SG.Destroying:Connect(cleanupAll)
-end
--- ============ LOCAL KNIFE EFFECT CATALOG (visual only) ============
-do
-    local RS = game:GetService("ReplicatedStorage")
-    local catalogContainer, catalogCount = nil, 0
-    local appliedEffectObjects, appliedEffectId, appliedKnife = {}, nil, nil
-
-    local function clearLegacyAura(char)
-        if not char then return end
-        for _, obj in ipairs(char:GetDescendants()) do
-            if string.sub(obj.Name or "", 1, 7) == "MM2_FX_" then
-                pcall(function() obj:Destroy() end)
-            end
-        end
-    end
-
-    local function clearAppliedKnifeEffect()
-        for _, obj in ipairs(appliedEffectObjects) do
-            if obj and obj.Parent then pcall(function() obj:Destroy() end) end
-        end
-        table.clear(appliedEffectObjects)
-        appliedEffectId, appliedKnife = nil, nil
-        clearLegacyAura(LP.Character)
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        if bp then clearLegacyAura(bp) end
-    end
-
-    local function ownEffect(obj)
-        if obj then table.insert(appliedEffectObjects, obj) end
-        return obj
-    end
-
-    local function currentKnife()
-        local char, bp = LP.Character, LP:FindFirstChildOfClass("Backpack")
-        local knife = (char and (char:FindFirstChild("Knife") or char:FindFirstChild("KnifeServer")))
-            or (bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("KnifeServer")))
-        if knife then return knife, knife:FindFirstChild("Handle") or knife:FindFirstChild("KnifeVisual") or knife:FindFirstChildWhichIsA("BasePart", true) end
-        return nil, nil
-    end
-
-    local function hasVisual(obj)
-        if not obj then return false end
-        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire")
-            or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Light") or obj:IsA("Attachment")
-            or obj:IsA("BasePart") then
-            return true
-        end
-        for _, d in ipairs(obj:GetDescendants()) do
-            if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") or d:IsA("Fire")
-                or d:IsA("Smoke") or d:IsA("Sparkles") or d:IsA("Light") or d:IsA("Attachment")
-                or d:IsA("BasePart") then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function sanitizeVisual(obj)
-        for _, d in ipairs(obj:GetDescendants()) do
-            if d:IsA("BaseScript") or d:IsA("ModuleScript") or d:IsA("Camera") then
-                pcall(function() d:Destroy() end)
-            elseif d:IsA("BasePart") then
-                d.Anchored = false
-                d.CanCollide = false
-                d.CanTouch = false
-                d.CanQuery = false
-                d.Massless = true
-            elseif d:IsA("ParticleEmitter") then
-                pcall(function()
-                    if d.Rate <= 0 then d.Rate = MOBILE and 10 or 18 end
-                    d.Rate = math.min(d.Rate, MOBILE and 28 or 55)
-                    d.LightInfluence = 0
-                    d.LockedToPart = true
-                    d.Enabled = true
-                end)
-            elseif d:IsA("Trail") or d:IsA("Beam") then
-                pcall(function() d.Enabled = true end)
-            end
-        end
-    end
-
-    local function ensureTrailAttachments(obj, handle)
-        for _, d in ipairs(obj:GetDescendants()) do
-            if d:IsA("Trail") or d:IsA("Beam") then
-                local a0 = d.Attachment0
-                local a1 = d.Attachment1
-                if not a0 or not a0.Parent then
-                    a0 = Instance.new("Attachment")
-                    a0.Name = "MM2_FX_A0"
-                    a0.Position = Vector3.new(0, -0.55, 0)
-                    a0.Parent = handle
-                    ownEffect(a0)
-                    d.Attachment0 = a0
-                end
-                if not a1 or not a1.Parent then
-                    a1 = Instance.new("Attachment")
-                    a1.Name = "MM2_FX_A1"
-                    a1.Position = Vector3.new(0, 0.85, 0)
-                    a1.Parent = handle
-                    ownEffect(a1)
-                    d.Attachment1 = a1
-                end
-            end
-        end
-    end
-
-    local function mountVisual(obj, tool, handle)
-        local clone = obj:Clone()
-        clone.Name = "MM2_FX_" .. tostring(obj.Name)
-        sanitizeVisual(clone)
-        if clone:IsA("ParticleEmitter") or clone:IsA("Fire") or clone:IsA("Smoke")
-            or clone:IsA("Sparkles") or clone:IsA("Light") then
-            clone.Parent = handle
-        elseif clone:IsA("Trail") or clone:IsA("Beam") then
-            clone.Parent = handle
-            ensureTrailAttachments(clone, handle)
-        elseif clone:IsA("Attachment") then
-            clone.Parent = handle
-        elseif clone:IsA("BasePart") then
-            clone.CFrame = handle.CFrame
-            clone.Parent = tool
-            local weld = Instance.new("WeldConstraint")
-            weld.Name = "MM2_FX_Weld"
-            weld.Part0 = handle
-            weld.Part1 = clone
-            weld.Parent = clone
-        elseif clone:IsA("Model") then
-            clone.Parent = tool
-            pcall(function() clone:PivotTo(handle.CFrame) end)
-            for _, part in ipairs(clone:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    local weld = Instance.new("WeldConstraint")
-                    weld.Name = "MM2_FX_Weld"
-                    weld.Part0 = handle
-                    weld.Part1 = part
-                    weld.Parent = part
-                end
-            end
-        else
-            clone.Parent = handle
-        end
-        ensureTrailAttachments(clone, handle)
-        ownEffect(clone)
-        return true
-    end
-
-    local function getCatalogContainer()
-        local playerGui = LP:FindFirstChildOfClass("PlayerGui")
-        local mainGui = playerGui and playerGui:FindFirstChild("MainGUI")
-        local gameGui = mainGui and mainGui:FindFirstChild("Game")
-        local inventory = gameGui and gameGui:FindFirstChild("Inventory")
-        local main = inventory and inventory:FindFirstChild("Main")
-        local effects = main and main:FindFirstChild("Effects")
-        local items = effects and effects:FindFirstChild("Items")
-        local holder = items and items:FindFirstChild("Container")
-        local current = holder and holder:FindFirstChild("Current")
-        return current and current:FindFirstChild("Container")
-    end
-
-    local function clearCatalogIn(container)
-        if not container then return end
-        for _, card in ipairs(container:GetChildren()) do
-            if card:GetAttribute("MM2LocalVisualEffect") == true then
-                pcall(function() card:Destroy() end)
-            end
-        end
-    end
-
-    local function clearCatalog(container)
-        clearCatalogIn(catalogContainer)
-        if container ~= catalogContainer then clearCatalogIn(container) end
-        catalogContainer, catalogCount = nil, 0
-    end
-
-    local function getKnifeEffects()
-        local ok, sync = pcall(function()
-            return require(RS:WaitForChild("Database"):WaitForChild("Sync"))
-        end)
-        local effects = ok and sync and sync.Effects
-        if type(effects) ~= "table" then return {} end
-
-        local result = {}
-        for id, data in pairs(effects) do
-            if type(data) == "table" and data.KnifeModule ~= nil then
-                local item = {}
-                for key, value in pairs(data) do item[key] = value end
-                item.ItemName = item.ItemName or item.Name or tostring(id)
-                item.Name = item.Name or item.ItemName
-                item.Rarity = item.Rarity or "Common"
-                item.Image = item.Image or ""
-                table.insert(result, {Id = tostring(id), Data = item})
-            end
-        end
-        table.sort(result, function(a, b)
-            return string.lower(tostring(a.Data.ItemName)) < string.lower(tostring(b.Data.ItemName))
-        end)
-        return result
-    end
-
-    local function findEffectSource(effect)
-        local data = effect and effect.Data
-        local key = data and data.KnifeModule
-        if typeof(key) == "Instance" then return key end
-        key = tostring(key or effect and effect.Id or "")
-        if key == "" then return nil end
-        local candidates = {
-            RS:FindFirstChild("Modules"),
-            RS:FindFirstChild("Effects"),
-            RS,
-        }
-        local norm = key:lower()
-        for _, root in ipairs(candidates) do
-            if root then
-                for _, d in ipairs(root:GetDescendants()) do
-                    local dn = d.Name:lower()
-                    if dn == norm or dn == norm .. "effect" or dn == norm .. "knifeeffect" then
-                        return d
-                    end
-                end
-            end
-        end
-        return nil
-    end
-
-    local function cloneVisualsFrom(source, tool, handle)
-        local made = 0
-        if hasVisual(source) and not source:IsA("ModuleScript") then
-            if mountVisual(source, tool, handle) then made += 1 end
-        end
-        for _, child in ipairs(source:GetChildren()) do
-            if hasVisual(child) and mountVisual(child, tool, handle) then made += 1 end
-        end
-        return made
-    end
-
-    local function tryModuleApply(source, tool, handle)
-        if not (source and source:IsA("ModuleScript")) then return 0 end
-        local before, made = {}, 0
-        for _, d in ipairs(tool:GetDescendants()) do before[d] = true end
-        local ok, moduleValue = pcall(require, source)
-        if not ok then return 0 end
-        local calls = {}
-        if type(moduleValue) == "function" then
-            calls = { moduleValue }
-        elseif type(moduleValue) == "table" then
-            for _, name in ipairs({"Apply", "ApplyKnife", "KnifeEffect", "Create", "Start", "Enable", "new"}) do
-                if type(moduleValue[name]) == "function" then table.insert(calls, moduleValue[name]) end
-            end
-            for _, v in pairs(moduleValue) do
-                if typeof(v) == "Instance" and hasVisual(v) and mountVisual(v, tool, handle) then made += 1 end
-            end
-        end
-        for _, fn in ipairs(calls) do
-            local tries = {
-                function() return fn(handle) end,
-                function() return fn(tool) end,
-                function() return fn(tool, handle) end,
-                function() return fn(handle, tool) end,
-            }
-            for _, call in ipairs(tries) do
-                local countBefore = #tool:GetDescendants()
-                pcall(call)
-                if #tool:GetDescendants() > countBefore then break end
-            end
-        end
-        for _, d in ipairs(tool:GetDescendants()) do
-            if not before[d] then
-                local top = d
-                while top.Parent and top.Parent ~= tool and top.Parent ~= handle do top = top.Parent end
-                if top and not before[top] and string.sub(top.Name or "", 1, 7) ~= "MM2_FX_" then
-                    top.Name = "MM2_FX_" .. tostring(top.Name)
-                    ownEffect(top)
-                    made += 1
-                end
-            end
-        end
-        return made
-    end
-
-    local function fallbackEffect(effect, tool, handle)
-        local seed = 0
-        for i = 1, #effect.Id do seed += string.byte(effect.Id, i) end
-        local color = Color3.fromHSV((seed % 360) / 360, 0.82, 1)
-        local a0 = Instance.new("Attachment")
-        a0.Name = "MM2_FX_A0"
-        a0.Position = Vector3.new(0, -0.55, 0)
-        a0.Parent = handle
-        ownEffect(a0)
-        local a1 = Instance.new("Attachment")
-        a1.Name = "MM2_FX_A1"
-        a1.Position = Vector3.new(0, 0.85, 0)
-        a1.Parent = handle
-        ownEffect(a1)
-        local pe = Instance.new("ParticleEmitter")
-        pe.Name = "MM2_FX_LocalEmitter"
-        pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-        pe.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.35))
-        pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.22, 0), NumberSequenceKeypoint.new(0.7, 0.55, 0), NumberSequenceKeypoint.new(1, 0, 0)})
-        pe.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1, 0), NumberSequenceKeypoint.new(0.8, 0.35, 0), NumberSequenceKeypoint.new(1, 1, 0)})
-        pe.Lifetime = NumberRange.new(0.28, 0.55)
-        pe.Rate = MOBILE and 18 or 34
-        pe.Speed = NumberRange.new(0.2, 0.8)
-        pe.SpreadAngle = Vector2.new(80, 80)
-        pe.LightEmission = 0.7
-        pe.LightInfluence = 0
-        pe.LockedToPart = true
-        pe.Parent = handle
-        ownEffect(pe)
-        local tr = Instance.new("Trail")
-        tr.Name = "MM2_FX_LocalTrail"
-        tr.Attachment0 = a0
-        tr.Attachment1 = a1
-        tr.Color = ColorSequence.new(color, color:Lerp(Color3.new(0, 0, 0), 0.45))
-        tr.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.15, 0), NumberSequenceKeypoint.new(1, 1, 0)})
-        tr.Lifetime = 0.22
-        tr.LightEmission = 0.45
-        tr.Parent = handle
-        ownEffect(tr)
-        return true
-    end
-
-    local function applyKnifeEffect(effectId, effectData, silent)
-        if not (S.UnlockAllKnifeEffects and effectId) then return false end
-        local tool, handle = currentKnife()
-        if not (tool and handle) then
-            if not silent then Notify("Knife Effect", "Equip/hold Knife first; saved for next Knife.", 3) end
-            return false
-        end
-        if appliedKnife == tool and appliedEffectId == effectId and handle:FindFirstChild("MM2_FX_Applied") then return true end
-        clearAppliedKnifeEffect()
-        local marker = Instance.new("BoolValue")
-        marker.Name = "MM2_FX_Applied"
-        marker.Parent = handle
-        ownEffect(marker)
-        local effect = { Id = tostring(effectId), Data = effectData or {} }
-        local source = findEffectSource(effect)
-        local made = source and (cloneVisualsFrom(source, tool, handle) + tryModuleApply(source, tool, handle)) or 0
-        if made <= 0 then fallbackEffect(effect, tool, handle) end
-        appliedKnife, appliedEffectId = tool, tostring(effectId)
-        if not silent then Notify("Knife Effect", "Applied: " .. tostring((effectData and (effectData.Name or effectData.ItemName)) or effectId), 2) end
-        return true
-    end
-
-    S._ApplySelectedKnifeEffect = function(silent)
-        if not (S.UnlockAllKnifeEffects and S.ActiveVisualEffect) then return false end
-        for _, effect in ipairs(getKnifeEffects()) do
-            if effect.Id == tostring(S.ActiveVisualEffect) then
-                return applyKnifeEffect(effect.Id, effect.Data, silent)
-            end
-        end
-        return false
-    end
-
-    local function visualCardCount(container)
-        local count = 0
-        if container then
-            for _, card in ipairs(container:GetChildren()) do
-                if card:GetAttribute("MM2LocalVisualEffect") == true then count += 1 end
-            end
-        end
-        return count
-    end
-
-    local function populateCatalog()
-        local container = getCatalogContainer()
-        if not container then return end
-
-        local effects = getKnifeEffects()
-        if #effects == 0 then return end
-        if container == catalogContainer and catalogCount == #effects and visualCardCount(container) == #effects then return end
-
-        clearCatalog(container)
-        local modules = RS:FindFirstChild("Modules")
-        local inventoryModule = modules and modules:FindFirstChild("InventoryModule")
-        local template = inventoryModule and inventoryModule:FindFirstChild("NewItem")
-        local ok, itemModule = pcall(function()
-            return require(modules:WaitForChild("ItemModule"))
-        end)
-        if not template or not ok or type(itemModule) ~= "table" then return end
-
-        for index, effect in ipairs(effects) do
-            pcall(function()
-                local card = template:Clone()
-                card.Name = "MM2_LocalKnifeEffect_" .. effect.Id
-                card.LayoutOrder = 5000 + index
-                card:SetAttribute("MM2LocalVisualEffect", true)
-                card:SetAttribute("MM2LocalEffectId", effect.Id)
-                itemModule.DisplayItem(card, effect.Data, 1, true)
-
-                local actionButton = card:FindFirstChild("ActionButton", true)
-                if actionButton and actionButton:IsA("GuiButton") then
-                    actionButton.Active = true
-                    actionButton.Selectable = true
-                    actionButton.AutoButtonColor = true
-                    actionButton.MouseButton1Click:Connect(function()
-                        if SFX and SFX.Click then pcall(SFX.Click) end
-                        S.ActiveVisualEffect = effect.Id
-                        local ok = applyKnifeEffect(effect.Id, effect.Data, true)
-                        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-                        if S._MarkSelectedEffect then pcall(S._MarkSelectedEffect) end
-                        -- Clicking with no knife in hand looked like nothing happened at all: the
-                        -- effect only attaches to a live Knife tool, and outside a murderer round
-                        -- there is none. Say which of the two just happened instead of staying mute.
-                        local label = tostring((effect.Data and (effect.Data.Name or effect.Data.ItemName)) or effect.Id)
-                        if ok then
-                            Notify("Knife Effect", "Applied: " .. label, 2)
-                        else
-                            Notify("Knife Effect", "Selected: " .. label ..
-                                " - applies as soon as you hold a knife.", 4)
-                        end
-                    end)
-                end
-                local amount = card:FindFirstChild("Amount", true)
-                if amount and amount:IsA("TextLabel") then amount.Text = "" end
-                card.Parent = container
-            end)
-        end
-        catalogContainer, catalogCount = container, #effects
-        if S._MarkSelectedEffect then pcall(S._MarkSelectedEffect) end
-    end
-
-    -- Outline the card that is currently selected. Without it there is no way to tell which of the
-    -- 47 you picked, which is most of why selecting one felt like it did nothing.
-    S._MarkSelectedEffect = function()
-        local container = getCatalogContainer()
-        if not container then return end
-        for _, card in ipairs(container:GetChildren()) do
-            if card:GetAttribute("MM2LocalVisualEffect") == true then
-                local chosen = tostring(card:GetAttribute("MM2LocalEffectId")) == tostring(S.ActiveVisualEffect)
-                local mark = card:FindFirstChild("MM2_FX_Selected")
-                if chosen and not mark then
-                    mark = Instance.new("UIStroke")
-                    mark.Name = "MM2_FX_Selected"
-                    mark.Color = Color3.fromRGB(120, 240, 255)
-                    mark.Thickness = 2
-                    mark.Parent = card
-                elseif not chosen and mark then
-                    mark:Destroy()
-                end
-            end
-        end
-    end
-
-    local function refreshCatalog()
-        if S.UnlockAllKnifeEffects then
-            populateCatalog()
-            if S.ActiveVisualEffect then pcall(S._ApplySelectedKnifeEffect, true) end
-        else
-            clearCatalog(getCatalogContainer())
-            clearAppliedKnifeEffect()
-        end
-    end
-
-    S._RefreshKnifeEffectCatalog = refreshCatalog
-    clearLegacyAura(LP.Character)
-    task.spawn(function()
-        while S.Gui and S.Gui.Parent do
-            pcall(refreshCatalog)
-            task.wait(0.75)
-        end
-        clearCatalog(getCatalogContainer())
-    end)
-    tc(LP.CharacterAdded:Connect(clearLegacyAura))
-    tc(LP.CharacterAdded:Connect(function()
-        task.delay(0.8, function() pcall(S._ApplySelectedKnifeEffect, true) end)
-    end))
-    local bp = LP:FindFirstChildOfClass("Backpack")
-    if bp then
-        tc(bp.ChildAdded:Connect(function(child)
-            if child.Name == "Knife" or child.Name == "KnifeServer" then
-                task.delay(0.15, function() pcall(S._ApplySelectedKnifeEffect, true) end)
-            end
-        end))
-    end
-    if LP.Character then
-        tc(LP.Character.ChildAdded:Connect(function(child)
-            if child.Name == "Knife" or child.Name == "KnifeServer" then
-                task.delay(0.15, function() pcall(S._ApplySelectedKnifeEffect, true) end)
-            end
-        end))
-    end
-    SG.Destroying:Connect(function()
-        clearCatalog(getCatalogContainer())
-        clearAppliedKnifeEffect()
-        if S._RefreshKnifeEffectCatalog == refreshCatalog then S._RefreshKnifeEffectCatalog = nil end
-        S._ApplySelectedKnifeEffect = nil
-    end)
-end
+end)()
 -- ============ DUAL WIELD (visual only) ============
 -- Clones whatever weapon Tool is currently equipped and welds a cosmetic copy of its Handle into the
 -- OFF hand, mirroring the exact grip joint Roblox itself created for the real one — so it's rigidly
 -- attached and reads correctly, not an arm stretched out toward a floating gun. The clone has no
 -- scripts/remotes; it cannot fire or throw, it's decoration only. Own do-block: own local-register
 -- budget, per the running rule for this file (it lives right at Luau's 200-local ceiling).
-do
+;(function()
     local dualModel, trackedHandle = nil, nil
 
     local function clearDual()
@@ -11750,7 +11582,7 @@ do
         dualModel, trackedHandle = clone, handle
     end
 
-    tc(RunService.Heartbeat:Connect(function()
+    tc(Svc.RunService.Heartbeat:Connect(function()
         if not S.DualWield then
             if dualModel then clearDual() end
             return
@@ -11784,7 +11616,7 @@ do
         end)
     end))
     tc(LP.CharacterAdded:Connect(function() clearDual() end))
-end
+end)()
 -- ============ AUTOFARM TAB (coins + fast autofarm) ============
 -- Some MM2 maps do not expose Workspace.Normal until after PlayerDataChanged has
 -- already delivered the roles. Keep a separate, server-data-backed round signal so
@@ -11794,7 +11626,7 @@ isRoundActive = function()
     return workspace:FindFirstChild("Normal") ~= nil or S._RoleDataRoundActive == true
 end
 
-do
+;(function()
     -- Find every coin part. A part is a coin if ITS name OR its parent MODEL's name contains "coin"
     -- (this game's coins are Model "Coin_Server" > "CoinVisual" > MeshParts).
     -- PERF: the coin list is CACHED. The old version did `workspace:GetDescendants()` (the WHOLE game)
@@ -11828,7 +11660,7 @@ do
 
     -- Position of the nearest live murderer, or nil when there is none / role is unknown.
     local function murdererPosition()
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character and getRole(p) == "Murderer" then
                 local mHrp = p.Character:FindFirstChild("HumanoidRootPart")
                 local mHum = p.Character:FindFirstChildOfClass("Humanoid")
@@ -11909,9 +11741,9 @@ do
     end
 
     -- ---------- UI ---------- (merged into Teleport > Autofarm subtab)
-    local secAuto = mkSection(Pages.Teleport, "Automated", 6)
+    local secAuto = UI.mkSection(Pages.Teleport, "Automated", 6)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secAuto) end
-    mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
+    UI.mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
     -- Studs/s (1-120). Speed up to 120 studs/s.
     mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
     mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
@@ -11923,9 +11755,9 @@ do
     -- and read them off the coords HUD). Updated 2026-07-23 — the lobby's vote-pad coords changed
     -- since the previous measurement (old: Slot1=(25,507,48), Slot2=(13,507,51), Slot3=(2,507,49)):
     -- Slot1=(-8,-64,-94), Slot2=(0,-64,-96), Slot3=(10,-64,-93).
-    local secVote = mkSection(Pages.Teleport, "Vote Farm", 7)
+    local secVote = UI.mkSection(Pages.Teleport, "Vote Farm", 7)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secVote) end
-    mkCycle(secVote, "Map Slot", {"1", "2", "3"}, "1", function(v) S.VoteFarmSlot = v end, 1)
+    UI.mkCycle(secVote, "Map Slot", {"1", "2", "3"}, "1", function(v) S.VoteFarmSlot = v end, 1)
     mkSlider(secVote, "Reset Count", 1, 20, 5, function(v) S.VoteFarmCount = v end, 2)
     local voteFarmBusy = false
     local VoteSlotCoords = {
@@ -12001,7 +11833,7 @@ do
             if S.AutoVote then task.defer(tryAutoVote) end
         end))
     end
-    tc(RunService.Heartbeat:Connect(function()
+    tc(Svc.RunService.Heartbeat:Connect(function()
         if not S.AutoVote then autoVoteLastButton = nil; return end
         local now = tick()
         if now >= autoVoteNextScan then
@@ -12009,12 +11841,12 @@ do
             tryAutoVote()
         end
     end))
-    mkToggle(secVote, "Auto Vote", false, function(v)
+    UI.mkToggle(secVote, "Auto Vote", false, function(v)
         S.AutoVote = v
         autoVoteLastButton = nil
         if v then task.defer(tryAutoVote) end
     end, 3)
-    mkAction(secVote, "Start Vote Farm", function()
+    UI.mkAction(secVote, "Start Vote Farm", function()
         if voteFarmBusy then Notify("Vote Farm", "Already running", 2); return end
         voteFarmBusy = true
         task.spawn(function()
@@ -12130,25 +11962,27 @@ do
             task.wait(0.05)
         end
     end)
-end
+end)()
 
+-- One register for the whole config cluster instead of twenty: these are all live to the end
+-- of the chunk, so they were the expensive kind of top-level local.
 -- ============ CONFIG SYSTEM (persist settings + HUD across launches) ============
 -- Wrapped in a do-block to keep its locals out of the main chunk's 200-local budget.
 do
-local CfgHttp = game:GetService("HttpService")
-local CFG_DIR = "MM2_Configs"
-local FILE_OK = (type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function") and true or false
-local configLoadedSuccessfully = false
-local bootRestorePending = false
-local applyingConfig = false
-local autoSaveQueued = false
-local lastAutoSaveEnc = nil
+Cfg.CfgHttp = game:GetService("HttpService")
+Cfg.CFG_DIR = "MM2_Configs"
+Cfg.FILE_OK = (type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function") and true or false
+Cfg.configLoadedSuccessfully = false
+Cfg.bootRestorePending = false
+Cfg.applyingConfig = false
+Cfg.autoSaveQueued = false
+Cfg.lastAutoSaveEnc = nil
 
-local function _cfgNorm(v)
+function Cfg._cfgNorm(v)
     return tostring(v or ""):lower():gsub("[^%w]", "")
 end
 
-local CFG_CONTROL_KEY_ALIASES = {
+Cfg.CFG_CONTROL_KEY_ALIASES = {
     autosave = "AutoSaveCfg",
     sheriff = "SheriffSilentAim",
     gunchamsmode = "ItemChamsMode",
@@ -12157,22 +11991,23 @@ local CFG_CONTROL_KEY_ALIASES = {
     gunchams = "GunChams",
     enablecustomcursorcrosshair = "CustomCrosshair",
     enablehandshader = "HandShader",
-    unlockallknifeeffectsvisual = "UnlockAllKnifeEffects",
     dynamicisland = "WatermarkEnabled",
     vfxwingstyle = "VFXWingStyle",
+    vfxwingeffect = "VFXWingEffect",
+    wingeffectpower = "VFXWingPower",
     aiprovider = "AIChatProvider",
     respondtoallmessages = "AIChatRespondToAll",
     maxhumanizer = "AIChatMaxHumanizer",
 }
 
-local function _cfgValueFromState(controlId)
+function Cfg._cfgValueFromState(controlId)
     local label = tostring(controlId or ""):match("([^/]+)$") or controlId
-    local labelKey = _cfgNorm(label)
-    local alias = CFG_CONTROL_KEY_ALIASES[labelKey]
+    local labelKey = Cfg._cfgNorm(label)
+    local alias = Cfg.CFG_CONTROL_KEY_ALIASES[labelKey]
     if alias and S[alias] ~= nil then return S[alias] end
     for k, v in pairs(S) do
         if type(v) ~= "function" and type(v) ~= "table" and not tostring(k):find("^_") then
-            if _cfgNorm(k) == labelKey then return v end
+            if Cfg._cfgNorm(k) == labelKey then return v end
         end
     end
     -- The old substring fallback could match an unrelated persisted field and restore the wrong
@@ -12181,29 +12016,29 @@ local function _cfgValueFromState(controlId)
     return nil
 end
 
-local function _cfgEnsureDir()
-    if not FILE_OK then return end
+function Cfg._cfgEnsureDir()
+    if not Cfg.FILE_OK then return end
     pcall(function()
-        if makefolder and isfolder and not isfolder(CFG_DIR) then makefolder(CFG_DIR) end
+        if makefolder and isfolder and not isfolder(Cfg.CFG_DIR) then makefolder(Cfg.CFG_DIR) end
     end)
 end
 
-if FILE_OK then
+if Cfg.FILE_OK then
     pcall(function()
-        _cfgEnsureDir()
+        Cfg._cfgEnsureDir()
         -- A missing or damaged autoload file must never disable future autosaves. The boot task
         -- below gets one chance to restore it, then marks the config system ready either way.
-        bootRestorePending = isfile(CFG_DIR .. "/_autoload.json") == true
-        if not bootRestorePending then configLoadedSuccessfully = true end
+        Cfg.bootRestorePending = isfile(Cfg.CFG_DIR .. "/_autoload.json") == true
+        if not Cfg.bootRestorePending then Cfg.configLoadedSuccessfully = true end
     end)
 end
 
-local function _cfgSanitize(name)
+function Cfg._cfgSanitize(name)
     name = tostring(name or ""):gsub("[^%w _%-]", "")
     name = name:gsub("^%s+", ""):gsub("%s+$", "")
     return name
 end
-local function buildConfig()
+function Cfg.buildConfig()
     local data = { S = {}, hud = {}, binds = {}, controls = {}, tables = {}, floatPos = {} }
     for k, v in pairs(S) do
         -- Only JSON scalar types belong in S. Runtime Instances (S.Gui, VoidPlatform), EnumItems,
@@ -12234,9 +12069,9 @@ local function buildConfig()
         -- KeyCode/EnumItem values are not JSON values. Persist the stable name and rebuild the
         -- Enum.KeyCode on restore; the old b.key field was never populated, so binds silently
         -- disappeared from every autoload snapshot.
-        -- The key is b.cfgId. No bind entry has ever had an `id` field -- mkToggle and mkAction both
+        -- The key is b.cfgId. No bind entry has ever had an `id` field -- UI.mkToggle and UI.mkAction both
         -- name it cfgId -- so this read nil, and `data.binds[nil] = ...` is a hard error in Lua. It
-        -- threw on the FIRST bind every single time, which aborted buildConfig before it reached
+        -- threw on the FIRST bind every single time, which aborted Cfg.buildConfig before it reached
         -- data.tables and data.floatPos. That is why the whitelist, manual targets, floating-button
         -- positions and every keybind were missing from saves.
         if b.cfgId then
@@ -12266,53 +12101,53 @@ local function buildConfig()
     end
     return data
 end
-local function saveConfig(name)
-    name = _cfgSanitize(name)
+function Cfg.saveConfig(name)
+    name = Cfg._cfgSanitize(name)
     if name == "" then return false end
-    if not FILE_OK then return false end
-    _cfgEnsureDir()
-    local ok, enc = pcall(function() return CfgHttp:JSONEncode(buildConfig()) end)
+    if not Cfg.FILE_OK then return false end
+    Cfg._cfgEnsureDir()
+    local ok, enc = pcall(function() return Cfg.CfgHttp:JSONEncode(Cfg.buildConfig()) end)
     if not ok then return false end
-    return (pcall(function() writefile(CFG_DIR .. "/" .. name .. ".json", enc) end))
+    return (pcall(function() writefile(Cfg.CFG_DIR .. "/" .. name .. ".json", enc) end))
 end
-S.SaveConfig = saveConfig
-local function writeAutoConfig()
+S.SaveConfig = Cfg.saveConfig
+function Cfg.writeAutoConfig()
     -- Never write once Destroy() has run. Destroy() deliberately clears SheriffSilentAim and
     -- SheriffSilentAimPiercing so stale namecall wrappers from a previous inject stop firing, but
     -- those are persisted keys -- and the outgoing hub's autosave was still alive long enough to
     -- write the cleared values over the config. That is why sheriff silent aim came back off after
     -- every re-inject while every other toggle survived: it is one of the few flags Destroy touches.
     if S.Destroyed then return end
-    if not (FILE_OK and S.AutoSaveCfg and configLoadedSuccessfully and not applyingConfig) then return end
-    local ok, enc = pcall(function() return CfgHttp:JSONEncode(buildConfig()) end)
-    if not ok or enc == lastAutoSaveEnc then return end
-    _cfgEnsureDir()
-    if pcall(function() writefile(CFG_DIR .. "/_autoload.json", enc) end) then
-        lastAutoSaveEnc = enc
+    if not (Cfg.FILE_OK and S.AutoSaveCfg and Cfg.configLoadedSuccessfully and not Cfg.applyingConfig) then return end
+    local ok, enc = pcall(function() return Cfg.CfgHttp:JSONEncode(Cfg.buildConfig()) end)
+    if not ok or enc == Cfg.lastAutoSaveEnc then return end
+    Cfg._cfgEnsureDir()
+    if pcall(function() writefile(Cfg.CFG_DIR .. "/_autoload.json", enc) end) then
+        Cfg.lastAutoSaveEnc = enc
     end
 end
 -- Exported so a snapshot can be inspected without saving a file. Config coverage is impossible to
 -- reason about from the source alone: what matters is how many controls actually register and how
 -- many of them return a value, and both are only knowable at runtime.
-S._BuildConfig = buildConfig
+S._BuildConfig = Cfg.buildConfig
 S._ConfigControls = ConfigControls
 S._RequestAutoSave = function()
-    if not FILE_OK or applyingConfig or autoSaveQueued then return end
-    autoSaveQueued = true
+    if not Cfg.FILE_OK or Cfg.applyingConfig or Cfg.autoSaveQueued then return end
+    Cfg.autoSaveQueued = true
     task.defer(function()
-        autoSaveQueued = false
-        pcall(writeAutoConfig)
+        Cfg.autoSaveQueued = false
+        pcall(Cfg.writeAutoConfig)
     end)
 end
-local function loadConfig(name)
-    name = _cfgSanitize(name)
-    if not FILE_OK or name == "" then return false end
-    local path = CFG_DIR .. "/" .. name .. ".json"
+function Cfg.loadConfig(name)
+    name = Cfg._cfgSanitize(name)
+    if not Cfg.FILE_OK or name == "" then return false end
+    local path = Cfg.CFG_DIR .. "/" .. name .. ".json"
     if not isfile(path) then return false end
-    local ok, dat = pcall(function() return CfgHttp:JSONDecode(readfile(path)) end)
+    local ok, dat = pcall(function() return Cfg.CfgHttp:JSONDecode(readfile(path)) end)
     if not ok or type(dat) ~= "table" then return false end
 
-    applyingConfig = true
+    Cfg.applyingConfig = true
 
     if dat.S then
         for k, v in pairs(dat.S) do S[k] = v end
@@ -12321,7 +12156,6 @@ local function loadConfig(name)
         if dat.SelectedTheme then S.SelectedTheme = dat.SelectedTheme end
         if dat.Language then S.Language = dat.Language end
         if dat.TextSizeScale then S.TextSizeScale = dat.TextSizeScale end
-        if dat.ActiveVisualEffect then S.ActiveVisualEffect = dat.ActiveVisualEffect end
     end
     for _, key in ipairs({
         "FOVEnabled", "ShowFOV", "RainbowFOV", "AutoSprint", "InfiniteJump", "Freeze",
@@ -12384,11 +12218,11 @@ local function loadConfig(name)
     -- this, the feature state restored but the visible toggle stayed on its default state.
     for _, c in ipairs(ConfigControls) do
         local hasValue, value = false, nil
-        local stateValue = dat.S and _cfgValueFromState(c.id)
+        local stateValue = dat.S and Cfg._cfgValueFromState(c.id)
         -- data.controls is keyed by the control's FULL unique id, so it is the only source that
         -- cannot be ambiguous -- it is checked first now.
         --
-        -- It used to be the other way round for toggles: _cfgValueFromState won, and that is what
+        -- It used to be the other way round for toggles: Cfg._cfgValueFromState won, and that is what
         -- "the config saves nothing" actually was. That function takes everything after the last
         -- "/" of the id and matches an S key by normalised name, so a label containing a slash
         -- collapses to its tail, and any label that merely normalises the same as some unrelated S
@@ -12428,7 +12262,7 @@ local function loadConfig(name)
     
     if dat.binds then
         for _, b in ipairs(AllBinds) do
-            -- b.cfgId, to match what buildConfig writes. Reading b.id returned nil, so
+            -- b.cfgId, to match what Cfg.buildConfig writes. Reading b.id returned nil, so
             -- dat.binds[nil] was nil and no keybind was ever restored.
             local saved = b.cfgId and dat.binds[b.cfgId]
             if saved then
@@ -12462,27 +12296,24 @@ local function loadConfig(name)
     -- Spawned for the same reason as the catalog refresh: this walks Database.Sync, which means
     -- requiring a game module, and doing that on the restore thread costs that thread its ability
     -- to write to the hub's GUI for everything that follows.
-    if type(S._ApplySelectedKnifeEffect) == "function" then
-        task.spawn(function() pcall(S._ApplySelectedKnifeEffect, true) end)
-    end
-    applyingConfig = false
-    configLoadedSuccessfully = true
-    if name ~= "_autoload" then pcall(writeAutoConfig) end
+    Cfg.applyingConfig = false
+    Cfg.configLoadedSuccessfully = true
+    if name ~= "_autoload" then pcall(Cfg.writeAutoConfig) end
     return true
 end
-S.LoadConfig = loadConfig
-local function deleteConfig(name)
-    name = _cfgSanitize(name)
-    if not FILE_OK or name == "" then return false end
-    local path = CFG_DIR .. "/" .. name .. ".json"
+S.LoadConfig = Cfg.loadConfig
+function Cfg.deleteConfig(name)
+    name = Cfg._cfgSanitize(name)
+    if not Cfg.FILE_OK or name == "" then return false end
+    local path = Cfg.CFG_DIR .. "/" .. name .. ".json"
     return (pcall(function() if isfile(path) and delfile then delfile(path) end end))
 end
-local function listConfigs()
+function Cfg.listConfigs()
     local out = {}
-    if not FILE_OK or not listfiles then return out end
-    _cfgEnsureDir()
+    if not Cfg.FILE_OK or not listfiles then return out end
+    Cfg._cfgEnsureDir()
     pcall(function()
-        for _, path in ipairs(listfiles(CFG_DIR)) do
+        for _, path in ipairs(listfiles(Cfg.CFG_DIR)) do
             local nm = tostring(path):match("([^/\\]+)%.json$")
             -- Internal data files use an underscore prefix and stay hidden from the config list.
             if nm and nm:sub(1, 1) ~= "_" then table.insert(out, nm) end
@@ -12490,9 +12321,9 @@ local function listConfigs()
     end)
     return out
 end
-do
-    if not FILE_OK then
-        local sec = mkSection(Pages.Config, "Config Notice", 1)
+;(function()
+    if not Cfg.FILE_OK then
+        local sec = UI.mkSection(Pages.Config, "Config Notice", 1)
         pcall(function() sec.Parent:SetAttribute("ForceFullWidth", true) end)
         local warn = Instance.new("TextLabel")
         warn.Parent = sec; warn.LayoutOrder = 1; warn.BackgroundTransparency = 1
@@ -12501,7 +12332,7 @@ do
         warn.TextXAlignment = Enum.TextXAlignment.Left
         warn.Text = "This executor has no file API (writefile/readfile), so configs cannot be saved."
     else
-        local sec1 = mkSection(Pages.Config, "Configs", 1)
+        local sec1 = UI.mkSection(Pages.Config, "Configs", 1)
         pcall(function() sec1.Parent:SetAttribute("ForceFullWidth", true) end)
         local nameBox = Instance.new("TextBox")
         nameBox.Parent = sec1; nameBox.LayoutOrder = 1
@@ -12510,27 +12341,27 @@ do
         nameBox.TextColor3 = T.Tx; pcall(function() nameBox:SetAttribute("ThemeColorRole_TextColor3", "Tx") end); nameBox.PlaceholderText = "config name..."
         nameBox.PlaceholderColor3 = T.Tx4; nameBox.Text = ""
         nameBox.ClearTextOnFocus = false; nameBox.TextXAlignment = Enum.TextXAlignment.Left
-        Corner(nameBox, 6); Stroke(nameBox, T.Bd2, 1, 0.4); Pad(nameBox, 0, 0, 8, 8)
+        UI.Corner(nameBox, 6); UI.Stroke(nameBox, T.Bd2, 1, 0.4); UI.Pad(nameBox, 0, 0, 8, 8)
         local list = Instance.new("ScrollingFrame")
         list.Parent = sec1; list.LayoutOrder = 2
         list.Size = UDim2.new(1, 0, 0, 120); list.BackgroundColor3 = T.Card; pcall(function() list:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
         list.BorderSizePixel = 0; list.CanvasSize = UDim2.new(0, 0, 0, 0)
         list.AutomaticCanvasSize = Enum.AutomaticSize.Y; list.ScrollBarThickness = 0
         list.ScrollBarImageColor3 = T.Tx3; pcall(function() list:SetAttribute("ThemeColorRole_ScrollBarImageColor3", "Tx3") end)
-        Corner(list, 8); Stroke(list, T.Bd, 1, 0.4)
+        UI.Corner(list, 8); UI.Stroke(list, T.Bd, 1, 0.4)
         local ll = Instance.new("UIListLayout"); ll.Parent = list
         ll.SortOrder = Enum.SortOrder.Name; ll.Padding = UDim.new(0, 4)
-        Pad(list, 6, 6, 6, 6)
+        UI.Pad(list, 6, 6, 6, 6)
         local selected = nil
         local function refreshList()
             for _, ch in pairs(list:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
-            for _, nm in ipairs(listConfigs()) do
+            for _, nm in ipairs(Cfg.listConfigs()) do
                 local b = Instance.new("TextButton")
                 b.Name = nm; b.Parent = list; b.Size = UDim2.new(1, 0, 0, 28)
                 b.BackgroundColor3 = T.Elev; pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end); b.BorderSizePixel = 0; b.AutoButtonColor = false
                 b.Font = F; b.TextSize = 13; b.TextColor3 = T.Tx; pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
                 b.Text = "  " .. nm; b.TextXAlignment = Enum.TextXAlignment.Left
-                Corner(b, 6)
+                UI.Corner(b, 6)
                 b.MouseButton1Click:Connect(function()
                     selected = nm; nameBox.Text = nm
                     for _, cb in pairs(list:GetChildren()) do if cb:IsA("TextButton") then cb.BackgroundColor3 = T.Elev; pcall(function() cb:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end) end end
@@ -12540,32 +12371,32 @@ do
         end
         refreshList()
         local function curName()
-            local n = _cfgSanitize(nameBox.Text)
+            local n = Cfg._cfgSanitize(nameBox.Text)
             if n == "" then n = selected end
             return n
         end
-        mkAction(sec1, "Save Config", function()
-            local n = _cfgSanitize(nameBox.Text)
+        UI.mkAction(sec1, "Save Config", function()
+            local n = Cfg._cfgSanitize(nameBox.Text)
             if n == "" then Notify("Config", "Enter a name first", 3); return end
-            if saveConfig(n) then Notify("Config", "Saved: " .. n, 3); refreshList()
+            if Cfg.saveConfig(n) then Notify("Config", "Saved: " .. n, 3); refreshList()
             else Notify("Config", "Save failed", 3) end
         end, 3)
-        mkAction(sec1, "Load Config", function()
+        UI.mkAction(sec1, "Load Config", function()
             local n = curName()
             if not n or n == "" then Notify("Config", "Select or type a name", 3); return end
-            if loadConfig(n) then Notify("Config", "Loaded: " .. n, 3)
+            if Cfg.loadConfig(n) then Notify("Config", "Loaded: " .. n, 3)
             else Notify("Config", "Load failed", 3) end
         end, 4)
-        mkAction(sec1, "Delete Config", function()
+        UI.mkAction(sec1, "Delete Config", function()
             local n = curName()
             if not n or n == "" then Notify("Config", "Select a config", 3); return end
-            deleteConfig(n); selected = nil; nameBox.Text = ""; refreshList()
+            Cfg.deleteConfig(n); selected = nil; nameBox.Text = ""; refreshList()
             Notify("Config", "Deleted: " .. n, 3)
         end, 5)
-        mkAction(sec1, "Refresh List", function() refreshList() end, 6)
-        local sec2 = mkSection(Pages.Config, "Auto", 2)
+        UI.mkAction(sec1, "Refresh List", function() refreshList() end, 6)
+        local sec2 = UI.mkSection(Pages.Config, "Auto", 2)
         pcall(function() sec2.Parent:SetAttribute("ForceFullWidth", true) end)
-        mkToggle(sec2, "Auto Save", true, function(v) S.AutoSaveCfg = v end, 1)
+        UI.mkToggle(sec2, "Auto Save", true, function(v) S.AutoSaveCfg = v end, 1)
         local info = Instance.new("TextLabel")
         info.Parent = sec2; info.LayoutOrder = 2; info.BackgroundTransparency = 1
         info.Size = UDim2.new(1, 0, 0, 46); info.Font = F; info.TextSize = 12
@@ -12576,7 +12407,7 @@ do
         -- Full reset. Two clicks, because this throws away every setting in the hub and there is no
         -- undo -- a single mis-tap next to Auto Save would be expensive.
         local resetArmed = 0
-        mkAction(sec2, "Reset Everything", function()
+        UI.mkAction(sec2, "Reset Everything", function()
             if os.clock() - resetArmed > 4 then
                 resetArmed = os.clock()
                 Notify("Config", "Press again within 4s to wipe every setting.", 4)
@@ -12588,9 +12419,9 @@ do
                 Notify("Config", "Defaults not captured yet, try again in a moment.", 3)
                 return
             end
-            -- applyingConfig suppresses autosave while this runs, or each individual control change
+            -- Cfg.applyingConfig suppresses autosave while this runs, or each individual control change
             -- would race a write and the half-reset state could be persisted.
-            applyingConfig = true
+            Cfg.applyingConfig = true
             local restored = 0
             for _, c in ipairs(ConfigControls) do
                 local want = defaults[c.id]
@@ -12599,15 +12430,15 @@ do
             for _, tbl in ipairs({ "Whitelist", "ManualTargets", "MusicFavs" }) do
                 if type(S[tbl]) == "table" then table.clear(S[tbl]) end
             end
-            pcall(function() delfile(CFG_DIR .. "/_autoload.json") end)
-            lastAutoSaveEnc = nil
-            applyingConfig = false
+            pcall(function() delfile(Cfg.CFG_DIR .. "/_autoload.json") end)
+            Cfg.lastAutoSaveEnc = nil
+            Cfg.applyingConfig = false
             Notify("Config", "Reset " .. restored .. " settings to defaults.", 4)
         end, 3)
     end
     if S._RefreshPageLayout and activePage == Pages.Config then pcall(S._RefreshPageLayout, false) end
-end
-if FILE_OK then
+end)()
+if Cfg.FILE_OK then
     task.spawn(function()
         -- The boot restore is deferred a second so pages that finish building late have
         -- registered their controls first. That left a window where anything the user
@@ -12642,31 +12473,29 @@ if FILE_OK then
         -- A missing, malformed, or partially-written autoload must not permanently disable the
         -- autosave loop. Defaults are a valid snapshot too, so the next state change is always
         -- allowed to replace the broken file.
-        bootRestorePending = false
-        configLoadedSuccessfully = true
+        Cfg.bootRestorePending = false
+        Cfg.configLoadedSuccessfully = true
         -- Deliberately NOT written here. Restoring 154 controls fires their callbacks, and several
         -- of those finish on their own threads, so a snapshot taken in this frame captures a
         -- half-applied state and overwrites the good file with it -- every reload degrading the
-        -- config a little further. Setting configLoadedSuccessfully above is what actually stops a
+        -- config a little further. Setting Cfg.configLoadedSuccessfully above is what actually stops a
         -- broken autoload from disabling autosave; the write was redundant as well as harmful.
         -- The 5 s loop below and the change-driven saves both cover it once things have settled.
-        task.delay(6, function() pcall(writeAutoConfig) end)
+        task.delay(6, function() pcall(Cfg.writeAutoConfig) end)
     end)
-    -- Periodic fallback: immediate save requests handle normal changes, while this loop catches any
-    -- state mutation that happened outside a UI callback. Unchanged configs are still a no-op.
-    task.spawn(function()
-        while S.Gui and S.Gui.Parent do
-            task.wait(5)
-            pcall(writeAutoConfig)
-        end
-    end)
+    -- No periodic poll: every change persists through S._RequestAutoSave the moment it happens
+    -- (deferred to end-of-frame and deduped against the last encoded snapshot, so a slider drag is
+    -- one write, not one per tick). The single delayed write above is not a poll -- it is the
+    -- one-shot settle after boot, because restoring 154 controls finishes across several threads
+    -- and a snapshot taken mid-restore would overwrite the good file with a half-applied state.
 end
 end -- end CONFIG SYSTEM do-block
 -- ============ SERVER LIST TAB (recent / saved / favourite servers, copy Job ID) ============
--- Wrapped in a do-block so its ~30 locals free up afterwards (200-local budget). Persists its
--- own list to MM2_Configs/_mm2_servers.json, independent of the settings configs, so saved and
--- favourited servers survive relaunches and config swaps.
-do
+-- Wrapped in an immediately-called function, not a plain do-block. A do-block only frees its
+-- locals AFTER it ends, so while it runs its ~30 locals stack on top of every long-lived
+-- top-level local -- that stack was the file's register peak. A function gets its own register
+-- frame, so the whole tab costs the main chunk one register instead of thirty.
+;(function()
     local TS = game:GetService("TeleportService")
     local HttpSvc = game:GetService("HttpService")
     local clip = setclipboard or toclipboard or writeclipboard or (syn and syn.write_clipboard)
@@ -12769,7 +12598,7 @@ do
         row.BackgroundColor3 = T.Elev; pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
         row.BorderSizePixel = 0
         row.Parent = parent
-        Corner(row, 6)
+        UI.Corner(row, 6)
         local lbl = Instance.new("TextLabel")
         lbl.Parent = row
         lbl.BackgroundTransparency = 1
@@ -12796,7 +12625,7 @@ do
             btn.TextSize = 10
             btn.Text = b.text
             btn.TextColor3 = b.color or T.Tx
-            Corner(btn, 6)
+            UI.Corner(btn, 6)
             local base = T.Card
             btn.MouseEnter:Connect(function() btn.BackgroundColor3 = T.Hover; pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", "Hover") end) end)
             btn.MouseLeave:Connect(function() btn.BackgroundColor3 = base end)
@@ -12815,13 +12644,13 @@ do
         sc.AutomaticCanvasSize = Enum.AutomaticSize.Y
         sc.ScrollBarThickness = 0
         sc.ScrollBarImageColor3 = T.Tx3; pcall(function() sc:SetAttribute("ThemeColorRole_ScrollBarImageColor3", "Tx3") end)
-        Corner(sc, 8)
-        Stroke(sc, T.Bd, 1, 0.4)
+        UI.Corner(sc, 8)
+        UI.Stroke(sc, T.Bd, 1, 0.4)
         local ll = Instance.new("UIListLayout")
         ll.Parent = sc
         ll.SortOrder = Enum.SortOrder.LayoutOrder
         ll.Padding = UDim.new(0, 4)
-        Pad(sc, 6, 6, 6, 6)
+        UI.Pad(sc, 6, 6, 6, 6)
         return sc
     end
     local function clearRows(sc)
@@ -12842,7 +12671,7 @@ do
         local count = math.max(#actions, 1)
         local buttonOffset = -((count - 1) * 4 / count)
         for i, action in ipairs(actions) do
-            local entry = mkAction(parent, action.label, action.callback, order + i / 100)
+            local entry = UI.mkAction(parent, action.label, action.callback, order + i / 100)
             entry.btn.Parent = strip
             entry.btn.LayoutOrder = i
             entry.btn.Size = UDim2.new(1 / count, buttonOffset, 1, 0)
@@ -12868,8 +12697,8 @@ do
     srvSubTabList.Parent = srvSubTabBar
 
     local manageBtn, browseBtn = Instance.new("TextButton"), Instance.new("TextButton")
-    local manageStroke = mkSubTabBtn(srvSubTabBar, manageBtn, "Manage", 1)
-    local browseStroke = mkSubTabBtn(srvSubTabBar, browseBtn, "Browse", 2)
+    local manageStroke = UI.mkSubTabBtn(srvSubTabBar, manageBtn, "Manage", 1)
+    local browseStroke = UI.mkSubTabBtn(srvSubTabBar, browseBtn, "Browse", 2)
 
     local manageSections = {}
     local activeSrvSubTab = "Manage"
@@ -12880,8 +12709,8 @@ do
     local secBrowseRef -- set once "Browse Public Servers" is built below
     local function updateSrvSubTabs()
         local isManage = (activeSrvSubTab == "Manage")
-        styleSubTabActive(manageBtn, manageStroke, isManage)
-        styleSubTabActive(browseBtn, browseStroke, not isManage)
+        UI.styleSubTabActive(manageBtn, manageStroke, isManage)
+        UI.styleSubTabActive(browseBtn, browseStroke, not isManage)
         for _, sec in ipairs(manageSections) do if sec and sec.Parent then sec.Parent.Visible = isManage end end
         if secBrowseRef and secBrowseRef.Parent then secBrowseRef.Parent.Visible = not isManage end
     end
@@ -12889,7 +12718,7 @@ do
     browseBtn.MouseButton1Click:Connect(function() SFX.Click(); activeSrvSubTab = "Browse"; updateSrvSubTabs() end)
 
     -- ---------- Current server ----------
-    local secCur = mkSection(Pages.Servers, "Current Server", 1)
+    local secCur = UI.mkSection(Pages.Servers, "Current Server", 1)
     secCur.Parent:SetAttribute("ServerGridRow", 1)
     secCur.Parent:SetAttribute("ServerGridColumn", 1)
     registerManage(secCur)
@@ -12906,9 +12735,9 @@ do
     idBox.ClearTextOnFocus = false
     idBox.TextEditable = false
     idBox.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(idBox, 6)
-    Stroke(idBox, T.Bd2, 1, 0.4)
-    Pad(idBox, 0, 0, 8, 8)
+    UI.Corner(idBox, 6)
+    UI.Stroke(idBox, T.Bd2, 1, 0.4)
+    UI.Pad(idBox, 0, 0, 8, 8)
 
     -- Live region + ping readout for the server we're currently in. Roblox exposes no per-server
     -- country, so region is geolocated from THIS client's connection (best-effort); ping is the
@@ -12967,7 +12796,7 @@ do
     })
 
     -- ---------- Add server by Job ID ----------
-    local secAdd = mkSection(Pages.Servers, "Join by Job ID", 2)
+    local secAdd = UI.mkSection(Pages.Servers, "Join by Job ID", 2)
     secAdd.Parent:SetAttribute("ServerGridRow", 1)
     secAdd.Parent:SetAttribute("ServerGridColumn", 2)
     registerManage(secAdd)
@@ -12985,9 +12814,9 @@ do
     addId.Text = ""
     addId.ClearTextOnFocus = false
     addId.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(addId, 6)
-    Stroke(addId, T.Bd2, 1, 0.4)
-    Pad(addId, 0, 0, 8, 8)
+    UI.Corner(addId, 6)
+    UI.Stroke(addId, T.Bd2, 1, 0.4)
+    UI.Pad(addId, 0, 0, 8, 8)
     local addName = Instance.new("TextBox")
     addName.Parent = secAdd
     addName.LayoutOrder = 2
@@ -13002,9 +12831,9 @@ do
     addName.Text = ""
     addName.ClearTextOnFocus = false
     addName.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(addName, 6)
-    Stroke(addName, T.Bd2, 1, 0.4)
-    Pad(addName, 0, 0, 8, 8)
+    UI.Corner(addName, 6)
+    UI.Stroke(addName, T.Bd2, 1, 0.4)
+    UI.Pad(addName, 0, 0, 8, 8)
     mkActionStrip(secAdd, 3, {
         { label = "Join Server", callback = function() joinId((addId.Text or ""):gsub("%s", "")) end },
         { label = "Save for Later", callback = function()
@@ -13013,7 +12842,7 @@ do
     })
 
     -- ---------- Saved servers (favourites float to the top) ----------
-    local secSaved = mkSection(Pages.Servers, "Saved Servers", 3)
+    local secSaved = UI.mkSection(Pages.Servers, "Saved Servers", 3)
     secSaved.Parent:SetAttribute("ServerGridRow", 2)
     secSaved.Parent:SetAttribute("ServerGridColumn", 1)
     registerManage(secSaved)
@@ -13050,7 +12879,7 @@ do
     end
 
     -- ---------- Recent servers (auto-recorded across sessions) ----------
-    local secRecent = mkSection(Pages.Servers, "Recent Servers", 4)
+    local secRecent = UI.mkSection(Pages.Servers, "Recent Servers", 4)
     secRecent.Parent:SetAttribute("ServerGridRow", 2)
     secRecent.Parent:SetAttribute("ServerGridColumn", 2)
     registerManage(secRecent)
@@ -13075,7 +12904,7 @@ do
     })
 
     -- ---------- Browse public servers ----------
-    local secBrowse = mkSection(Pages.Servers, "Browse Public Servers", 5)
+    local secBrowse = UI.mkSection(Pages.Servers, "Browse Public Servers", 5)
     secBrowseRef = secBrowse
     updateSrvSubTabs()
     local browseScroll = mkScroll(secBrowse, 1, 168)
@@ -13114,8 +12943,8 @@ do
             end
         end)
     end
-    mkAction(secBrowse, "Fetch Server List", function() fetchServers() end, 2)
-    mkAction(secBrowse, "Join Smallest Server", function()
+    UI.mkAction(secBrowse, "Fetch Server List", function() fetchServers() end, 2)
+    UI.mkAction(secBrowse, "Join Smallest Server", function()
         task.spawn(function()
             local res = httpGetJson("https://games.roblox.com/v1/games/" .. game.PlaceId ..
                 "/servers/Public?sortOrder=Asc&limit=100")
@@ -13136,7 +12965,7 @@ do
     if not SRV_FILE_OK then
         Notify("Servers", "No file API: saved servers won't persist after you close", 4)
     end
-end
+end)()
 local RH = Instance.new("TextButton")
 RH.Name = "Resize"
 RH.Parent = Main
@@ -13145,10 +12974,10 @@ RH.Position = UDim2.new(1, -18, 1, -18)
 RH.BackgroundTransparency = 1
 RH.Text = ""
 RH.ZIndex = 1005
--- Corner-drag resizing is a mouse gesture; on a phone the window is sized from
+-- UI.Corner-drag resizing is a mouse gesture; on a phone the window is sized from
 -- the viewport and the handle would only eat taps meant for the tab bar.
 RH.Visible = not MOBILE
-do
+;(function()
     local rs, rm, rz
     RH.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -13157,19 +12986,19 @@ do
             rz = Main.AbsoluteSize
         end
     end)
-    tc(UIS.InputChanged:Connect(function(i)
+    tc(Svc.UIS.InputChanged:Connect(function(i)
         if rs and i.UserInputType == Enum.UserInputType.MouseMovement then
             local d = i.Position - rm
             expandedSize = UDim2.fromOffset(math.max(560, rz.X + d.X), math.max(430, rz.Y + d.Y))
             Main.Size = expandedSize
         end
     end))
-    tc(UIS.InputEnded:Connect(function(i)
+    tc(Svc.UIS.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             rs = false
         end
     end))
-end
+end)()
 local minimized = false
 
 -- ===== RESPONSIVE LAYOUT =====
@@ -13177,7 +13006,7 @@ local minimized = false
 -- re-proportioned from the live viewport instead of the one-shot measurement
 -- taken at build time, so rotating a phone or resizing the window re-fits the
 -- whole UI, and the settings modal follows the same rule.
-do
+;(function()
     local function relayout()
         local camera = workspace.CurrentCamera
         local vp = camera and camera.ViewportSize
@@ -13210,7 +13039,7 @@ do
             tc(newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(relayout))
         end
     end))
-end
+end)()
 CloseBtn.MouseButton1Click:Connect(function()
     -- Mobile: X only hides the sheet; the Dynamic Island is the single
     -- reopen/close control, so we do not duplicate it with a floating Menu
@@ -13219,7 +13048,7 @@ CloseBtn.MouseButton1Click:Connect(function()
         S._SetMenuVisible(false)
         return
     end
-    TweenService.Create(TweenService, Main, TweenInfo.new(0.2), { Size = UDim2.fromOffset(0, 0) }):Play()
+    Svc.TweenService.Create(Svc.TweenService, Main, TweenInfo.new(0.2), { Size = UDim2.fromOffset(0, 0) }):Play()
     task.wait(0.22)
     S:Destroy()
 end)
@@ -13248,7 +13077,7 @@ end
 -- Maze and Mirror additionally apply a temporary material shader to every BasePart in the item.
 -- Wrapped in its own do-block and hung off S (not a new top-level local) for the same reason as
 -- S._resetMyCharacter above: the main chunk was already at Luau's 200-local ceiling.
-do
+;(function()
     -- Every option the "Gun Chams Mode" cycle offers needs an entry here. Five of its eight -- and
     -- that includes Highlight, the DEFAULT -- had none, and the lookup below silently falls back to
     -- Outline, i.e. fill = 1. So the default gun cham drew nothing but a hairline edge and read as
@@ -13437,9 +13266,9 @@ do
         end
         return nil, nil
     end
-end
+end)()
 -- ===== ROLE TRACKING (event-driven — NO per-frame / repeated blocking InvokeServer) =====
-do
+;(function()
     local notified = false
     
     local function processData(data)
@@ -13540,7 +13369,7 @@ do
     -- arrive before it is visible client-side.  The VictoryScreen remote below is the
     -- authoritative end signal for that fallback state.
     local wasRoundActive = workspace:FindFirstChild("Normal") ~= nil
-    tc(RunService.Heartbeat:Connect(function()
+    tc(Svc.RunService.Heartbeat:Connect(function()
         local active = (workspace:FindFirstChild("Normal") ~= nil)
         if active and not wasRoundActive then
             -- A confirmed new map/round has started.  Clear only now, then wait for
@@ -13630,7 +13459,7 @@ do
 
     S._HasLiveSheriffOrHero = function()
         if not isRoundActive() then return false end
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Parent and not isWhitelisted(p) then
                 local c = p.Character
                 local hum = c and c:FindFirstChildOfClass("Humanoid")
@@ -13642,7 +13471,7 @@ do
         end
         return false
     end
-end
+end)()
 
 -- Presentation-only role override for the local player. Picking up the dropped gun makes the
 -- player the active sheriff from the HUD's point of view, even if PlayerDataChanged still reports
@@ -13767,7 +13596,7 @@ local function startGunGrabLoop(dropInst)
             if not (drop and drop.Parent) then drop = findGunDrop() end
             if not drop then break end
             if burstGrabGun(drop, false) then break end
-            RunService.Heartbeat:Wait()
+            Svc.RunService.Heartbeat:Wait()
         end
     end)
 end
@@ -13877,11 +13706,11 @@ local function startIYFling()
         task.spawn(function()
         local movel = 0.1
         while iyFlinging and myToken == iyPulseToken do
-            RunService.Heartbeat:Wait()
+            Svc.RunService.Heartbeat:Wait()
             local character = LP.Character
             local r = character and character:FindFirstChild("HumanoidRootPart")
             while iyFlinging and myToken == iyPulseToken and not (character and character.Parent and r and r.Parent) do
-                RunService.Heartbeat:Wait()
+                Svc.RunService.Heartbeat:Wait()
                 character = LP.Character
                 r = character and character:FindFirstChild("HumanoidRootPart")
             end
@@ -13890,12 +13719,12 @@ local function startIYFling()
             local vel = r.Velocity
             pcall(function() r.Velocity = vel * 10000 + Vector3.new(0, 10000, 0) end)
 
-            RunService.RenderStepped:Wait()
+            Svc.RunService.RenderStepped:Wait()
             if iyFlinging and myToken == iyPulseToken and character.Parent and r.Parent then
                 pcall(function() r.Velocity = vel end)
             end
 
-            RunService.Stepped:Wait()
+            Svc.RunService.Stepped:Wait()
             if iyFlinging and myToken == iyPulseToken and character.Parent and r.Parent then
                 pcall(function() r.Velocity = vel + Vector3.new(0, movel, 0) end)
                 movel = movel * -1
@@ -14046,7 +13875,7 @@ end
 local function flingAll()
     task.spawn(function()
         local targets = {}
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character and not isWhitelisted(p) then
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 if h and h.Health > 0 then targets[#targets + 1] = p end
@@ -14068,7 +13897,7 @@ end
 local function flingRole(role)
     task.spawn(function()
         local target
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character and not isWhitelisted(p) and getRole(p) == role then
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 if h and h.Health > 0 then target = p; break end
@@ -14124,7 +13953,7 @@ tc(LP.CharacterAdded:Connect(function(char)
 end))
 
 local _antivoidBaseHeight = workspace.FallenPartsDestroyHeight
-tc(RunService.RenderStepped:Connect(function()
+tc(Svc.RunService.RenderStepped:Connect(function()
     -- Every stage in this handler -- status labels, walk speed, anti-fling, fly, chams, gun drop --
     -- shares ONE pcall. A throw anywhere silently kills every stage BELOW it, and if the throw is
     -- deterministic it kills them on every frame forever. That failure mode is invisible: the
@@ -14195,7 +14024,7 @@ tc(RunService.RenderStepped:Connect(function()
                     S._AntiFlingSafeCF = myRoot.CFrame
                     S._AntiFlingSafeAt = now
                 end
-                for _, player in ipairs(Players:GetPlayers()) do
+                for _, player in ipairs(Svc.Players:GetPlayers()) do
                     if player ~= LP and player.Character then
                         local r = player.Character:FindFirstChild("HumanoidRootPart")
                         if r and (r.Position - myRoot.Position).Magnitude <= 25 then
@@ -14239,7 +14068,7 @@ tc(RunService.RenderStepped:Connect(function()
                 end
             end
         end
-        -- Noclip logic moved to RunService.Stepped connection for physics sync
+        -- Noclip logic moved to Svc.RunService.Stepped connection for physics sync
         if S.Fly then local c = LP.Character; if c and c:FindFirstChild("HumanoidRootPart") then
             local hrp = c.HumanoidRootPart; local h = c:FindFirstChildOfClass("Humanoid")
             if not hrp:FindFirstChild("FlyBV") then
@@ -14248,12 +14077,12 @@ tc(RunService.RenderStepped:Connect(function()
             end
             local bv, bg = hrp:FindFirstChild("FlyBV"), hrp:FindFirstChild("FlyBG")
             local cam = workspace.CurrentCamera; local spd = S.FlySpeed or 50; local md = Vector3.zero
-            if UIS:IsKeyDown(Enum.KeyCode.W) then md = md + cam.CFrame.LookVector end
-            if UIS:IsKeyDown(Enum.KeyCode.S) then md = md - cam.CFrame.LookVector end
-            if UIS:IsKeyDown(Enum.KeyCode.A) then md = md - cam.CFrame.RightVector end
-            if UIS:IsKeyDown(Enum.KeyCode.D) then md = md + cam.CFrame.RightVector end
-            if UIS:IsKeyDown(Enum.KeyCode.Space) then md = md + Vector3.new(0,1,0) end
-            if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then md = md - Vector3.new(0,1,0) end
+            if Svc.UIS:IsKeyDown(Enum.KeyCode.W) then md = md + cam.CFrame.LookVector end
+            if Svc.UIS:IsKeyDown(Enum.KeyCode.S) then md = md - cam.CFrame.LookVector end
+            if Svc.UIS:IsKeyDown(Enum.KeyCode.A) then md = md - cam.CFrame.RightVector end
+            if Svc.UIS:IsKeyDown(Enum.KeyCode.D) then md = md + cam.CFrame.RightVector end
+            if Svc.UIS:IsKeyDown(Enum.KeyCode.Space) then md = md + Vector3.new(0,1,0) end
+            if Svc.UIS:IsKeyDown(Enum.KeyCode.LeftShift) then md = md - Vector3.new(0,1,0) end
             if md.Magnitude > 0 then md = md.Unit end
             local tV = md * spd
             local tC = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
@@ -14264,7 +14093,7 @@ tc(RunService.RenderStepped:Connect(function()
 
         -- PERF: skip this whole per-player loop unless the Gun Held cham toggle is on. When it turns
         -- off we run ONE final pass to clean up leftover highlights, then stop.
-        local anyCham = S.GunHeldChams or S.RoleChams
+        local anyCham = S.GunHeldChams or S.RoleChams or S.GunDropChams
         if anyCham or S._chamsWereOn then
         -- PERF: chams don't need a per-frame refresh. Throttling to ~12x/sec avoids scanning every
         -- player's Character every single frame.
@@ -14274,7 +14103,7 @@ tc(RunService.RenderStepped:Connect(function()
         -- The local player is in this loop now. It used to be skipped outright, so the gun cham
         -- never reached the gun in YOUR OWN hand -- only other people's. Role chams still skip you;
         -- your own body is Self Chams' job.
-        for _, pl in pairs(Players:GetPlayers()) do
+        for _, pl in pairs(Svc.Players:GetPlayers()) do
             if pl.Character then
                 local ch = pl.Character
                 local hum = ch:FindFirstChildOfClass("Humanoid")
@@ -14332,7 +14161,7 @@ tc(RunService.RenderStepped:Connect(function()
         end -- close the ~12x/sec throttle
         end -- close the "anyCham or S._chamsWereOn" gate
         -- PERF: throttle the GunDrop lookup to avoid recursive workspace scans every single frame.
-        local wantGunDropCham = S.GunHeldChams
+        local wantGunDropCham = S.GunDropChams
         if wantGunDropCham or S._hadGunDrop then
             local now = tick()
             if now - (S._lastGunDropScan or 0) >= 0.25 then
@@ -14387,7 +14216,7 @@ local function getNcPlat()
     return ncPlat
 end
 
-tc(RunService.Stepped:Connect(function()
+tc(Svc.RunService.Stepped:Connect(function()
     if S.NoClip or S.FastAutofarm then
         local c = LP.Character
         if c then
@@ -14471,7 +14300,7 @@ end))
 -- caps a single chunk's scope at 200 locals, and this file sits close enough to that ceiling that
 -- an unwrapped addition here previously broke compilation of a function hundreds of lines later
 -- ("Out of local registers... exceeded limit 200" in refreshPacks) purely from running out of room.
-do
+;(function()
 local ESPGui = Instance.new("ScreenGui")
 ESPGui.Name = "MM2_ESP"
 ESPGui.ResetOnSpawn = false
@@ -14517,7 +14346,7 @@ local function makeESP(plr)
     o.boxGrad.Rotation = 90
     o.boxGrad.Enabled = false
     o.boxGrad.Parent = o.box
-    -- Corner-bracket box (CS:GO style) and 3D cuboid wireframe both draw as pools of thin lines
+    -- UI.Corner-bracket box (CS:GO style) and 3D cuboid wireframe both draw as pools of thin lines
     -- living directly in ESPGui (same trick as the tracer below) instead of the main box frame,
     -- since their points are independent screen-space segments, not one rectangle.
     o.cornerLines = {}
@@ -14554,7 +14383,7 @@ local function makeESP(plr)
     o.dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     o.dot.Visible = false
     o.dot.ZIndex = 3
-    Corner(o.dot, 99)
+    UI.Corner(o.dot, 99)
     o.dot.Parent = ESPGui
     o.bill = Instance.new("BillboardGui")
     o.bill.Size = UDim2.new(0, 220, 0, 64)
@@ -14586,13 +14415,13 @@ local function removeESP(plr)
         ESPObjects[plr] = nil
     end
 end
-tc(Players.PlayerRemoving:Connect(function(p) removeESP(p) end))
+tc(Svc.Players.PlayerRemoving:Connect(function(p) removeESP(p) end))
 local function hideAllLines(o)
     for _, ln in ipairs(o.cornerLines) do ln.Visible = false end
     for _, ln in ipairs(o.lines3D) do ln.Visible = false end
 end
 local espWasActive = false
-tc(RunService.RenderStepped:Connect(function()
+tc(Svc.RunService.RenderStepped:Connect(function()
     local espOn = S.NameESP or S.DistanceESP or S.RoleESP or S.BoxESP or S.TracerESP or S.HeadDot
     if not espOn then
         if espWasActive then
@@ -14605,7 +14434,7 @@ tc(RunService.RenderStepped:Connect(function()
     end
     espWasActive = true
     local cam = workspace.CurrentCamera
-    for _, plr in ipairs(Players:GetPlayers()) do
+    for _, plr in ipairs(Svc.Players:GetPlayers()) do
         if plr ~= LP then
             local o = ESPObjects[plr] or makeESP(plr)
             local ch = plr.Character
@@ -14711,7 +14540,7 @@ tc(RunService.RenderStepped:Connect(function()
                     if originMode == "Top" then fromX, fromY = vp.X / 2, 0
                     elseif originMode == "Center" then fromX, fromY = vp.X / 2, vp.Y / 2
                     elseif originMode == "Mouse" then
-                        local m = UIS:GetMouseLocation(); fromX, fromY = m.X, m.Y
+                        local m = Svc.UIS:GetMouseLocation(); fromX, fromY = m.X, m.Y
                     else fromX, fromY = vp.X / 2, vp.Y end
                     local dx, dy = botP.X - fromX, botP.Y - fromY
                     local len = math.sqrt(dx * dx + dy * dy)
@@ -14747,12 +14576,12 @@ tc(RunService.RenderStepped:Connect(function()
         end
     end
 end))
-end
+end)()
 -- ============ EFFECTS (saturation / contrast / camera FOV / crosshair) ============
 local ccEffect = Instance.new("ColorCorrectionEffect")
 ccEffect.Name = "MM2_CC"
 ccEffect.Enabled = false
-pcall(function() ccEffect.Parent = Lighting end)
+pcall(function() ccEffect.Parent = Svc.Lighting end)
 SG.Destroying:Connect(function() pcall(function() ccEffect:Destroy() end) end)
 local Crosshair = Instance.new("Frame")
 Crosshair.Name = "MM2_Crosshair"
@@ -14768,12 +14597,12 @@ rebuildCrosshair = function()
     Crosshair:ClearAllChildren()
     if not S.Crosshair then
         Crosshair.Visible = false
-        UIS.MouseIconEnabled = true
+        Svc.UIS.MouseIconEnabled = true
         return
     end
     
     Crosshair.Visible = true
-    UIS.MouseIconEnabled = true
+    Svc.UIS.MouseIconEnabled = true
     
     local shape = S.CrosshairShape or "Cross"
     local color = T.White
@@ -14803,8 +14632,8 @@ rebuildCrosshair = function()
             ln.Size = UDim2.fromOffset(w, h)
             ln.Position = UDim2.fromOffset(x, y)
             ln.ZIndex = 799
-            Corner(ln, math.max(1, math.floor(thick / 2)))
-            Stroke(ln, Color3.fromRGB(0, 0, 0), 1, 0.35)
+            UI.Corner(ln, math.max(1, math.floor(thick / 2)))
+            UI.Stroke(ln, Color3.fromRGB(0, 0, 0), 1, 0.35)
             if S.CrosshairColor == "Rainbow" then
                 task.spawn(function()
                     while ln and ln.Parent do
@@ -14832,8 +14661,8 @@ rebuildCrosshair = function()
         center.BorderSizePixel = 0
         center.BackgroundColor3 = color
         center.ZIndex = 800
-        Corner(center, 999)
-        Stroke(center, Color3.fromRGB(0, 0, 0), 1, 0.35)
+        UI.Corner(center, 999)
+        UI.Stroke(center, Color3.fromRGB(0, 0, 0), 1, 0.35)
         
     elseif shape == "Dot" then
         Crosshair.Rotation = S.CrosshairRotation or 0
@@ -14952,10 +14781,10 @@ task.spawn(function()
         task.wait(0.1)
     end
 end)
-tc(RunService.RenderStepped:Connect(function()
+tc(Svc.RunService.RenderStepped:Connect(function()
     local cam = workspace.CurrentCamera
     if S.Crosshair then
-        local m = UIS:GetMouseLocation()
+        local m = Svc.UIS:GetMouseLocation()
         local inset = game:GetService("GuiService"):GetGuiInset()
         Crosshair.Position = UDim2.fromOffset(m.X - inset.X, m.Y - inset.Y)
     end
@@ -14984,7 +14813,7 @@ task.spawn(function()
                 elseif plat then plat:Destroy(); plat = nil end
             end
         elseif plat then plat:Destroy(); plat = nil end
-        RunService.Heartbeat:Wait()
+        Svc.RunService.Heartbeat:Wait()
     end
 end)
 -- ============ PIXEL SURF (real surf physics) ============
@@ -14994,9 +14823,9 @@ end)
 -- onto that surface — `vel = vel - Normal * dot(vel, Normal)` — so the into-surface component is removed
 -- and the tangential part is kept: you slide/surf along ramps, walls and edges instead of stopping.
 -- PlatformStand keeps the Humanoid from fighting the velocity we set.
-do
+;(function()
     local surfing = false
-    tc(RunService.RenderStepped:Connect(function(dt)
+    tc(Svc.RunService.RenderStepped:Connect(function(dt)
         dt = math.min(dt, 1 / 30)
         local c = LP.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -15032,10 +14861,10 @@ do
         local right = cam.CFrame.RightVector; right = Vector3.new(right.X, 0, right.Z)
         if right.Magnitude > 0 then right = right.Unit end
         local wish = Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then wish = wish + fwd end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then wish = wish - fwd end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then wish = wish + right end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then wish = wish - right end
+        if Svc.UIS:IsKeyDown(Enum.KeyCode.W) then wish = wish + fwd end
+        if Svc.UIS:IsKeyDown(Enum.KeyCode.S) then wish = wish - fwd end
+        if Svc.UIS:IsKeyDown(Enum.KeyCode.D) then wish = wish + right end
+        if Svc.UIS:IsKeyDown(Enum.KeyCode.A) then wish = wish - right end
         local maxSpeed = S.SurfSpeed or 60
         if wish.Magnitude > 0 then
             wish = wish.Unit
@@ -15059,7 +14888,7 @@ do
         -- hop when grounded and not already rising fast — holding Space still auto-bhops seamlessly
         -- across ramps/flats (re-triggers the moment you touch down), it just can't hover.
         local groundHit = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0), rp)
-        if UIS:IsKeyDown(Enum.KeyCode.Space) and groundHit and vel.Y <= 5 then
+        if Svc.UIS:IsKeyDown(Enum.KeyCode.Space) and groundHit and vel.Y <= 5 then
             vel = Vector3.new(vel.X, S.SurfJumpPower or 50, vel.Z)
         end
 
@@ -15080,9 +14909,9 @@ do
 
         hrp.AssemblyLinearVelocity = vel
     end))
-end
+end)()
 -- ============ ANTI LAG (thorough, adapted from Infinite Yield) ============
-do
+;(function()
     local applied = false
     local antilagConn
     task.spawn(function()
@@ -15095,8 +14924,8 @@ do
                         Terrain.WaterWaveSize = 0; Terrain.WaterWaveSpeed = 0
                         Terrain.WaterReflectance = 0; Terrain.WaterTransparency = 1
                     end
-                    Lighting.GlobalShadows = false
-                    Lighting.FogEnd = 9e9; Lighting.FogStart = 9e9
+                    Svc.Lighting.GlobalShadows = false
+                    Svc.Lighting.FogEnd = 9e9; Svc.Lighting.FogStart = 9e9
                     settings().Rendering.QualityLevel = 1
                     for _, v in pairs(workspace:GetDescendants()) do
                         if v:IsA("BasePart") then
@@ -15109,14 +14938,14 @@ do
                             v.Enabled = false
                         end
                     end
-                    for _, e in pairs(Lighting:GetDescendants()) do
+                    for _, e in pairs(Svc.Lighting:GetDescendants()) do
                         if e:IsA("PostEffect") then e.Enabled = false end
                     end
                     antilagConn = workspace.DescendantAdded:Connect(function(child)
                         if not S.AntiLag then return end
                         task.spawn(function()
                             if child:IsA("Sparkles") or child:IsA("Smoke") or child:IsA("Fire") or child:IsA("Beam") then
-                                RunService.Heartbeat:Wait(); pcall(function() child:Destroy() end)
+                                Svc.RunService.Heartbeat:Wait(); pcall(function() child:Destroy() end)
                             elseif child:IsA("BasePart") then
                                 child.CastShadow = false
                             end
@@ -15132,7 +14961,7 @@ do
             task.wait(1)
         end
     end)
-end
+end)()
 -- ============ MISC (spinbot / anti-afk / click TP) ============
 task.spawn(function()
     local spinY, spinAutoRotateOff = 0, false
@@ -15161,7 +14990,7 @@ task.spawn(function()
                 spinAutoRotateOff = false
             end
         end
-        RunService.Heartbeat:Wait()
+        Svc.RunService.Heartbeat:Wait()
     end
 end)
 -- Bhop (auto-hop with building, persistent momentum) + Speed Glitch (controllable air speed)
@@ -15203,7 +15032,7 @@ task.spawn(function()
                         if grounded(hum) then
                             bhopSpeed = math.min(math.max(bhopSpeed, hum.WalkSpeed) + 5, maxS)
                         end
-                        if airborne(hum) or UIS:IsKeyDown(Enum.KeyCode.Space) then
+                        if airborne(hum) or Svc.UIS:IsKeyDown(Enum.KeyCode.Space) then
                             hrp.AssemblyLinearVelocity = moveDir * bhopSpeed + Vector3.new(0, vel.Y, 0)
                         end
                     else
@@ -15215,10 +15044,10 @@ task.spawn(function()
         else
             bhopSpeed = 16  -- only reset once Bhop is switched off
         end
-        RunService.Heartbeat:Wait()
+        Svc.RunService.Heartbeat:Wait()
     end
 end)
-do
+;(function()
     local ok, VU = pcall(function() return game:GetService("VirtualUser") end)
     if ok and VU then
         tc(LP.Idled:Connect(function()
@@ -15227,9 +15056,9 @@ do
             end
         end))
     end
-end
-tc(UIS.InputBegan:Connect(function(input, processed)
-    if UIS:GetFocusedTextBox() then return end
+end)()
+tc(Svc.UIS.InputBegan:Connect(function(input, processed)
+    if Svc.UIS:GetFocusedTextBox() then return end
     if S.ClickTP and input.KeyCode == Enum.KeyCode.E then
         local c = LP.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -15248,14 +15077,14 @@ tc(UIS.InputBegan:Connect(function(input, processed)
         local function playerFromInstance(inst)
             local node = inst
             while node and node ~= workspace do
-                local pl = Players:GetPlayerFromCharacter(node)
+                local pl = Svc.Players:GetPlayerFromCharacter(node)
                 if pl then return pl end
                 node = node.Parent
             end
             return nil
         end
         local cam = workspace.CurrentCamera
-        local m = UIS:GetMouseLocation()
+        local m = Svc.UIS:GetMouseLocation()
         local p
         local mouse = LP:GetMouse()
         if mouse and mouse.Target then p = playerFromInstance(mouse.Target) end
@@ -15270,7 +15099,7 @@ tc(UIS.InputBegan:Connect(function(input, processed)
         if not p and cam then
             local center = Vector2.new(m.X, m.Y)
             local bestD = 120
-            for _, pl in ipairs(Players:GetPlayers()) do
+            for _, pl in ipairs(Svc.Players:GetPlayers()) do
                 if pl ~= LP and pl.Character then
                     local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
                     if hrp then
@@ -15313,7 +15142,7 @@ task.spawn(function()
                 local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     local p = hrp.Position
-                    HUD.coordLbl.Text = string.format("X %d  Y %d  Z %d", p.X, p.Y, p.Z)
+                    HUD.coordLbl.Text = string.format("X %d   Y %d   Z %d", p.X, p.Y, p.Z)
                 end
             end
             if HUD.hWatermark.Visible then
@@ -15330,11 +15159,11 @@ task.spawn(function()
                     S._IslandState = islandState
                     HUD.islandDotScale.Scale = 0.62
                     HUD.islandDot:SetAttribute("ThemeColorRole_BackgroundColor3", roundActive and "Accent" or "Tx4")
-                    TweenService:Create(HUD.islandDot, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Svc.TweenService:Create(HUD.islandDot, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                         BackgroundColor3 = roundActive and T.Accent or T.Tx4,
                         BackgroundTransparency = roundActive and 0.05 or 0.3
                     }):Play()
-                    TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+                    Svc.TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
                 end
             end
             if HUD.quickFrame and HUD.quickFrame.Visible then
@@ -15393,8 +15222,8 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
                     row.BorderSizePixel = 0
                     row.ZIndex = 852
                     row.Parent = HUD.hBinds.content
-                    Corner(row, 6)
-                    local rowStroke = Stroke(row, T.Bd2, 1, 0.58); pcall(function() rowStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+                    UI.Corner(row, 6)
+                    local rowStroke = UI.Stroke(row, T.Bd2, 1, 0.58); pcall(function() rowStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
                     local key = Instance.new("TextLabel")
                     key.Name = "tag"
                     key.BackgroundColor3 = T.ActiveBg; pcall(function() key:SetAttribute("ThemeColorRole_BackgroundColor3", "ActiveBg") end)
@@ -15412,7 +15241,7 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
                     key.TextTruncate = Enum.TextTruncate.AtEnd
                     key.ZIndex = 853
                     key.Parent = row
-                    Corner(key, 4)
+                    UI.Corner(key, 4)
                     local feature = Instance.new("TextLabel")
                     feature.Name = "value"
                     feature.BackgroundTransparency = 1
@@ -15438,8 +15267,8 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
                     state.BorderSizePixel = 0
                     state.ZIndex = 853
                     state.Parent = row
-                    Corner(state, 3)
-                    TweenService:Create(row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0.48 }):Play()
+                    UI.Corner(state, 3)
+                    Svc.TweenService:Create(row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0.48 }):Play()
                 end
             end
             if o == 0 then
@@ -15464,7 +15293,7 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
         local lines = {"Role: "..S._GetHUDRole(LP)}
         table.insert(lines, hg and "Gun: IN HAND" or gd and "Gun: DROPPED" or "Gun: N/A")
         local sn = "?"
-        for _, p in pairs(Players:GetPlayers()) do local r = getRole(p); if r == "Sheriff" or r == "Hero" then sn = p.Name; break end end
+        for _, p in pairs(Svc.Players:GetPlayers()) do local r = getRole(p); if r == "Sheriff" or r == "Hero" then sn = p.Name; break end end
         table.insert(lines, "Sheriff: "..sn)
         HUD.gunLbl.Text = table.concat(lines, "\n")
     end
@@ -15482,7 +15311,7 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
             local innocentsAlive = 0
             local innocentsTotal = 0
             
-            for _, pl in ipairs(Players:GetPlayers()) do
+            for _, pl in ipairs(Svc.Players:GetPlayers()) do
                 local ch = pl.Character
                 local hum = ch and ch:FindFirstChildOfClass("Humanoid")
                 local alive = hum and hum.Health > 0
@@ -15538,7 +15367,7 @@ task.spawn(function() while S.Gui and S.Gui.Parent do
         end
     end
     task.wait(0.5) end end)
-do
+;(function()
     -- The startup loader is already visible and keeps this late-created HUD hidden until the
     -- final presentation pass completes at the end of the file.
     -- ============ SOCIAL & HUD (KILL FEED & AUTO GG) ============
@@ -15650,28 +15479,27 @@ do
         end)
         local cardW = math.clamp(math.ceil(nameW) + 92, 170, 300)
         local card = Instance.new("Frame")
-        card.Size = UDim2.new(0, cardW, 0, 28)
-        card.BackgroundColor3 = T.Card
-        pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+        card.Size = UDim2.new(0, cardW, 0, 30)
+        card.Position = UDim2.new(0, 26, 0, 0)
+        card.BackgroundColor3 = T.Card:Lerp(color, 0.12)
         card.BackgroundTransparency = 1          -- fade in from invisible
         card.BorderSizePixel = 0
         card.LayoutOrder = -kfOrder               -- newest card sits on top
         card.ZIndex = 866
         card.Parent = kfContent
-        Corner(card, 6)
-        local st = Stroke(card, T.Bd2, 1, 1)      -- themed edge, starts transparent
+        UI.Corner(card, 6)
+        local st = UI.Stroke(card, T.Bd2, 1, 1)      -- themed edge, starts transparent
         pcall(function() st:SetAttribute("ThemeColorRole_Color", "Bd2") end)
         local bar = Instance.new("Frame")
         bar.Parent = card
-        bar.BackgroundColor3 = T.Accent
-        pcall(function() bar:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+        bar.BackgroundColor3 = color
         bar.BackgroundTransparency = 1
         bar.BorderSizePixel = 0
         bar.AnchorPoint = Vector2.new(0, 0.5)
         bar.Position = UDim2.new(0, 0, 0.5, 0)
-        bar.Size = UDim2.new(0, 3, 0, 18)
+        bar.Size = UDim2.new(0, 3, 0, 22)
         bar.ZIndex = 867
-        Corner(bar, 2)
+        UI.Corner(bar, 2)
         local nameL = Instance.new("TextLabel")
         nameL.Parent = card
         nameL.BackgroundTransparency = 1
@@ -15694,8 +15522,7 @@ do
         tagL.Size = UDim2.new(0, 60, 1, 0)
         tagL.Font = FB
         tagL.TextSize = 12
-        tagL.TextColor3 = T.Accent
-        pcall(function() tagL:SetAttribute("ThemeColorRole_TextColor3", "Accent") end)
+        tagL.TextColor3 = color
         tagL.TextTransparency = 1
         tagL.TextXAlignment = Enum.TextXAlignment.Right
         tagL.Text = tag
@@ -15708,22 +15535,22 @@ do
         -- Fade in
         local ti = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         pcall(function()
-            TweenService.Create(TweenService, card, ti, { BackgroundTransparency = 0.08 }):Play()
-            if st then TweenService.Create(TweenService, st, ti, { Transparency = 0.5 }):Play() end
-            TweenService.Create(TweenService, bar, ti, { BackgroundTransparency = 0 }):Play()
-            TweenService.Create(TweenService, nameL, ti, { TextTransparency = 0 }):Play()
-            TweenService.Create(TweenService, tagL, ti, { TextTransparency = 0.05 }):Play()
+            Svc.TweenService.Create(Svc.TweenService, card, ti, { BackgroundTransparency = 0.08, Position = UDim2.new(0, 0, 0, 0) }):Play()
+            if st then Svc.TweenService.Create(Svc.TweenService, st, ti, { Transparency = 0.5 }):Play() end
+            Svc.TweenService.Create(Svc.TweenService, bar, ti, { BackgroundTransparency = 0 }):Play()
+            Svc.TweenService.Create(Svc.TweenService, nameL, ti, { TextTransparency = 0 }):Play()
+            Svc.TweenService.Create(Svc.TweenService, tagL, ti, { TextTransparency = 0.05 }):Play()
         end)
         -- Hold, then fade + collapse (height -> 0 so the stack closes the gap smoothly)
         task.spawn(function()
             task.wait(4.5)
             local to = TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
             pcall(function()
-                TweenService.Create(TweenService, card, to, { BackgroundTransparency = 1, Size = UDim2.new(0, cardW, 0, 0) }):Play()
-                if st then TweenService.Create(TweenService, st, to, { Transparency = 1 }):Play() end
-                TweenService.Create(TweenService, bar, to, { BackgroundTransparency = 1 }):Play()
-                TweenService.Create(TweenService, nameL, to, { TextTransparency = 1 }):Play()
-                TweenService.Create(TweenService, tagL, to, { TextTransparency = 1 }):Play()
+                Svc.TweenService.Create(Svc.TweenService, card, to, { BackgroundTransparency = 1, Size = UDim2.new(0, cardW, 0, 0), Position = UDim2.new(0, 26, 0, 0) }):Play()
+                if st then Svc.TweenService.Create(Svc.TweenService, st, to, { Transparency = 1 }):Play() end
+                Svc.TweenService.Create(Svc.TweenService, bar, to, { BackgroundTransparency = 1 }):Play()
+                Svc.TweenService.Create(Svc.TweenService, nameL, to, { TextTransparency = 1 }):Play()
+                Svc.TweenService.Create(Svc.TweenService, tagL, to, { TextTransparency = 1 }):Play()
             end)
             task.wait(0.34)
             for i, cc in ipairs(kfCards) do if cc == card then table.remove(kfCards, i); break end end
@@ -15751,10 +15578,10 @@ do
         p.CharacterAdded:Connect(connectChar)
     end
     
-    for _, p in ipairs(Players:GetPlayers()) do
+    for _, p in ipairs(Svc.Players:GetPlayers()) do
         setupPlayerDeathTrack(p)
     end
-    tc(Players.PlayerAdded:Connect(setupPlayerDeathTrack))
+    tc(Svc.Players.PlayerAdded:Connect(setupPlayerDeathTrack))
     
     local function sendChat(text)
         pcall(function()
@@ -15834,7 +15661,7 @@ do
                         local dodged = false
 
                         -- (1) MELEE THREAT: a murderer holding an equipped knife within stab range.
-                        for _, p in ipairs(Players:GetPlayers()) do
+                        for _, p in ipairs(Svc.Players:GetPlayers()) do
                             if p ~= LP and p.Character and getRole(p) == "Murderer" then
                                 local mhrp = p.Character:FindFirstChild("HumanoidRootPart")
                                 local mhum = p.Character:FindFirstChildOfClass("Humanoid")
@@ -15886,11 +15713,11 @@ do
             task.wait(0.02)
         end
     end)
-end
+end)()
 
 -- ============ PLAYER TAB (Emotes + Animations, thumbnails + search) ============
 do
-    local PlayerTabs = { active = "Emotes", animSections = {}, emoteSections = {}, bodySections = {} }
+    local PlayerTabs = { active = "Emotes", animSections = {}, emoteSections = {} }
     do
         local bar = Instance.new("Frame")
         bar.Name = "SubTabBar"
@@ -15908,11 +15735,8 @@ do
 
         PlayerTabs.emotesBtn = Instance.new("TextButton")
         PlayerTabs.animBtn = Instance.new("TextButton")
-        PlayerTabs.bodyBtn = Instance.new("TextButton")
-        -- Three subtabs now, so each takes a third of the bar instead of a half.
-        PlayerTabs.emotesStroke = mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 1, 1 / 3, -6)
-        PlayerTabs.animStroke = mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 2, 1 / 3, -6)
-        PlayerTabs.bodyStroke = mkSubTabBtn(bar, PlayerTabs.bodyBtn, "Body", 3, 1 / 3, -6)
+        PlayerTabs.emotesStroke = UI.mkSubTabBtn(bar, PlayerTabs.emotesBtn, "Emotes", 1, 1 / 2, -6)
+        PlayerTabs.animStroke = UI.mkSubTabBtn(bar, PlayerTabs.animBtn, "Animations", 2, 1 / 2, -6)
     end
 
     local function registerPlayerSubTabSection(section, tabName)
@@ -15922,8 +15746,6 @@ do
             table.insert(PlayerTabs.animSections, entry)
         elseif tabName == "Emotes" then
             table.insert(PlayerTabs.emoteSections, entry)
-        elseif tabName == "Body" then
-            table.insert(PlayerTabs.bodySections, entry)
         end
         section:SetAttribute("PlayerSubTab", tabName)
         section:SetAttribute("ForceFullWidth", true)
@@ -15936,11 +15758,9 @@ do
 
     local function updatePlayerSubTabs()
         local isAnim = PlayerTabs.active == "Animations"
-        local isBody = PlayerTabs.active == "Body"
-        local isEmotes = not isAnim and not isBody
-        styleSubTabActive(PlayerTabs.animBtn, PlayerTabs.animStroke, isAnim)
-        styleSubTabActive(PlayerTabs.emotesBtn, PlayerTabs.emotesStroke, isEmotes)
-        styleSubTabActive(PlayerTabs.bodyBtn, PlayerTabs.bodyStroke, isBody)
+        local isEmotes = not isAnim
+        UI.styleSubTabActive(PlayerTabs.animBtn, PlayerTabs.animStroke, isAnim)
+        UI.styleSubTabActive(PlayerTabs.emotesBtn, PlayerTabs.emotesStroke, isEmotes)
         local function setGroup(list, on)
             for _, entry in ipairs(list) do
                 local sec = entry.section
@@ -15951,7 +15771,6 @@ do
         end
         setGroup(PlayerTabs.animSections, isAnim)
         setGroup(PlayerTabs.emoteSections, isEmotes)
-        setGroup(PlayerTabs.bodySections, isBody)
         if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
         task.defer(function()
             if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
@@ -15969,12 +15788,6 @@ do
         PlayerTabs.active = "Emotes"
         updatePlayerSubTabs()
     end)
-    PlayerTabs.bodyBtn.MouseButton1Click:Connect(function()
-        SFX.Click()
-        PlayerTabs.active = "Body"
-        updatePlayerSubTabs()
-    end)
-    S._RegisterBodySection = function(section) return registerPlayerSubTabSection(section, "Body") end
 
     -- ---- shared helpers ----
     -- One clickable row: thumbnail (rbxthumb, no HTTP needed) + title. Used by both Emotes and the
@@ -15989,9 +15802,9 @@ do
         row.BackgroundColor3 = T.Elev; pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
         row.Size = UDim2.new(1, 0, 0, 56)
         row.Parent = parent
-        Corner(row, 6)
-        row.MouseEnter:Connect(function() TweenService.Create(TweenService, row, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play() end)
-        row.MouseLeave:Connect(function() TweenService.Create(TweenService, row, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play() end)
+        UI.Corner(row, 6)
+        row.MouseEnter:Connect(function() Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.1), { BackgroundColor3 = T.Hover }):Play() end)
+        row.MouseLeave:Connect(function() Svc.TweenService.Create(Svc.TweenService, row, TweenInfo.new(0.1), { BackgroundColor3 = T.Elev }):Play() end)
 
         local img = Instance.new("ImageLabel")
         img.Name = "Thumb"
@@ -16008,7 +15821,7 @@ do
                 or ("rbxthumb://type=Asset&id=" .. imgId .. "&w=420&h=420")
         end
         img.Image = thumbUrl
-        Corner(img, 6)
+        UI.Corner(img, 6)
 
         local lbl = Instance.new("TextLabel")
         lbl.Name = "Title"
@@ -16041,9 +15854,9 @@ do
         box.Text = ""
         box.ClearTextOnFocus = false
         box.TextXAlignment = Enum.TextXAlignment.Left
-        Corner(box, 6)
-        Stroke(box, T.Bd2, 1, 0.4)
-        Pad(box, 0, 0, 8, 8)
+        UI.Corner(box, 6)
+        UI.Stroke(box, T.Bd2, 1, 0.4)
+        UI.Pad(box, 0, 0, 8, 8)
         return box
     end
     S._mkListScroll = function(parent, order, height)
@@ -16060,13 +15873,13 @@ do
         scroll.ScrollBarThickness = MOBILE and 6 or 4
         scroll.ScrollBarImageColor3 = T.Tx3; pcall(function() scroll:SetAttribute("ThemeColorRole_ScrollBarImageColor3", "Tx3") end)
         scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        Corner(scroll, 8)
-        Stroke(scroll, T.Bd, 1, 0.4)
+        UI.Corner(scroll, 8)
+        UI.Stroke(scroll, T.Bd, 1, 0.4)
         local layout = Instance.new("UIListLayout")
         layout.Parent = scroll
         layout.SortOrder = Enum.SortOrder.LayoutOrder
         layout.Padding = UDim.new(0, 4)
-        Pad(scroll, 6, 6, 6, 6)
+        UI.Pad(scroll, 6, 6, 6, 6)
         return scroll
     end
 
@@ -16492,7 +16305,7 @@ do
         end
     end
 
-    -- Click handler: resolve (if needed) -> apply. Do not use ContentProvider:PreloadAsync as a
+    -- Click handler: resolve (if needed) -> apply. Do not use Svc.ContentProvider:PreloadAsync as a
     -- moderation test: it reports false failures for valid catalog animation assets in experiences.
     local function clickPack(name, bundleId)
         if PackState.blockedPacks[name] then
@@ -16529,15 +16342,969 @@ do
     end
 
 
-do
+;(function()
 local function buildEmotesTab()
-local secEmotes = registerPlayerSubTabSection(mkSection(Pages.Player, "Emotes", 1), "Emotes")
-local EmoteHttpService = game:GetService("HttpService")
-local EmoteAvatarEditor = game:GetService("AvatarEditorService")
-local EMOTE_CATALOG_CACHE = "MM2_Configs/_emotes_cache_all_v3.json"
-local EMOTE_PINS_CACHE = "MM2_Configs/_pinned_emotes_v1.json"
-local EMOTE_FALLBACK_IMAGE = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LP.UserId) .. "&w=420&h=420"
-local emoteCatalog = {
+Em.secEmotes = registerPlayerSubTabSection(UI.mkSection(Pages.Player, "Emotes", 1), "Emotes")
+Em.EmoteHttpService = game:GetService("HttpService")
+Em.EmoteAvatarEditor = game:GetService("AvatarEditorService")
+Em.BUILTIN_EMOTES = {
+  { id = 82461557511288, name = "[R6] Otsukare Summer" },
+  { id = 127764273000599, name = "Dropkick" },
+  { id = 85665834724929, name = "intrusive awkward wave" },
+  { id = 112540347880956, name = "Feeling Cute" },
+  { id = 104539498095025, name = "Chinese Dance: Da Koto Nai [BEST]" },
+  { id = 122814100170962, name = " Obby Head - Emote [ORIGINAL]" },
+  { id = 135853357333509, name = "Cute Pretty Girly Girl Fierce Slay Idle Pose" },
+  { id = 91811386043367, name = "TWICE - What Is Love" },
+  { id = 135994700702758, name = " Cute n shy Idle Emote Profile Pose" },
+  { id = 120224229260879, name = "Cute crouch " },
+  { id = 133594786690861, name = "Emperor Of The Auraverse [[Aura]]" },
+  { id = 105324347192111, name = "Hype Boy - NewJeans" },
+  { id = 86184456144623, name = "KATSEYE - Better in Denim (GAP)" },
+  { id = 133142324349281, name = "Flopping Fish" },
+  { id = 122803615354190, name = "kawaii whimsy airplane profile pose " },
+  { id = 126046375141676, name = "Brazil Dance" },
+  { id = 132436768198498, name = " : super shy girly idle pose" },
+  { id = 126228947948058, name = " kawaii magical girl kpop idle pose" },
+  { id = 18225077553, name = "Rock Out - Bebe Rexha" },
+  { id = 124041369408613, name = "Just be competent" },
+  { id = 78724951673945, name = "Just Your Doll " },
+  { id = 89439360145889, name = "Pangya Dance" },
+  { id = 139435106875573, name = "L Lawliet" },
+  { id = 105248382902194, name = "Party Rock Anthem" },
+  { id = 14901369589, name = "BLACKPINK Shut Down - Part 1" },
+  { id = 106454952665088, name = "Floating Goddess (Matching Floating Adonis) !" },
+  { id = 110252467018810, name = " cute n timid idle profile pose" },
+  { id = 81204065393762, name = " cute shy withdrawn sit" },
+  { id = 127195099938159, name = "Chill Floating Fly Aura (Blinking)" },
+  { id = 130726889233022, name = "rolling crybaby" },
+  { id = 139460224769900, name = " Creepy Scene Halloween Zombie Holding Head " },
+  { id = 102610758906338, name = "Possessed" },
+  { id = 72594018128577, name = "RUDE! - Hearts2Hearts" },
+  { id = 104485625389237, name = "Make You Mine" },
+  { id = 14901371589, name = "BLACKPINK Shut Down - Part 2" },
+  { id = 134311528115559, name = "how did he hit every beat" },
+  { id = 71825767065274, name = "Cut Water Summer Dance!" },
+  { id = 108845097487486, name = " cute bouncy anime dance" },
+  { id = 79194689807074, name = "TWICE - The Feels" },
+  { id = 136271269847411, name = "Metro Man arm swings" },
+  { id = 139621472081340, name = "Sit" },
+  { id = 129411309930167, name = "Catch Catch Setalcix" },
+  { id = 73743026563647, name = "Cute Excited Sit" },
+  { id = 125974779288821, name = "Springtrapped (Face Animated)" },
+  { id = 133596366979822, name = "Biblically Accurate Emote" },
+  { id = 72450410210932, name = "Aura Fly Sitting" },
+  { id = 118688124889191, name = "Nya San" },
+  { id = 3821527813, name = "Swish" },
+  { id = 110511723808460, name = "SpiderMan Hanging Pose [Original]" },
+  { id = 95717405852618, name = "New Jeans - NewJeans" },
+  { id = 120702604995324, name = "z sturdy (actual original)" },
+  { id = 72947568152049, name = "Cute Sit" },
+  { id = 111378664166805, name = "Moonwalk" },
+  { id = 3576754235, name = "Sneaky" },
+  { id = 14548710952, name = "BLACKPINK Pink Venom - I Bring the Pain Like" },
+  { id = 87963462118126, name = "Cute Bouncy Hip Shake Dance" },
+  { id = 72213123467340, name = "Jamal Dance" },
+  { id = 113863828896103, name = "happy hula" },
+  { id = 70434485915160, name = "Cute Bouncy Needy Shake Dance" },
+  { id = 88840501982686, name = "DARE - Gorillaz" },
+  { id = 73630423562709, name = "FF Push Up" },
+  { id = 95339769038863, name = "inchworm" },
+  { id = 118846519181951, name = "Diva Aura" },
+  { id = 113818946774721, name = "Arona Dance Meme" },
+  { id = 77206866044608, name = "Nope Finger (emote)" },
+  { id = 79338722896418, name = "Panic Run" },
+  { id = 12804173616, name = "Ay-Yo Dance Move - NCT 127" },
+  { id = 4391211308, name = "Y" },
+  { id = 84497409209637, name = "Fish" },
+  { id = 80772558169667, name = "Slow Transformation" },
+  { id = 108946079729323, name = "Speed Mirage" },
+  { id = 133685484220846, name = "KATSEYE - GNARLY" },
+  { id = 87757463565936, name = "Popstar Moves" },
+  { id = 114368587461466, name = " MM2 Fake Dead Emote" },
+  { id = 3934984583, name = "Get Out" },
+  { id = 121936817462716, name = "Race Car" },
+  { id = 85913265750993, name = "I came to GROOVE[A peanut butter house] 4'10" },
+  { id = 89145613574909, name = "Tyla Dance" },
+  { id = 88693910954718, name = "Brazilian Funk Footwork" },
+  { id = 5895009708, name = "Jumping Cheer" },
+  { id = 100885431049593, name = "Sleeping Angel" },
+  { id = 92707348383277, name = "Mesmerizer" },
+  { id = 78755795767408, name = "Aura RNG Fly Idle " },
+  { id = 105722319548703, name = "Confess to Me" },
+  { id = 114899970878842, name = "R15 Death (Accurate)" },
+  { id = 130998336536045, name = "[ORIGINAL] It's Gangnam Style!" },
+  { id = 116938844814178, name = "[ OG ] BADDIE BOUNCE" },
+  { id = 123355872827206, name = "Vibing / Community Animation Idle" },
+  { id = 18526338976, name = "Team USA Breaking Emote" },
+  { id = 108128682361404, name = "Rambunctious" },
+  { id = 71980669913244, name = "Tail Wag Happy Idle" },
+  { id = 137261874619072, name = "Sponge Dance" },
+  { id = 130850357238599, name = "Ya Ya Ying Dance" },
+  { id = 138343476996773, name = "Spin" },
+  { id = 82405492529515, name = "Take The L " },
+  { id = 79127989560307, name = "Moon Walk" },
+  { id = 122545939134570, name = "Crossed Arm Hip Sway" },
+  { id = 114530046828576, name = " Realy strange Hornet's Spider" },
+  { id = 103155280474275, name = "Cute Kawaii Legs Up Shy Kicking Feet Cat Laying" },
+  { id = 100597438247721, name = "Sweet Hug Pose V1 [MATCHING] " },
+  { id = 133248139921782, name = "Jumpstyle dance" },
+  { id = 100773414188482, name = "Stray Kids Walkin On Water" },
+  { id = 71574925787532, name = "Flying Superhero Emote" },
+  { id = 111032510525800, name = "Otsukare summer" },
+  { id = 132566708912466, name = "Thank You Bow Ladies and Gentlemen " },
+  { id = 105909453197841, name = "Tomodachi Mii Hip Sway" },
+  { id = 100055506817628, name = "essence - Slay Bestie" },
+  { id = 117119421748582, name = "Jamal Brazil Groove" },
+  { id = 137909901344953, name = " cute bossy sassy girl idle pose" },
+  { id = 92237689732858, name = "Da Hood Stomp" },
+  { id = 114502615688717, name = "Around the Head" },
+  { id = 131950236025472, name = "Relax Flying Anime (Floating Emote)" },
+  { id = 15571536896, name = "Nicki Minaj That's That Super Bass Emote" },
+  { id = 110262668561006, name = "Body Phone (Check Description)" },
+  { id = 89614983665331, name = "Jumpstyle Dance" },
+  { id = 9710994651, name = "High Hands" },
+  { id = 136504778836355, name = " Pangya Dance 3.0 !!" },
+  { id = 111332667359868, name = "cute doll ballerina music box spin" },
+  { id = 14022978026, name = "YUNGBLUD  HIGH KICK" },
+  { id = 95256633886548, name = "Stray Kids - Do It" },
+  { id = 12715397488, name = "TWICE Set Me Free - Dance 2" },
+  { id = 114756515400742, name = "[BEST] Dougie (Everybody Loves Me)" },
+  { id = 76503754262527, name = "Proxima Creatura" },
+  { id = 120160563346972, name = "Floating Princess" },
+  { id = 111665668810578, name = "Sigma Boy Dance" },
+  { id = 130987133773478, name = "SpiderMan [Original]" },
+  { id = 115793885897101, name = "Floating Aura Emote  Power Anime Pose" },
+  { id = 81216108771843, name = "LE SSERAFIM - Spaghetti" },
+  { id = 97139559228653, name = "Dance All Night" },
+  { id = 103168660352906, name = "True Heart" },
+  { id = 91110020647774, name = "Hear Me Now! " },
+  { id = 117373445253902, name = "Iuno Moon Goddess Intro Idle | Wuthering WuWa" },
+  { id = 119934579718052, name = ": tadaa headless showoff profile pose! " },
+  { id = 15506506103, name = "Flex Walk" },
+  { id = 101743582461626, name = "Sit" },
+  { id = 82026568595380, name = "Tyranno" },
+  { id = 7942960760, name = "AOK - Tai Verdes" },
+  { id = 136895816311970, name = "Cute Angry Idle  [Dynamic Head]" },
+  { id = 133765015173412, name = "DearALICE - Ariana" },
+  { id = 126468010841883, name = "Spice Queen of Da Place" },
+  { id = 108683274449989, name = "Queen Runway Model" },
+  { id = 91380965860245, name = "Nuh Uh! (Finger Wiggle)" },
+  { id = 95407766746448, name = "MM2 Fake Dead - 2" },
+  { id = 14124050904, name = "TWICE Like Ooh-Ahh" },
+  { id = 3570649048, name = "Jacks" },
+  { id = 122127591991917, name = "Side Shuffle" },
+  { id = 7422833723, name = "Saturday Dance - Twenty One Pilots" },
+  { id = 79076692213299, name = "Sweet Hug Pose V2 [MATCHING]" },
+  { id = 140547238892659, name = "Helicopter" },
+  { id = 10478368365, name = "Super Charge" },
+  { id = 4646302011, name = "Air Dance" },
+  { id = 4646306072, name = "Keeping Time" },
+  { id = 12259885838, name = "Sticker Dance Move - NCT 127" },
+  { id = 117302755748327, name = "Coffin Walkout" },
+  { id = 99005087791705, name = "Peter Griffin's Death Pose" },
+  { id = 93641632427451, name = "Neck Roll" },
+  { id = 113039466758343, name = "Casual Sitting" },
+  { id = 77806145358673, name = "Leaning Against Wall Arms Crossed" },
+  { id = 111539333518905, name = "Needy V sit Split Drop (OG) " },
+  { id = 80923445784018, name = "Gangnam style" },
+  { id = 131763631172236, name = "Xaviersobased Emote" },
+  { id = 81808860196321, name = "Hotel Transylvania macarena dance" },
+  { id = 137284968787523, name = "Street Glide" },
+  { id = 82910305160190, name = "Jojo Torture Dance" },
+  { id = 118859160373597, name = "Car Pose: Tokyo Lean" },
+  { id = 139828710607670, name = " : cute sitting idle pose" },
+  { id = 88712283515515, name = "Hug" },
+  { id = 104746315279105, name = "Upside Down Leg Trap" },
+  { id = 109032209212356, name = "BLACKHOLE - IVE" },
+  { id = 81442470330880, name = "Signature Shuffle" },
+  { id = 78758922757947, name = "[MIRA] Kicking Feet Sit" },
+  { id = 82370885440550, name = " Spiderman Hanging" },
+  { id = 93675237485386, name = "Dougie" },
+  { id = 124305244640379, name = "Shattered" },
+  { id = 125154823571632, name = "Worm Floating Endless" },
+  { id = 135686271244127, name = "Rakai Emote" },
+  { id = 110064349530772, name = "Orange Justice" },
+  { id = 79580284786292, name = "Olivia Rodrigo Head Bop [CHEAP]" },
+  { id = 121001502815813, name = "Die Lit" },
+  { id = 82207766385627, name = "Unbothered Aura Floating Sitting" },
+  { id = 95339652051393, name = " Sad Depressed Crying Sit / Sitting" },
+  { id = 74477507917814, name = "Low Cortisol" },
+  { id = 131260558736428, name = "TYLA - CHANEL (TIKTOK DANCE)" },
+  { id = 127478024269658, name = "7 Rings Dance " },
+  { id = 119042829278898, name = "Choso" },
+  { id = 90555063826230, name = "Vecna Stranger Things Fly Animation Emote Bone" },
+  { id = 122687759897103, name = "Sturdy NYC Dance " },
+  { id = 120389512169914, name = " cutesie shy idle !!" },
+  { id = 80341701361363, name = "TYLA Chanel - Kpop Trendy Dance" },
+  { id = 3994129128, name = "Fishing" },
+  { id = 138140141577966, name = "Catwalk Walk Emote (FIRST,OG)" },
+  { id = 104612504371741, name = "cute sway animation" },
+  { id = 79297779614324, name = "MM2 Fake Dead - 3" },
+  { id = 136084484696445, name = "Gap x Katseye - Better Than yours (Milkshake ) ." },
+  { id = 3576751796, name = "Louder" },
+  { id = 106977382414370, name = "Jump - BLACKPINK" },
+  { id = 71556328869803, name = "[AURA FARM] YN Wall Lean" },
+  { id = 74608751145756, name = "Russian Dance" },
+  { id = 95926267112611, name = "PangYa Dance 3.0" },
+  { id = 139830733782518, name = "Phut On" },
+  { id = 93195109588878, name = "pain and suffering" },
+  { id = 7942964447, name = "Cobra Arms - Tai Verdes" },
+  { id = 12259890638, name = "2 Baddies Dance Move - NCT 127" },
+  { id = 139344101676103, name = "Scene Pose" },
+  { id = 3307604888, name = "Ud'zal's Summoning" },
+  { id = 15963348695, name = "Mean Girls Dance Break" },
+  { id = 6531538868, name = "Drum Master - Royal Blood" },
+  { id = 104660720214070, name = "hands down hip sway" },
+  { id = 116468071022853, name = "(Original) Gangnam Style" },
+  { id = 121899062503943, name = "Belly Dancing" },
+  { id = 79962090865577, name = "Bug In The System" },
+  { id = 77568709550148, name = "bow bow bounce Dance [OG]" },
+  { id = 110537281410647, name = "[Aura Farm] Wall Lean Idle {ORIGINAL}" },
+  { id = 131407261984740, name = "Buss It! [OG]" },
+  { id = 104338766814874, name = "Hey Ya Move" },
+  { id = 99568437064777, name = "Relaxed Sit" },
+  { id = 84052327668385, name = "Floating" },
+  { id = 95664256018756, name = "NO HANDS" },
+  { id = 126684112484206, name = " Cute shy avatar pose (LOOPED)" },
+  { id = 91032553512904, name = "Reze Dance (Iris Out)" },
+  { id = 129766891082557, name = " Sweetest Angel Sit Pose  " },
+  { id = 103399717097173, name = "Spice Floor Call" },
+  { id = 130027779038512, name = "Cyrene Fairy Swing Intro Idle | Honkai HSR" },
+  { id = 134222090358172, name = "Money Hop Switch" },
+  { id = 87826892596287, name = "levitate" },
+  { id = 131939729732240, name = "Belly Dancing" },
+  { id = 6533100850, name = "Rock Star - Royal Blood" },
+  { id = 132029163919678, name = "cute gasp " },
+  { id = 133481721436918, name = "Rabbit Hole - Miku" },
+  { id = 115925652377890, name = "Shuffling" },
+  { id = 120302905807132, name = "STURDY" },
+  { id = 92504533520053, name = "Hello Kitty Dance [OG] " },
+  { id = 126712277617528, name = "[FREE] Hips Sway Arms Crossed Emote" },
+  { id = 85587917792339, name = " Sweet Fluffy Bunny Dance ORIGINAL" },
+  { id = 126516908191316, name = "Billy Bounce" },
+  { id = 100829635809504, name = "Katseye - Gnarly Pop Dance Emote" },
+  { id = 80094678034288, name = " cute halloween magical witch aura idle pose" },
+  { id = 100416618991324, name = "[Best] All Might Victory Pose R6" },
+  { id = 135078245258688, name = "cute bossy girl pose " },
+  { id = 110724441263151, name = "[NEW] Runway Diva! " },
+  { id = 80365921763329, name = "[LIMITED]  Kicking Feet" },
+  { id = 113919169704818, name = "Vampire Pose [ORIGINAL]" },
+  { id = 103768845612667, name = "La Detone - Dance" },
+  { id = 92224509275999, name = "Like Jennie Dance from JENNIE" },
+  { id = 104072580597361, name = "FORSAKEN John Doe Pose " },
+  { id = 75916539353418, name = "KATSEYE TOUCH (CHEAP)" },
+  { id = 97523498583729, name = "Fake Lag/Disconnect (TROLL)" },
+  { id = 81224179573920, name = "Hype dance " },
+  { id = 124057206061364, name = "Jester Dance" },
+  { id = 80877772569772, name = "Default Dance | OG" },
+  { id = 135211326811898, name = "Scuba Trend" },
+  { id = 107591912237291, name = "Random Moves" },
+  { id = 81671884508244, name = "Confess Dance" },
+  { id = 113184956127341, name = "Little jumping spider" },
+  { id = 140252879267563, name = "Headlock" },
+  { id = 115319301809339, name = "2 Phut Hon Dance" },
+  { id = 112528616743393, name = "Brazillian Vibe" },
+  { id = 104060042886647, name = "[ OG  ] brooklyn pop - kawaii hip swing dance" },
+  { id = 108644020480886, name = "One-legged Snare Trap" },
+  { id = 89466407313325, name = "Urban Dance" },
+  { id = 103924340632445, name = "Sassy Fashion Twirl" },
+  { id = 105730788757021, name = "Dani's BIRDBRAIN" },
+  { id = 73264759706085, name = "Get The Money" },
+  { id = 114462336086965, name = "cute ponpon dance og" },
+  { id = 125949163041883, name = "Kizuna AI Hello, Morning" },
+  { id = 78428722915978, name = "baby boo dance" },
+  { id = 104077918384157, name = "shake it in a Circle" },
+  { id = 100297498958164, name = "Run R15 (Fake lag)" },
+  { id = 83702306317443, name = "Mannrobics (TF2)" },
+  { id = 16646438742, name = "Wanna play?" },
+  { id = 84511772437190, name = "Emote Loading. Please Wait... | spinning Robloxian" },
+  { id = 95944231654385, name = "Alter Ego " },
+  { id = 139859849852362, name = "MM2 Dead" },
+  { id = 90478555055303, name = " soft elegant stance !!" },
+  { id = 113546798537900, name = "Sleeping Sideways" },
+  { id = 125717501705233, name = "Aura Gainer" },
+  { id = 132315093859677, name = "Pumpkin Legend " },
+  { id = 120380776076922, name = "Catwalk Walk" },
+  { id = 114202552805537, name = "Apple Store Girl Goofy Dance (do you want me)" },
+  { id = 106880906271071, name = "MEGA POOPING  [AURA] " },
+  { id = 100868777466223, name = " Zombie Run Lag" },
+  { id = 125783279336153, name = "WISH NLE" },
+  { id = 75625820126017, name = "Louisiana Jigg" },
+  { id = 123709994654098, name = "Uh-Oh" },
+  { id = 74402735640939, name = "[R15] Hatsune Miku Idle Pose Emote" },
+  { id = 130655908439646, name = "Beat Da Koto Nai" },
+  { id = 140466682449054, name = "head spin" },
+  { id = 88486801093777, name = "[BEST] Rakai Emote" },
+  { id = 98728517497209, name = "cute floating headless head aura emote" },
+  { id = 75134843312906, name = "Legend Aura Fly Emote" },
+  { id = 75125571025711, name = "Jamal's Passinho (TikTok dance)" },
+  { id = 89468381929192, name = "Upside down floating AURA" },
+  { id = 88312828363279, name = "Big Guy - Ice Spice/Spongebob Emote" },
+  { id = 88834614877886, name = "The Run Around" },
+  { id = 125243870523332, name = " doll cutely sitting pose" },
+  { id = 94792423330715, name = "Kawaii Groove" },
+  { id = 15506496093, name = "Rock n Roll" },
+  { id = 129637389787927, name = "Dancing with your eyes closed" },
+  { id = 10214415687, name = "Mean Mug - Tommy Hilfiger" },
+  { id = 79318911527752, name = "[OG] Military Dance" },
+  { id = 124212021234700, name = "Spicy Flow Vibes" },
+  { id = 103438127343286, name = "Blue Top Rock" },
+  { id = 132617851151069, name = "Rakai Dance" },
+  { id = 93875137466223, name = "Scary tall creature transformation " },
+  { id = 112084325910222, name = "Rambunctious" },
+  { id = 133047022806044, name = "Rafa Polinesio Baile" },
+  { id = 83475540437708, name = "Floating Sit" },
+  { id = 82070133181200, name = "Bubbly Sit [3.0]" },
+  { id = 136701250296230, name = "  Cute Shy Pose" },
+  { id = 121167704249654, name = "Hide" },
+  { id = 98263064912190, name = "Cry For Me [OG]" },
+  { id = 132074413582912, name = "California Girl Dance [OG]" },
+  { id = 131875333242836, name = "cute sit" },
+  { id = 102370555981017, name = " Cute Wave Pose " },
+  { id = 77945789109199, name = "Golden dance [best]" },
+  { id = 82096188761745, name = "Aura Idle" },
+  { id = 6532155086, name = "Rock Guitar - Royal Blood" },
+  { id = 86982022610765, name = "Caramelldansen" },
+  { id = 87939300658851, name = "Be tall creature" },
+  { id = 9178397781, name = "Victory - 24kGoldn" },
+  { id = 120896030393583, name = "Get Sturdy" },
+  { id = 104922087218459, name = "[ OG  ] bunny party dance" },
+  { id = 18443268949, name = "SpongeBob Imaginaaation " },
+  { id = 3236848555, name = "Borock's Rage" },
+  { id = 117648669357990, name = "Boxing" },
+  { id = 119258520125004, name = "Harley Dance" },
+  { id = 16215060261, name = "TWICE I GOT YOU part 1" },
+  { id = 137064024843676, name = "Needy Leg Splits!! (OG) " },
+  { id = 137894800082618, name = "needy me" },
+  { id = 114443541753616, name = "Big Papa Squat" },
+  { id = 113927348020837, name = "sharp's French Confidence" },
+  { id = 105851216004006, name = "Electro Swing" },
+  { id = 105209959441169, name = "Big Hand Wave" },
+  { id = 81180825463784, name = "Flat Sitting Pose" },
+  { id = 6532844183, name = "Drum Solo - Royal Blood" },
+  { id = 87471384477488, name = "Reze Dance (HQ)" },
+  { id = 94083401455021, name = " Rat Dance" },
+  { id = 74193679388896, name = "Bouncy Cute Girl Anime Idle" },
+  { id = 111491569569071, name = "Jax Toy - Digital Circus" },
+  { id = 93296121617273, name = "Endless Worm Floating" },
+  { id = 18665886405, name = "TMNT Dance" },
+  { id = 123355126614341, name = "Piggyback Ride V1 [MATCHING]" },
+  { id = 134222958219878, name = "Yanagi walking" },
+  { id = 140440735589603, name = "Michael Jackson" },
+  { id = 95999178112240, name = "Floating Upside-Down!" },
+  { id = 88398357963696, name = "Soda Pop - Saja Boys" },
+  { id = 122498540377510, name = " Godly Floating Sleeping Aura Pose " },
+  { id = 7466048475, name = "Swan Dance" },
+  { id = 128000234046934, name = " Relax Coin Flip" },
+  { id = 89535391366809, name = "Making Faces" },
+  { id = 85913309003871, name = "I see Kareem Groove" },
+  { id = 87377941256447, name = "[OG BEST] Spicy bounce" },
+  { id = 82904146092287, name = " MEGA POOP SNIFF  [AURA]" },
+  { id = 94684994062212, name = "Halloween Headless Effortless Aura" },
+  { id = 98012296914799, name = "KATSEYE - Gabriela (Megan)" },
+  { id = 122461225964217, name = "Big Back Baby Boo" },
+  { id = 97263450325496, name = "Teto Territory" },
+  { id = 102822553233176, name = "Hug " },
+  { id = 80436375269036, name = "HEADLESS HOOPER - basketball" },
+  { id = 131561465960751, name = "BLACKPINK - Get em Get em Get em" },
+  { id = 101460910804544, name = "Box Pet" },
+  { id = 92893440808720, name = "Absolute Sadness" },
+  { id = 122404842843791, name = "JUMP - BP (KPOP)" },
+  { id = 110881393097630, name = "Vogue Dip" },
+  { id = 118475047823955, name = "Propeller" },
+  { id = 109779894589589, name = "Excited Spinning Dog (Proxima Creatura)" },
+  { id = 78660312825816, name = "GRIMES - Oblivion" },
+  { id = 85361710130557, name = "Caramelldansen" },
+  { id = 117688975624403, name = "[R15] Bang Bang Bang Chainsaw man " },
+  { id = 106381695975693, name = "Spicy Life Dance" },
+  { id = 139782812297837, name = "Feel the music ! Aura Pose vive" },
+  { id = 73593666217037, name = "Take The L" },
+  { id = 74809337211634, name = "Spin Around with a Friend Matching" },
+  { id = 120007956256550, name = "67" },
+  { id = 125699260461610, name = "baddie" },
+  { id = 70975021709810, name = "Big G Bounce" },
+  { id = 122773107025712, name = "Michael Jackson" },
+  { id = 132366431744296, name = "Glitch through walls (phase)" },
+  { id = 73236219340808, name = "Slow Dembow" },
+  { id = 107899954696611, name = "Spongebob Shuffle Dance " },
+  { id = 134817530495903, name = "Baddie Shake" },
+  { id = 15571539403, name = "Nicki Minaj Anaconda" },
+  { id = 104330991197585, name = "Jotaro Pose (aura)" },
+  { id = 138319492354914, name = "Yuji Jumping Slowed Ver" },
+  { id = 81780730637211, name = "Torture Dance" },
+  { id = 93772541546815, name = "Will has power!!! STRANGER THINGS 5 " },
+  { id = 136290878980267, name = "apple store girl (do you want me)" },
+  { id = 106367055475970, name = "6-7" },
+  { id = 92859581691366, name = "ALTGO - Couldnt Care Less" },
+  { id = 139271706064778, name = "Hip Bounce" },
+  { id = 93298430995886, name = "Fireball - Pitbull [OG] [BEST]" },
+  { id = 134584040095037, name = "Little Obbyist" },
+  { id = 124031351335869, name = "[] Kayah's Cute Pose" },
+  { id = 75541759268466, name = "TrackMaker Dance" },
+  { id = 114386008104939, name = "I see Kareem Groove" },
+  { id = 113910843410865, name = "POP DAT THANG" },
+  { id = 90244178386698, name = "Cute Sit " },
+  { id = 12715393154, name = "TWICE Moonlight Sunrise " },
+  { id = 124682757478598, name = "Catgirl Sitting Down " },
+  { id = 84396003438766, name = "Heart" },
+  { id = 127271798262177, name = "M3GAN's Dance" },
+  { id = 104785408689451, name = "Slow Aura Run" },
+  { id = 109863797124787, name = "Heavy Sword Stance" },
+  { id = 13768975574, name = "TWICE Pop by Nayeon" },
+  { id = 115663351458368, name = "KATSEYE - Gnarly (Dance Break)" },
+  { id = 106674068664046, name = "Exotic : APEX Emote [Sol's RNG]" },
+  { id = 104321872987170, name = "Corrupted Entity" },
+  { id = 130214067086591, name = "Make You Mine" },
+  { id = 117617643410205, name = " : cute kawaii hugging and kicking feet" },
+  { id = 140269876098643, name = "IShowSpeed Bounce Dance" },
+  { id = 107058556707413, name = "Crumble" },
+  { id = 95386318624540, name = "Phibz" },
+  { id = 117178268034885, name = "reggeton dembow" },
+  { id = 111531137576108, name = "Dembow - De Lado" },
+  { id = 121463501824419, name = "candy cookie chocolate miku teto" },
+  { id = 15689314578, name = "Imagine Dragons - Bones Dance" },
+  { id = 110330632237517, name = "The coolest standing pose in the world" },
+  { id = 140452259654428, name = "Lay down Aura Farm" },
+  { id = 18526410572, name = "Vroom Vroom" },
+  { id = 120833029935011, name = "Head Pat High [Matching Set]" },
+  { id = 123831614665513, name = "Jump - BLACKPINK [BEST]" },
+  { id = 85115037529002, name = "Confident Needy Hip Shake Dance" },
+  { id = 74621691174733, name = "BADDIE Mirror Pose  " },
+  { id = 113584649324281, name = "I Never Seen" },
+  { id = 124072098165199, name = "/e dance2" },
+  { id = 128402456731579, name = " ICONIC BY MISTAKE [CHORUS] " },
+  { id = 135495405058646, name = "Pangya Dance (HQ)" },
+  { id = 93285483814710, name = "Fashionable [CHEAP]" },
+  { id = 117301403779781, name = "I'm Talm 'Bout Innit (OG)" },
+  { id = 116578970554242, name = "Cute Sit" },
+  { id = 128258195574116, name = "[ORIGINAL] I Want Money / What You Want - EMOVA" },
+  { id = 88416001739999, name = "Biblically Accurate Emote" },
+  { id = 11435175895, name = "Elton John - Cat Man" },
+  { id = 83186041767510, name = "Floating sitting " },
+  { id = 91171596265030, name = "Angry Idle" },
+  { id = 133751526608969, name = "I Want Money (Prince of egypt)" },
+  { id = 133005847117851, name = "Take The L" },
+  { id = 90844099582284, name = "I can FLY!! " },
+  { id = 103814076459025, name = "Spice N Slide" },
+  { id = 134737246939931, name = "GAG IT DEATH DROP" },
+  { id = 78712622250645, name = " Cute Kawaii Shy Doll Stance" },
+  { id = 95800106960533, name = "Creepy Ventriloquist Puppet" },
+  { id = 116626107611887, name = "Throw That Mafa Setalcix" },
+  { id = 83417429144154, name = "MASSIVE POOP" },
+  { id = 97233973386966, name = "Cute anime bounce" },
+  { id = 91739079549341, name = "A Rose?" },
+  { id = 106015503327885, name = "JOYRIDE LEFT" },
+  { id = 80981189893654, name = "[] Stranger Things Vecna Kill Emote" },
+  { id = 94694691436126, name = "NewJeans - ETA" },
+  { id = 89198573930777, name = "Honor Knight Kneel Dark Souls" },
+  { id = 15554013003, name = "Olivia Rodrigo good 4 u" },
+  { id = 71912700800803, name = "Mr ant Tenna's Kick - Deltarune" },
+  { id = 132380943956928, name = "Rose Gift" },
+  { id = 130838810836830, name = "Umamusume Dance" },
+  { id = 138149876527113, name = "Low Cortisol hip sway" },
+  { id = 119341017234649, name = "Lets Get Sturdy" },
+  { id = 97881883432866, name = "BLACK PINK JUMP - LOOP " },
+  { id = 119256963154827, name = "Dougie Meme Dance" },
+  { id = 91085159191582, name = "Gojo Floating JJK/ The Honored One" },
+  { id = 75916083282765, name = "flawless feels" },
+  { id = 79017619155911, name = "Wall Phase (GLITCH)" },
+  { id = 131421601916582, name = "Jelly Dance! (Insp. by Jellyous - ILLIT)" },
+  { id = 87939646671209, name = "Asian Squat" },
+  { id = 129916107176034, name = "Discombobulated" },
+  { id = 103981563274328, name = "Faceless Aura" },
+  { id = 113116746603315, name = "Hear Me Now" },
+  { id = 97830214926142, name = "/e Fly - Accurate Admin Fly" },
+  { id = 123043305808890, name = "Spongebob" },
+  { id = 98064631733787, name = "Do That Thang" },
+  { id = 103149155540509, name = "JOYRIDE RIGHT" },
+  { id = 108922782921118, name = "Pose for the Pic " },
+  { id = 79360981055415, name = "Car Transforming" },
+  { id = 102256275785620, name = "Angel Flying" },
+  { id = 91773089278851, name = "Street Flow Bounce" },
+  { id = 124522011862575, name = "rollie " },
+  { id = 107010273569673, name = "The Tylil Dance [Kai Cenat Dance]" },
+  { id = 103663987050338, name = " Honor Knight Kneel" },
+  { id = 130253041293561, name = "Cute kicking Feet Sit" },
+  { id = 137435098987579, name = " (BEST) sassy model catwalk diva" },
+  { id = 84195923658292, name = "JoJos | Jonathan's Pose" },
+  { id = 133319600812587, name = "Spice Happy Jumping" },
+  { id = 118102737243919, name = "Angry Snake" },
+  { id = 126847889432485, name = "[LIMITED] Vibing Sit" },
+  { id = 87526114329356, name = " Magical Float " },
+  { id = 104024961010344, name = "Sleeping Soundly" },
+  { id = 83548980186247, name = "MM2 Fake Dead Pose!" },
+  { id = 84555218084038, name = "Helicopter Spin" },
+  { id = 79483479695611, name = "[R6] Nyan Cat Meme" },
+  { id = 81773345255689, name = "Baddies Pic" },
+  { id = 73946479113094, name = "Macarena" },
+  { id = 132382355371060, name = "Tank Transformation" },
+  { id = 93790616190498, name = "ILLIT - It's Me" },
+  { id = 124573843932871, name = "AFK Aura Farm" },
+  { id = 101446789686277, name = "Kawaii Headless Holding Head Idle Emote" },
+  { id = 123256605275082, name = "Sass Drop " },
+  { id = 92335786854446, name = "Sturdy R6" },
+  { id = 138487798883208, name = "kawaii cute cat girl pose idle" },
+  { id = 78459263478161, name = "Family Man Death Pose" },
+  { id = 84430246447182, name = "R6 Califorina Girls [Forsaken]" },
+  { id = 18148839527, name = "Rolling Stones Guitar Strum" },
+  { id = 78868540419185, name = "That's RED RED - Cortis" },
+  { id = 124674379179873, name = "Cute Kawaii Sitting Idle Pose" },
+  { id = 74726067041025, name = "Ima sit back | Baddie Emote" },
+  { id = 16584496781, name = "Mae Stephens  Arm Wave" },
+  { id = 93262662842394, name = "Sit" },
+  { id = 102592510788385, name = "Michael Myers Bounce" },
+  { id = 138671863009472, name = "[]Finger-Gun" },
+  { id = 93450937830334, name = "Billy Bounce" },
+  { id = 92510136312766, name = "Happy Snake" },
+  { id = 16256253954, name = "TWICE I GOT YOU part 2" },
+  { id = 91333024824710, name = "kawaii chibi pose " },
+  { id = 73562814360939, name = "[RAPID FIRE]  Gun Morph" },
+  { id = 122758585008323, name = " Catch Catch " },
+  { id = 14024722653, name = "Tommy K-Pop Mic Drop" },
+  { id = 136415352218982, name = "67" },
+  { id = 131961970776128, name = "Wally's Pose" },
+  { id = 71245818535880, name = "Lady Gaga - Abracadabra" },
+  { id = 72049728640815, name = "SUIIIIII" },
+  { id = 138431313591911, name = "Zombie Run" },
+  { id = 70978791982917, name = "cat loaf" },
+  { id = 130575801528647, name = "Childish Tantrum" },
+  { id = 89957022802046, name = "Low Cortisol" },
+  { id = 102392888934746, name = "Godly Aura floating Pose " },
+  { id = 123403317287994, name = "Just sitting" },
+  { id = 118307905798773, name = "MOSH" },
+  { id = 86617727183442, name = "Slow-Mo Backflip | IShowSpeed Flip [NEW]" },
+  { id = 13071993910, name = "Rise Above - The Chainsmokers" },
+  { id = 89791686345950, name = " Cute Heart Hands Emote Profile Pose" },
+  { id = 130248288787333, name = "California Girls" },
+  { id = 91490872407594, name = "Needy Cartwheel Split" },
+  { id = 73100418080632, name = "Aura floating emote" },
+  { id = 99897707960183, name = "CORTIS - GO!" },
+  { id = 107391441166760, name = "Iconic Pose" },
+  { id = 129861012882037, name = "Garry's Dance (GMOD)" },
+  { id = 78512766320761, name = "Big G Rilla Step" },
+  { id = 10370934040, name = "Boom Boom Clap - George Ezra" },
+  { id = 76394392186917, name = " Obby - Emote" },
+  { id = 134928834792631, name = "Elevation" },
+  { id = 100107749035207, name = "Shy hip sway " },
+  { id = 130641944883645, name = " Jinu Pose - Saja Boys" },
+  { id = 12507106431, name = "Alo Yoga Pose - Warrior II" },
+  { id = 106656731585855, name = "[BEST] Keep The Money Flipping" },
+  { id = 136905358266269, name = "Rock Out" },
+  { id = 129424335541851, name = "Shake That" },
+  { id = 123015710605336, name = "Onion" },
+  { id = 15698510244, name = "ericdoa - dance" },
+  { id = 90929823390861, name = "Cute Kpop Poses - Profile Poses" },
+  { id = 122844127161903, name = "Body assembly" },
+  { id = 105626165333309, name = " Princess Hip Sway Dance" },
+  { id = 105515769832740, name = "Rat Dance" },
+  { id = 16276501655, name = "Dave's Spin Move - Glass Animals" },
+  { id = 124987679420663, name = "sharp's Bloodpop Jo Slide" },
+  { id = 70617440339521, name = "Spin Around With A Friend Matching" },
+  { id = 111603027132774, name = "[OG] ME! ME! ME! Daoko Dance " },
+  { id = 96622556579696, name = "Needy Playful Cat Girl" },
+  { id = 116256886592834, name = "Legendary Lovers" },
+  { id = 4646296016, name = "Bunny Hop" },
+  { id = 80115988215727, name = "Skibidi Shake" },
+  { id = 12507120275, name = "Alo Yoga Pose - Triangle" },
+  { id = 90293723561810, name = "I SEE KAREEM DANCE (ICE CREAM)" },
+  { id = 126821507055878, name = "Money Hop Spin" },
+  { id = 85370173309996, name = "Side Sit" },
+  { id = 91023138078288, name = "OH WHO IS YOU" },
+  { id = 73823025897559, name = "[CHEAP] Needy Night Out" },
+  { id = 71286446361487, name = "Pasinho do Jamal" },
+  { id = 88969192102242, name = "Wall Lean" },
+  { id = 119431985170060, name = "Helicopter" },
+  { id = 79460913196046, name = "Rat Dance Meme" },
+  { id = 15610015346, name = "Yungblud Happier Jump" },
+  { id = 14353421343, name = "Baby Queen - Face Frame" },
+  { id = 73500261613116, name = "Box" },
+  { id = 3570535774, name = "Top Rock" },
+  { id = 14353425085, name = "Baby Queen - Strut" },
+  { id = 84868707350198, name = "Hide" },
+  { id = 3696764866, name = "Cha-Cha" },
+  { id = 5230661597, name = "Bored" },
+  { id = 139021427684680, name = "KATSEYE - Touch" },
+  { id = 3696761354, name = "Air Guitar" },
+  { id = 73039500693145, name = " L Dance" },
+  { id = 84198855496510, name = "Dog" },
+  { id = 91452077708399, name = "Ragdoll Push" },
+  { id = 75633408126191, name = "Take The L" },
+  { id = 14548709888, name = "BLACKPINK Pink Venom - Get em Get em Get em" },
+  { id = 3716633898, name = "Twirl" },
+  { id = 124799741487022, name = "Fry Dance" },
+  { id = 3576745472, name = "Fashionable" },
+  { id = 3696763549, name = "Heisman Pose" },
+  { id = 9528286240, name = "Annyeong ()" },
+  { id = 4049646104, name = "Line Dance" },
+  { id = 4940597758, name = "Cower" },
+  { id = 5915776835, name = "High Wave" },
+  { id = 3696759798, name = "Superhero Reveal" },
+  { id = 108956933782219, name = "Worm" },
+  { id = 14900153406, name = "TWICE Feel Special" },
+  { id = 10147924028, name = "BURBERRY LOLA ATTITUDE - NIMBUS" },
+  { id = 10214418283, name = "V Pose - Tommy Hilfiger" },
+  { id = 12507097350, name = "Alo Yoga Pose - Lotus Position" },
+  { id = 10214406616, name = "Frosty Flair - Tommy Hilfiger" },
+  { id = 92853367837757, name = "Garry's Dance" },
+  { id = 74731877336606, name = "Baddie Hips" },
+  { id = 112035743224829, name = "Stylish Sit" },
+  { id = 114943261868976, name = "baddie shake" },
+  { id = 138453007205351, name = "Sukuna Aura Pose" },
+  { id = 70508706371253, name = "Vibing / Community Animation Aura Idle" },
+  { id = 125822752810863, name = "Low Cortisol Dance Pill" },
+  { id = 15689315657, name = "GloRilla - Tomorrow Dance" },
+  { id = 90177445015685, name = "cant catch my tail.. ( ; - `;) (klees idle spin)" },
+  { id = 102492229412911, name = "Deltarune - Tenna Dance" },
+  { id = 96118122806813, name = "Scene roblox profile pose" },
+  { id = 111481711726876, name = "JUMP K-POP Dance Choreo" },
+  { id = 92903522317071, name = "ILLIT - Magnetic" },
+  { id = 76353656697104, name = "TWICE - The Feels" },
+  { id = 80004965633316, name = "Iconic Fashion Model Idle Pose" },
+  { id = 89115363544461, name = "Play Dead Troll Trick Emote mm2 pose fake ragdoll" },
+  { id = 75773776265985, name = "Candy Emote" },
+  { id = 7422843994, name = "Up and Down - Twenty One Pilots" },
+  { id = 70788193750089, name = "kicking your feet" },
+  { id = 93443111556634, name = "Floating Throne Aura Pose" },
+  { id = 70888470847518, name = "Silly Animals Dance" },
+  { id = 83362314681140, name = "Smooth Rizz Rose" },
+  { id = 109226193867459, name = "KATSEYE - GAP (Better in Denim)" },
+  { id = 140187771377253, name = "L Lawliet Sit" },
+  { id = 78058324703968, name = "Michael Jackson [BEST]" },
+  { id = 80242782087423, name = "Back Dance Trend" },
+  { id = 120297764741811, name = "Cute Needy Hip Bounce" },
+  { id = 108013663975520, name = "Goku's Warmup" },
+  { id = 139570238573569, name = "Boogie Down" },
+  { id = 121067808279598, name = "PARROT PARTY DANCE" },
+  { id = 84293478473291, name = "Arthur Morgan Coughing" },
+  { id = 74359676673985, name = "[OG BEST] Missed and needy" },
+  { id = 71666111389227, name = "Meow Meow" },
+  { id = 115380777754385, name = "Hakari Dance" },
+  { id = 98718871207695, name = "Chk Chk Boom - STRAY KIDS [DANCEBREAK]" },
+  { id = 107753335763254, name = "[BEST] Not Cute Anymore - KPop Dance (ILLIT)" },
+  { id = 94226046885073, name = "Smooth Criminal Michael Jackson Dance Emote" },
+  { id = 129389629031100, name = "Ledge/Railing Sit" },
+  { id = 128118777898011, name = "FREE EMOTE : CODE - KICK67" },
+  { id = 128174269567586, name = "Cute kawaii girly magical idle Profile pose" },
+  { id = 124496001910000, name = "TWICE - What is Love Dance" },
+  { id = 107758711296968, name = "Floating Lying Down: Metro Man" },
+  { id = 104304182344567, name = "ONCE HOP HOP!" },
+  { id = 75503857471233, name = "Lily Braids" },
+  { id = 109006665341377, name = "[LIMITED] Head Spin & Chill Aura Float" },
+  { id = 140014568209050, name = "Cutie Floating" },
+  { id = 94925651501842, name = "Nagi Seishiro's Celebration" },
+  { id = 92846015938931, name = "Trendy Nicki Leg Pose" },
+  { id = 89424059240713, name = "Sukuna Aura Idle" },
+  { id = 90831367043789, name = " cute kawaii girly idle pose 2" },
+  { id = 128729212388115, name = "Phibz [OG]" },
+  { id = 70635223083942, name = "Be Not Afraid" },
+  { id = 80422524668416, name = "Laying on clouds" },
+  { id = 132514953046792, name = "Attitude Moves Bounce" },
+  { id = 73002781025226, name = " Myspace Cute Scene Pose XD " },
+  { id = 113455601219440, name = " : cute pop-pop hip sway dance" },
+  { id = 85936805522788, name = "Caramell" },
+  { id = 91223337249721, name = "Sit Comfy Idle" },
+  { id = 126273142521762, name = "Silent Hill Nurse Walk" },
+  { id = 133948663586698, name = "Wally Speedster Run" },
+  { id = 114457468919031, name = "Ya Ya Ying Dance [OG]" },
+  { id = 131013239122616, name = "Hakari Dance" },
+  { id = 85028685451071, name = "Stateside -  PinkPantheress + Zara Larsson" },
+  { id = 74277551575520, name = "Funny Goofy Wiggle" },
+  { id = 120565455646158, name = "Swaying Sit" },
+  { id = 81562978486917, name = "chiwawa -  - (just dance)" },
+  { id = 86039610121898, name = "Cute Hips Profile Pose" },
+  { id = 79159574589173, name = "67" },
+  { id = 124573621747512, name = "Take The L Emote" },
+  { id = 136040668407140, name = "Cute Baddie Profile Idle Pose" },
+  { id = 91771584024127, name = " cute dolly girl idle pose" },
+  { id = 113890289455724, name = "Onion" },
+  { id = 76881316748390, name = "Chubibi Dance" },
+  { id = 18443271885, name = "SpongeBob Dance" },
+  { id = 108776396433026, name = "girl like me - PINK PANTHERESS" },
+  { id = 17370797454, name = "Wisp - air guitar" },
+  { id = 16392120020, name = "Jawny - Stomp" },
+  { id = 96426537876059, name = "Electro Shuffle" },
+  { id = 133113167814737, name = "Aura Farming" },
+  { id = 109892068975068, name = "Royale High Kawaii Dance" },
+  { id = 104721659176603, name = "Sonic Adventure Profile Pose" },
+  { id = 121838903053629, name = "Rat dance" },
+  { id = 115140876718590, name = " : Shy Doll Cute Standing Idle Profile Pose" },
+  { id = 88164107371806, name = "Bust It Down!" },
+  { id = 101151842500262, name = "Headless Emote" },
+  { id = 100953557187752, name = "Gojo Floating The Honored One" },
+  { id = 100081021028089, name = "Levitated Lounge" },
+  { id = 10370918044, name = "Chill Vibes - George Ezra" },
+  { id = 81621254772462, name = "Head Banger [Travis Scott]" },
+  { id = 119746055344304, name = "Plane" },
+  { id = 115584191221260, name = "Girly Outfit-Check " },
+  { id = 135922662345048, name = "Snow angels" },
+  { id = 117453574553102, name = "Gameboy - Katseye" },
+  { id = 96768816121605, name = "shigureui cute hip sway" },
+  { id = 118850907110385, name = "FaSHioN - CORTIS" },
+  { id = 75528418031928, name = "Rambunctious" },
+  { id = 117033010486869, name = "Dance If You're The Best - Dia Delicia Dance " },
+  { id = 111474274315212, name = "head levitating cool pose" },
+  { id = 103541659586127, name = "Sweet Sit Pose (Ledge sitting)" },
+  { id = 74668781837561, name = "aura farming wall lean (hands in pockets) [FIXED]" },
+  { id = 134683696656199, name = "Flying Celestial Dunhuang Feitian Apsara Immortal" },
+  { id = 7422838770, name = "Drummer Moves - Twenty One Pilots" },
+  { id = 95714033584938, name = "Body Phone" },
+  { id = 102303622774230, name = " Hug [Player 1]" },
+  { id = 132007669525235, name = "Springtrap Dance" },
+  { id = 99116342229357, name = "Billie Jean Is Not My Lover Dance Intro" },
+  { id = 104628550103800, name = "Child's Tantrum" },
+  { id = 107080697327035, name = "paparazzi dance " },
+  { id = 134388005886833, name = "Godly Aura Pose" },
+  { id = 72185261708093, name = "Cutesy Cat Sit Profile Pose" },
+  { id = 17000058939, name = "Mini Kong" },
+  { id = 88339078036914, name = "Hip TechDance " },
+  { id = 103612146839392, name = "Kinji Hakari Dance Jujutsu Kaisen" },
+  { id = 79026423023159, name = "Fling emote" },
+  { id = 77666131363559, name = "Hakari Dance V2" },
+  { id = 88721672617892, name = "P.B.J.T." },
+  { id = 121368094576793, name = "Graceful idle stand" },
+  { id = 100933577956831, name = "Little Catgirl Dance" },
+  { id = 106259138660626, name = "Baby Boo Head Shake" },
+  { id = 108317182353594, name = "Gojo levitation" },
+  { id = 94796833553521, name = "TWICE Takedown pt 1 from Kpop Demon Hunters" },
+  { id = 73371232180986, name = "The Whistle Occurence 3" },
+  { id = 101573394483995, name = "Effortless Aura Pose" },
+  { id = 79312439851071, name = "Chappell Roan HOT TO GO!" },
+  { id = 9528291779, name = "Hwaiting ()" },
+  { id = 5938365243, name = "Dolphin Dance" },
+  { id = 5915780563, name = "Country Line Dance - Lil Nas X (LNX)" },
+  { id = 5938394742, name = "Old Town Road Dance - Lil Nas X (LNX)" },
+  { id = 17746270218, name = "Sturdy Dance - Ice Spice" },
+  { id = 79653736088166, name = "Phase" },
+  { id = 11753545334, name = "Elton John - Rock Out" },
+  { id = 16553249658, name = "Mae Stephens - Piano Hands" },
+  { id = 10147921916, name = "BURBERRY LOLA ATTITUDE - REFLEX" },
+  { id = 93321486801164, name = " Flat Sandwich" },
+  { id = 3576747102, name = "Around Town" },
+  { id = 15554010118, name = "Olivia Rodrigo Head Bop" },
+  { id = 10147919199, name = "BURBERRY LOLA ATTITUDE - BLOOM" },
+  { id = 3994127840, name = "Celebrate" },
+  { id = 7202898984, name = "Show Dem Wrists - KSI" },
+  { id = 3762641826, name = "Side to Side" },
+  { id = 132367660388476, name = "SHAKE" },
+  { id = 10147926081, name = "BURBERRY LOLA ATTITUDE - HYDRO" },
+  { id = 4212499637, name = "Dorky Dance" },
+  { id = 14900151704, name = "TWICE LIKEY" },
+  { id = 101601077005248, name = "cute levitating" },
+  { id = 108635834286627, name = "Spiderman Hang" },
+  { id = 4391208058, name = "Shuffle" },
+  { id = 132112297758791, name = "Chill Bounce" },
+  { id = 81666519067619, name = "Telekinesis Head Floating Aura" },
+  { id = 74716792202343, name = " Hornet's Spider Dance " },
+  { id = 3934986896, name = "Dizzy" },
+  { id = 3934988903, name = "Fancy Feet" },
+  { id = 13344121112, name = "TWICE What Is Love" },
+  { id = 5938396308, name = "HOLIDAY Dance - Lil Nas X (LNX)" },
+  { id = 10147916560, name = "BURBERRY LOLA ATTITUDE - GEM" },
+  { id = 80963950541052, name = "hip sway" },
+  { id = 13823339506, name = "Tommy - Archer" },
+  { id = 88425531063616, name = "Stylish Floating" },
+  { id = 138591023414678, name = "Cute Floating Fly" },
+  { id = 17748346932, name = "Elton John - Heart Shuffle" },
+  { id = 136648387080677, name = "DARE - Gorillaz" },
+  { id = 14548711723, name = "BLACKPINK Pink Venom - Straight to Ya Dome" },
+  { id = 3994130516, name = "Bodybuilder" },
+  { id = 4102315500, name = "Haha" },
+  { id = 6797919579, name = "Hips Poppin' - Zara Larsson" },
+  { id = 119770855180935, name = "Oliver Tree - Miss You" },
+  { id = 16572756230, name = "HIPMOTION - Amaarae" },
+  { id = 10370922566, name = "Sidekicks - George Ezra" },
+  { id = 4849502101, name = "Sad" },
+  { id = 104131847054135, name = "Jamal Brazil Groove" },
+  { id = 120642514156293, name = "Secret Handshake Dance" },
+  { id = 5915773992, name = "Break Dance" },
+  { id = 6869813008, name = "Samba" },
+  { id = 106708015414624, name = "Endless Aura Floating" },
+  { id = 4212496830, name = "Zombie" },
+  { id = 71302743123422, name = "Popular" },
+  { id = 94064805002669, name = "Cute Kawaii Posing >-<" },
+  { id = 3762654854, name = "Greatest" },
+  { id = 104142334418357, name = "[BEST] It's Gangnam Style!" },
+  { id = 111426928948833, name = "Floating on clouds" },
+  { id = 98603994713783, name = "Rat Dance" },
+  { id = 4272351660, name = "Fast Hands" },
+  { id = 132384701706046, name = "MM2 Fake Dead" },
+  { id = 78224683906191, name = "Cute Feet Kicking" },
+  { id = 10478377385, name = "Swag Walk" },
+  { id = 93511411593120, name = "/e fly" },
+  { id = 76361248833307, name = "Godly Aura fly pose idle" },
+  { id = 7202900159, name = "Wake Up Call - KSI" },
+  { id = 10370926562, name = "The Conductor - George Ezra" },
+  { id = 5938397555, name = "Rodeo Dance - Lil Nas X (LNX)" },
+  { id = 97164262994588, name = "Floating in Love " },
+  { id = 11435177473, name = "Elton John - Still Standing" },
+  { id = 4849497510, name = "Power Blast" },
+  { id = 107282826166809, name = "Basketball Head" },
+  { id = 15698511500, name = "Cuco - Levitate" },
+  { id = 4940602656, name = "Jumping Wave" },
+  { id = 15123050663, name = "Bone Chillin' Bop" },
+  { id = 4940592718, name = "Confused" },
+  { id = 3576719440, name = "T" },
+  { id = 88859617281337, name = "WOOF BARK WOOF " },
+  { id = 15679955281, name = "Festive Dance" },
+  { id = 82167506755506, name = "Cute Sit" },
+  { id = 75911227509248, name = "Ghost Floating" },
+  { id = 113702736944973, name = "Yuji Jumping Edit" },
+  { id = 10214411646, name = "Floor Rock Freeze - Tommy Hilfiger" },
+  { id = 138515241510970, name = "Cute kawaii girly idle Profile pose" },
+  { id = 15506503658, name = "Victory Dance" },
+  { id = 6865013133, name = "Cha Cha" },
+  { id = 4102317848, name = "Idol" },
+  { id = 15571540519, name = "Nicki Minaj Starships" },
+  { id = 89157328525577, name = "silly jumping spider dance" },
+  { id = 105381637724646, name = "Pumpkin King" },
+  { id = 4049634387, name = "Tree" },
+  { id = 137234266130963, name = "MJ - P.Y.T. Pretty Young Thing" },
+  { id = 5230615437, name = "Beckon" },
+  { id = 16303091119, name = "Beauty Touchdown" },
+  { id = 7202896732, name = "Boxing Punch - KSI" },
+  { id = 106370760824973, name = "Possessed Glitcher" },
+  { id = 79216795769647, name = "Tall Scary Creature" },
+  { id = 11394056822, name = "Elton John - Elevate" },
+  { id = 114332364947196, name = "Goofy Dory Dance (Silly + Funny)" },
+  { id = 9408642191, name = "Hyperfast 5G Dance Move" },
+  { id = 86591723458333, name = "apple store girl (do you want me)" },
+  { id = 73683655527605, name = "Fashion Roadkill" },
+  { id = 6797938823, name = "Take Me Under - Zara Larsson" },
+  { id = 15571538346, name = "Nicki Minaj Boom Boom Boom" },
+  { id = 112758073578333, name = "Bubbly Sit" },
+  { id = 16276506814, name = "Sol de Janeiro - Samba" },
+  { id = 76261461321661, name = " curiously cute sitting pose" },
+  { id = 86036504023673, name = "California Girls" },
+  { id = 74248485441791, name = "Flex Your UGC Muscles Emote" },
+  { id = 7942972744, name = "Lasso Turn - Tai Verdes" },
+  { id = 16371235025, name = "Skadoosh Emote - Kung Fu Panda 4" },
+  { id = 84204365810397, name = "ACELERADA" },
+  { id = 130245358716273, name = "The Weeknd Starboy Strut" },
+  { id = 122147154162464, name = "Hakari Dance" },
+  { id = 125328720114284, name = "Nervy Dance" },
+  { id = 9983549160, name = "You can't sit with us - Sunmi" },
+  { id = 103040723950430, name = "Gojo Floating JJK/ The Honored One" },
+  { id = 139058906415119, name = "Floating" },
+  { id = 6797948622, name = "It Ain't My Fault - Zara Larsson" },
+  { id = 15554016057, name = "Olivia Rodrigo Fall Back to Float" },
+  { id = 73796726960568, name = "Nyan Nyan! " },
+  { id = 115203580644128, name = " Raiden Punching Armstrong Loop" },
+  { id = 7466047578, name = "Flowing Breeze" },
+  { id = 135431679610889, name = "I WANNA RUN AWAY" },
+  { id = 3576721660, name = "Robot" },
+  { id = 85364777159340, name = "Rat Dance" },
+  { id = 129575609080331, name = "Cute Sit	" },
+  { id = 93043556902763, name = "Aura Posing" },
+  { id = 133158580522571, name = " Default Dance" },
+  { id = 7405123844, name = "Dancin' Shoes - Twenty One Pilots" },
+  { id = 101033489367553, name = " Peter Parker Dance" },
+  { id = 112248683157717, name = " Distraction Dance" },
+  { id = 70919402339484, name = "Scuba Nick Wilde" },
+  { id = 123783725600432, name = " Dahood Dance" },
+  { id = 101275066718933, name = "Charming Cute Look Pose" },
+  { id = 130855166586798, name = ": Kawaii Bouncy Anime Girl Dance [OG]" },
+  { id = 6865011755, name = "Block Partier" },
+  { id = 13520623514, name = "TWICE Fancy" },
+  { id = 75278921479463, name = "MM2 FAKE DEATH" },
+  { id = 138181827835887, name = "MM2 FAKE DEATH 2" },
+  { id = 77536221090796, name = "Hide/Fly Glitch" },
+  { id = 118445737906352, name = "Roll Out" },
+  { id = 83917238288783, name = "cute dancy dance" },
+  { id = 120904242187887, name = " GOOFY FLAP FLY ANIME" },
+  { id = 112118419325053, name = "Tell Me, Tell Me! - Wonder Girls" },
+  { id = 87739743400914, name = "Catwalk Walk" },
+  { id = 82727664018494, name = "Lush Life" },
+  { id = 131258378669186, name = "[BEST] Chinese Military Dance Pose" },
+  { id = 72333659132786, name = "Sturdy Dance - Ice Spice [CHEAP]" },
+  { id = 105933851371838, name = "kawai shy sit idle pose" },
+  { id = 108221503648290, name = "Scene Roblox Profile Pose" },
+  { id = 14353417553, name = "Baby Queen - Air Guitar & Knee Slide" },
+  { id = 126837474178236, name = "Spice On Floor" },
+  { id = 103102322875221, name = "Skibidi Toilet - Titan Speakerman Laser Spin" },
+  { id = 139076155588413, name = "cute sitting with legs out" },
+  { id = 110170230382247, name = "/headless /koblox .... kind of" },
+  { id = 122829513155529, name = "Hype Boy - NewJeans" },
+  { id = 75017857395637, name = "TV Time Dance" },
+  { id = 4849487550, name = "Agree" },
+  { id = 97092824850945, name = "Make You Mine" },
+  { id = 70615023659736, name = "Floating" },
+  { id = 126529053628312, name = "Spice Jersey Bounce" },
+  { id = 105016815489641, name = "Cat Nap" },
+  { id = 95276923919374, name = "Mii Height Swing Setalcix" },
+  { id = 130371895389423, name = "[BEST] Invisiblity" },
+  { id = 74941409284905, name = "feelin myself sway" },
+  { id = 95325218641213, name = "Psycho Teddy " },
+  { id = 94292601332790, name = ";invisible me" },
+  { id = 97847706148165, name = "Caramelldansen (Caramell) Kawaii Dance" },
+  { id = 82995540773684, name = "Tornado" },
+  { id = 91927498467600, name = "Koto Nai Meme Dance" },
+  { id = 5915782672, name = "Rock On" },
+  { id = 5915781665, name = "Panini Dance - Lil Nas X (LNX)" },
+  { id = 17360720445, name = "HUGO Let's Drive!" },
+  { id = 132152702263080, name = "Fairy sit floating anime girl pose" },
+  { id = 4849495710, name = "Disagree" },
+  { id = 14353419229, name = "Baby Queen - Dramatic Bow" },
+  { id = 96252923654843, name = " cute halloween magical witch idle pose" },
+  { id = 112396548575695, name = "Agnes Tachyon's Low Cortisol Dance (In Tempo) V1" },
+  { id = 125386993330077, name = "Scene Profile Idle Pose Y2K " },
+  { id = 89114994401113, name = "I Want Money" },
+  { id = 7422841700, name = "On The Outside - Twenty One Pilots" },
+  { id = 98464793617142, name = "RiRiRi Happy Halloween " },
+  { id = 121347449465835, name = "Spice Keep Bouncing" },
+  { id = 135719167611495, name = "Korean Greeting! (Annyeong / )" },
+  { id = 87905326034362, name = "[BEST] Soda Pop" },
+  { id = 113960239878969, name = "sitting squat idle pose " },
+  { id = 95385842020103, name = "Zero Two Dance V2" },
+  { id = 88521791290140, name = "Aerial Silk Floating Ballerina Carol of the Bells" },
+  { id = 73398162799786, name = "Kissy Roblox Profile Pose" },
+  { id = 72613272882226, name = "Courtly bow" },
+  { id = 72753598082403, name = " cute knee sit idle pose" },
+  { id = 12259888240, name = "Kick It Dance Move - NCT 127" },
+  { id = 5104374556, name = "Tantrum" },
+  { id = 118853736905967, name = "Wall Aura Farm Pose" },
+  { id = 10275057230, name = "Uprise - Tommy Hilfiger" },
+  { id = 107708114415320, name = "Big Guy -  Ice Spice x Spongebob" },
+  { id = 134373057501582, name = "Secret Handshake Dance 2 - Wicked Official" },
+  { id = 117134539591727, name = "Floating Idle animation" },
+  { id = 129149402922241, name = "griddy" },
+  { id = 108696364245824, name = "Hypnotize - XG" },
+  { id = 75739251269771, name = "[HOT] Spinning Cat" },
+  { id = 10370929905, name = "Cartwheel - George Ezra" },
+  { id = 3576823880, name = "Point2" },
+  { id = 3576968026, name = "Shrug" },
+  { id = 3576686446, name = "Hello" },
+  { id = 3360686498, name = "Stadium" },
+  { id = 79795305221612, name = "Floating Aura" },
+  { id = 3696757129, name = "Hype Dance" },
+  { id = 3716636630, name = "Monkey" },
+  { id = 3360689775, name = "Salute" },
+  { id = 4646306583, name = "Curtsy" },
+  { id = 3360692915, name = "Tilt" },
+  { id = 3823158750, name = "Godlike" },
+  { id = 4849499887, name = "Happy" },
+  { id = 110553756436163, name = "Helicopter" },
+  { id = 12874468267, name = "TWICE The Feels" },
+  { id = 14353423348, name = "Baby Queen - Bouncy Twirl" },
+  { id = 4689362868, name = "Sleep" },
+  { id = 5104377791, name = "Hero Landing" },
+  { id = 83606297144428, name = "Rat Dance" },
+  { id = 5915779043, name = "Applaud" },
+  { id = 134913783169182, name = "Plane" },
+  { id = 85076031433488, name = "Tank" },
+  { id = 3576717965, name = "Shy" },
+  { id = 5917570207, name = "Floss Dance" },
+  { id = 115407270129592, name = "Car" },
+  { id = 7466046574, name = "Quiet Waves" },
+  { id = 129668542320076, name = "/e sit" },
+  { id = 11309263077, name = "Elton John - Heart Skip" },
+  { id = 107498554725527, name = "Fake MM2 Death" },
+  { id = 4272484885, name = "Baby Dance" },
+}
+Em.EMOTE_CATALOG_CACHE = "MM2_Configs/_emotes_cache_all_v3.json"
+Em.EMOTE_PINS_CACHE = "MM2_Configs/_pinned_emotes_v1.json"
+Em.EMOTE_FALLBACK_IMAGE = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LP.UserId) .. "&w=420&h=420"
+Em.emoteCatalog = {
     { name = "Point", id = 3576823880 },
     { name = "Shrug", id = 3576968026 },
     { name = "Hello", id = 3576686446 },
@@ -16579,17 +17346,17 @@ local emoteCatalog = {
     { name = "Break Dance", id = 5915773992 },
     { name = "Samba", id = 6869813008 },
 }
-local curatedEmotes = table.clone(emoteCatalog)
+Em.curatedEmotes = table.clone(Em.emoteCatalog)
 local function loadEmoteJson(path)
     if not (readfile and isfile and isfile(path)) then return nil end
-    local ok, data = pcall(function() return EmoteHttpService:JSONDecode(readfile(path)) end)
+    local ok, data = pcall(function() return Em.EmoteHttpService:JSONDecode(readfile(path)) end)
     return (ok and type(data) == "table") and data or nil
 end
 local function saveEmoteJson(path, data)
     if not (writefile and makefolder and isfolder) then return end
     pcall(function()
         if not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
-        writefile(path, EmoteHttpService:JSONEncode(data))
+        writefile(path, Em.EmoteHttpService:JSONEncode(data))
     end)
 end
 local function mergeEmoteCatalog(extra)
@@ -16603,41 +17370,43 @@ local function mergeEmoteCatalog(extra)
             id = id,
         })
     end
-    for _, item in ipairs(curatedEmotes) do add(item) end
+    for _, item in ipairs(Em.curatedEmotes) do add(item) end
+    for _, item in ipairs(Em.BUILTIN_EMOTES) do add(item) end
     if type(extra) == "table" then
         for _, item in ipairs(extra) do add(item) end
     end
-    emoteCatalog = nextCatalog
+    Em.emoteCatalog = nextCatalog
 end
 local function resolveEmoteThumbnail(item)
     local id = tonumber(item and (item.thumbnailId or item.id))
-    if not id or id <= 0 then return EMOTE_FALLBACK_IMAGE end
+    if not id or id <= 0 then return Em.EMOTE_FALLBACK_IMAGE end
     return "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
 end
-mergeEmoteCatalog(loadEmoteJson(EMOTE_CATALOG_CACHE))
+mergeEmoteCatalog(loadEmoteJson(Em.EMOTE_CATALOG_CACHE))
 local currentEmoteTrack, currentEmoteAnim
-local emoteStatus = Instance.new("TextLabel")
-emoteStatus.Name = "EmoteStatus"
-emoteStatus.Parent = secEmotes
-emoteStatus.LayoutOrder = 1
-emoteStatus.BackgroundTransparency = 1
-emoteStatus.Size = UDim2.new(1, 0, 0, 28)
-emoteStatus.Font = F
-emoteStatus.TextSize = 12
-emoteStatus.TextColor3 = T.Tx3; pcall(function() emoteStatus:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
-emoteStatus.TextXAlignment = Enum.TextXAlignment.Left
-emoteStatus.TextWrapped = true
-emoteStatus.Text = "40 built-in emotes ready. The official catalog loads automatically."
-local emoteSearch = S._mkSearchBox(secEmotes, 2, "Search emotes...")
-local emoteScroll = S._mkListScroll(secEmotes, 3, MOBILE and 440 or 420)
-for _, child in ipairs(emoteScroll:GetChildren()) do
+Em.emoteStatus = Instance.new("TextLabel")
+Em.emoteStatus.Name = "EmoteStatus"
+Em.emoteStatus.Parent = Em.secEmotes
+Em.emoteStatus.LayoutOrder = 1
+Em.emoteStatus.BackgroundTransparency = 1
+Em.emoteStatus.Size = UDim2.new(1, 0, 0, 28)
+Em.emoteStatus.Font = F
+Em.emoteStatus.TextSize = 12
+Em.emoteStatus.TextColor3 = T.Tx3; pcall(function() Em.emoteStatus:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+Em.emoteStatus.TextXAlignment = Enum.TextXAlignment.Left
+Em.emoteStatus.TextWrapped = true
+Em.emoteStatus.Text = "40 built-in emotes ready. The official catalog loads automatically."
+Em.emoteSearch = S._mkSearchBox(Em.secEmotes, 2, "Search emotes...")
+Em.emoteScroll = S._mkListScroll(Em.secEmotes, 3, MOBILE and 440 or 420)
+for _, child in ipairs(Em.emoteScroll:GetChildren()) do
     if child:IsA("UIListLayout") then child:Destroy() end
 end
-emoteScroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-local emoteMatches, emoteRenderQueued, emoteRefreshRequest = {}, false, 0
-local EMOTE_ROW_H = 60
+Em.emoteScroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+Em.emoteMatches = {}
+local emoteRenderQueued, emoteRefreshRequest = false, 0
+Em.EMOTE_ROW_H = 60
 local refreshEmbeddedEmotes
-mkToggle(secEmotes, "Loop Emote", false, function(v)
+UI.mkToggle(Em.secEmotes, "Loop Emote", false, function(v)
     S.LoopEmote = v
     if currentEmoteTrack then
         pcall(function() currentEmoteTrack.Looped = v == true end)
@@ -16645,7 +17414,7 @@ mkToggle(secEmotes, "Loop Emote", false, function(v)
             currentEmoteTrack.Priority = v and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Action
         end)
     end
-    emoteStatus.Text = v and "Loop Emote enabled: movement can blend over the emote." or "Loop Emote disabled."
+    Em.emoteStatus.Text = v and "Loop Emote enabled: movement can blend over the emote." or "Loop Emote disabled."
 end, 4)
 local function stopEmbeddedEmote()
     if currentEmoteTrack then pcall(function() currentEmoteTrack:Stop(0.15) end); currentEmoteTrack = nil end
@@ -16653,10 +17422,10 @@ local function stopEmbeddedEmote()
 end
 local function playEmbeddedEmote(item)
     local id = tonumber(item and item.id)
-    if not id then emoteStatus.Text = "Invalid emote id."; return end
+    if not id then Em.emoteStatus.Text = "Invalid emote id."; return end
     local char = LP.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then emoteStatus.Text = "Character is not ready."; return end
+    if not hum then Em.emoteStatus.Text = "Character is not ready."; return end
     local animator = hum:FindFirstChildOfClass("Animator") or hum:WaitForChild("Animator", 1)
     if not animator then
         animator = Instance.new("Animator")
@@ -16670,7 +17439,7 @@ local function playEmbeddedEmote(item)
     local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
     if not (ok and track) then
         pcall(function() anim:Destroy() end)
-        emoteStatus.Text = "This emote cannot play in this place."
+        Em.emoteStatus.Text = "This emote cannot play in this place."
         return
     end
     currentEmoteAnim = anim
@@ -16678,12 +17447,12 @@ local function playEmbeddedEmote(item)
     pcall(function() track.Priority = S.LoopEmote and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Action end)
     pcall(function() track.Looped = S.LoopEmote == true end)
     local played = pcall(function() track:Play(0.12, 1, tonumber(S.EmoteSpeed) or 1) end)
-    emoteStatus.Text = played and ("Playing: " .. tostring(item.name or id)) or "Failed to play emote."
+    Em.emoteStatus.Text = played and ("Playing: " .. tostring(item.name or id)) or "Failed to play emote."
     task.delay(1.2, function()
         local failedAt = PackState and PackState.recentlyFailedIds and PackState.recentlyFailedIds[tostring(id)]
         if failedAt and tick() - failedAt < 3 then
             if currentEmoteTrack == track then stopEmbeddedEmote() end
-            emoteStatus.Text = "Playback blocked here: " .. tostring(item.name or id)
+            Em.emoteStatus.Text = "Playback blocked here: " .. tostring(item.name or id)
         end
     end)
 end
@@ -16691,14 +17460,15 @@ end
 -- from scratch on every CanvasPosition change, so scrolling one pixel destroyed ~20 rows and built
 -- 20 new ones, each re-fetching its thumbnail. That is the scroll stutter. Now only rows that
 -- actually left the window are destroyed and only genuinely new indices are built.
-local emoteRows = {}
-local EMOTE_PIN_LIMIT = 8
-local pinnedEmotes, pinnedById = {}, {}
-for _, item in ipairs(loadEmoteJson(EMOTE_PINS_CACHE) or {}) do
+Em.emoteRows = {}
+Em.EMOTE_PIN_LIMIT = 8
+Em.pinnedEmotes = {}
+local pinnedById = {}
+for _, item in ipairs(loadEmoteJson(Em.EMOTE_PINS_CACHE) or {}) do
     local id = tonumber(item and item.id)
-    if id and id > 0 and not pinnedById[tostring(id)] and #pinnedEmotes < EMOTE_PIN_LIMIT then
+    if id and id > 0 and not pinnedById[tostring(id)] and #Em.pinnedEmotes < Em.EMOTE_PIN_LIMIT then
         local clean = { name = tostring(item.name or ("Emote " .. tostring(id))), id = id }
-        table.insert(pinnedEmotes, clean)
+        table.insert(Em.pinnedEmotes, clean)
         pinnedById[tostring(id)] = clean
     end
 end
@@ -16708,11 +17478,11 @@ local function applyEmoteThumbnail(image, item)
     task.delay(5, function()
         if not (image and image.Parent) then return end
         local ok, loaded = pcall(function() return image.IsLoaded end)
-        if not ok or not loaded then image.Image = EMOTE_FALLBACK_IMAGE end
+        if not ok or not loaded then image.Image = Em.EMOTE_FALLBACK_IMAGE end
     end)
 end
 local function syncPinnedEmotesHUDVisibility()
-    local pinnedCount = #pinnedEmotes
+    local pinnedCount = #Em.pinnedEmotes
     if HUD.pinnedCount then HUD.pinnedCount.Text = tostring(pinnedCount) end
     local shouldShow = pinnedCount > 0
     local frame = HUD.hPinnedEmotes and HUD.hPinnedEmotes.frame
@@ -16727,8 +17497,8 @@ local function syncPinnedEmotesHUDVisibility()
     end
 end
 local function syncEmotePinButtons()
-    for index, row in pairs(emoteRows) do
-        local item = emoteMatches[index]
+    for index, row in pairs(Em.emoteRows) do
+        local item = Em.emoteMatches[index]
         local pin = row and row:FindFirstChild("Pin")
         if pin and item then
             pin.Text = pinnedById[tostring(item.id)] and "★" or "+"
@@ -16741,20 +17511,20 @@ local function togglePinnedEmote(item)
     if id == "" then return end
     local existing = pinnedById[id]
     if existing then
-        for index, pinned in ipairs(pinnedEmotes) do
-            if tostring(pinned.id) == id then table.remove(pinnedEmotes, index); break end
+        for index, pinned in ipairs(Em.pinnedEmotes) do
+            if tostring(pinned.id) == id then table.remove(Em.pinnedEmotes, index); break end
         end
         pinnedById[id] = nil
     else
-        if #pinnedEmotes >= EMOTE_PIN_LIMIT then
-            emoteStatus.Text = "Pinned emote limit: " .. tostring(EMOTE_PIN_LIMIT)
+        if #Em.pinnedEmotes >= Em.EMOTE_PIN_LIMIT then
+            Em.emoteStatus.Text = "Pinned emote limit: " .. tostring(Em.EMOTE_PIN_LIMIT)
             return
         end
         local clean = { name = tostring(item.name or ("Emote " .. id)), id = tonumber(item.id) }
-        table.insert(pinnedEmotes, clean)
+        table.insert(Em.pinnedEmotes, clean)
         pinnedById[id] = clean
     end
-    saveEmoteJson(EMOTE_PINS_CACHE, pinnedEmotes)
+    saveEmoteJson(Em.EMOTE_PINS_CACHE, Em.pinnedEmotes)
     if renderPinnedEmotesHUD then renderPinnedEmotesHUD() end
     syncEmotePinButtons()
 end
@@ -16764,7 +17534,7 @@ renderPinnedEmotesHUD = function()
     for _, child in ipairs(content:GetChildren()) do
         if not child:IsA("UIGridLayout") then child:Destroy() end
     end
-    for index, item in ipairs(pinnedEmotes) do
+    for index, item in ipairs(Em.pinnedEmotes) do
         local tile = Instance.new("Frame")
         tile.Name = "PinnedEmote"
         tile.LayoutOrder = index
@@ -16772,8 +17542,8 @@ renderPinnedEmotesHUD = function()
         tile.BackgroundColor3 = T.Elev
         tile.BorderSizePixel = 0
         tile.Parent = content
-        Corner(tile, 7)
-        Stroke(tile, T.Bd2, 1, 0.4)
+        UI.Corner(tile, 7)
+        UI.Stroke(tile, T.Bd2, 1, 0.4)
 
         local play = Instance.new("ImageButton")
         play.Name = "Play"
@@ -16784,7 +17554,7 @@ renderPinnedEmotesHUD = function()
         play.Size = UDim2.fromOffset(50, 44)
         play.ScaleType = Enum.ScaleType.Crop
         applyEmoteThumbnail(play, item)
-        Corner(play, 6)
+        UI.Corner(play, 6)
 
         local title = Instance.new("TextLabel")
         title.Parent = tile
@@ -16810,7 +17580,7 @@ renderPinnedEmotesHUD = function()
         remove.TextSize = 12
         remove.TextColor3 = T.Tx
         remove.Text = "×"
-        Corner(remove, 5)
+        UI.Corner(remove, 5)
 
         play.MouseButton1Click:Connect(function() SFX.Click(); playEmbeddedEmote(item) end)
         remove.MouseButton1Click:Connect(function() SFX.Click(); togglePinnedEmote(item) end)
@@ -16819,22 +17589,22 @@ renderPinnedEmotesHUD = function()
     syncPinnedEmotesHUDVisibility()
 end
 local function clearRenderedEmotes()
-    for _, ch in ipairs(emoteScroll:GetChildren()) do
+    for _, ch in ipairs(Em.emoteScroll:GetChildren()) do
         if ch.Name == "Row" or ch.Name == "Status" then ch:Destroy() end
     end
-    table.clear(emoteRows)
+    table.clear(Em.emoteRows)
 end
 local function renderEmbeddedEmoteWindow()
-    for _, ch in ipairs(emoteScroll:GetChildren()) do
+    for _, ch in ipairs(Em.emoteScroll:GetChildren()) do
         if ch.Name == "Status" then ch:Destroy() end
     end
-    local total = #emoteMatches
-    emoteScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(0, total * EMOTE_ROW_H + 12))
+    local total = #Em.emoteMatches
+    Em.emoteScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(0, total * Em.EMOTE_ROW_H + 12))
     if total == 0 then
         clearRenderedEmotes()
         local empty = Instance.new("TextLabel")
         empty.Name = "Status"
-        empty.Parent = emoteScroll
+        empty.Parent = Em.emoteScroll
         empty.BackgroundTransparency = 1
         empty.Position = UDim2.fromOffset(0, 0)
         empty.Size = UDim2.new(1, -12, 0, 34)
@@ -16844,23 +17614,23 @@ local function renderEmbeddedEmoteWindow()
         empty.Text = "No emotes found."
         return
     end
-    local viewportH = math.clamp(emoteScroll.AbsoluteWindowSize.Y > 0 and emoteScroll.AbsoluteWindowSize.Y or emoteScroll.AbsoluteSize.Y, 120, 640)
-    local first = math.max(1, math.floor(emoteScroll.CanvasPosition.Y / EMOTE_ROW_H) + 1)
-    local last = math.min(total, first + math.ceil(viewportH / EMOTE_ROW_H) + 8)
-    for i, row in pairs(emoteRows) do
+    local viewportH = math.clamp(Em.emoteScroll.AbsoluteWindowSize.Y > 0 and Em.emoteScroll.AbsoluteWindowSize.Y or Em.emoteScroll.AbsoluteSize.Y, 120, 640)
+    local first = math.max(1, math.floor(Em.emoteScroll.CanvasPosition.Y / Em.EMOTE_ROW_H) + 1)
+    local last = math.min(total, first + math.ceil(viewportH / Em.EMOTE_ROW_H) + 8)
+    for i, row in pairs(Em.emoteRows) do
         if i < first or i > last then
             if row and row.Parent then row:Destroy() end
-            emoteRows[i] = nil
+            Em.emoteRows[i] = nil
         end
     end
     for i = first, last do
-        if not emoteRows[i] then
-            local item = emoteMatches[i]
+        if not Em.emoteRows[i] then
+            local item = Em.emoteMatches[i]
             local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
-            local row = S._mkThumbRow(emoteScroll, i, nil, name, function()
+            local row = S._mkThumbRow(Em.emoteScroll, i, nil, name, function()
                 playEmbeddedEmote(item)
             end)
-            row.Position = UDim2.fromOffset(0, (i - 1) * EMOTE_ROW_H)
+            row.Position = UDim2.fromOffset(0, (i - 1) * Em.EMOTE_ROW_H)
             row.Size = UDim2.new(1, -12, 0, 56)
             local thumb = row:FindFirstChild("Thumb")
             applyEmoteThumbnail(thumb, item)
@@ -16879,13 +17649,13 @@ local function renderEmbeddedEmoteWindow()
             pin.TextSize = 16
             pin.TextColor3 = T.Tx
             pin.Text = pinnedById[tostring(item.id)] and "★" or "+"
-            Corner(pin, 7)
-            Stroke(pin, T.Bd2, 1, 0.45)
+            UI.Corner(pin, 7)
+            UI.Stroke(pin, T.Bd2, 1, 0.45)
             pin.MouseButton1Click:Connect(function()
                 SFX.Click()
                 togglePinnedEmote(item)
             end)
-            emoteRows[i] = row
+            Em.emoteRows[i] = row
         end
     end
 end
@@ -16894,53 +17664,53 @@ local function queueRenderEmbeddedEmotes()
     emoteRenderQueued = true
     task.defer(function()
         emoteRenderQueued = false
-        if emoteScroll and emoteScroll.Parent then renderEmbeddedEmoteWindow() end
+        if Em.emoteScroll and Em.emoteScroll.Parent then renderEmbeddedEmoteWindow() end
     end)
 end
 refreshEmbeddedEmotes = function()
     emoteRefreshRequest += 1
     local request = emoteRefreshRequest
-    local q = string.lower(emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    emoteMatches = {}
+    local q = string.lower(Em.emoteSearch.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    Em.emoteMatches = {}
     -- A new search remaps index -> emote, so every cached row is stale. Rows are only reused while
     -- the match list is being APPENDED to during the scan below, which leaves earlier indices alone.
     clearRenderedEmotes()
-    emoteScroll.CanvasPosition = Vector2.zero
+    Em.emoteScroll.CanvasPosition = Vector2.zero
     renderEmbeddedEmoteWindow()
-    emoteStatus.Text = "Scanning emotes: 0 / " .. tostring(#emoteCatalog)
+    Em.emoteStatus.Text = "Scanning emotes: 0 / " .. tostring(#Em.emoteCatalog)
     if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
     task.spawn(function()
         local found = 0
-        for index, item in ipairs(emoteCatalog) do
+        for index, item in ipairs(Em.emoteCatalog) do
             if request ~= emoteRefreshRequest then return end
             local name = tostring(item.name or ("Emote " .. tostring(item.id or "")))
             local hay = string.lower(name .. " " .. tostring(item.id or ""))
             if q == "" or string.find(hay, q, 1, true) then
                 found += 1
-                emoteMatches[found] = item
+                Em.emoteMatches[found] = item
             end
             if index % 800 == 0 then
-                emoteStatus.Text = "Scanning emotes: " .. tostring(index) .. " / " .. tostring(#emoteCatalog)
+                Em.emoteStatus.Text = "Scanning emotes: " .. tostring(index) .. " / " .. tostring(#Em.emoteCatalog)
                 renderEmbeddedEmoteWindow()
                 task.wait()
             end
         end
         if request ~= emoteRefreshRequest then return end
         renderEmbeddedEmoteWindow()
-        emoteStatus.Text = "Emotes in GUI: " .. tostring(#emoteCatalog) .. " loaded, matching " .. tostring(#emoteMatches)
+        Em.emoteStatus.Text = "Emotes in GUI: " .. tostring(#Em.emoteCatalog) .. " loaded, matching " .. tostring(#Em.emoteMatches)
     end)
 end
-local emoteCatalogBusy = false
+Em.emoteCatalogBusy = false
 local function loadRemoteEmoteCatalog(force)
-    if emoteCatalogBusy then return end
-    local cached = loadEmoteJson(EMOTE_CATALOG_CACHE)
+    if Em.emoteCatalogBusy then return end
+    local cached = loadEmoteJson(Em.EMOTE_CATALOG_CACHE)
     if not force and cached and #cached > 0 then
         mergeEmoteCatalog(cached)
         refreshEmbeddedEmotes()
-        emoteStatus.Text = "Cached emotes ready: " .. tostring(#emoteCatalog)
+        Em.emoteStatus.Text = "Cached emotes ready: " .. tostring(#Em.emoteCatalog)
     end
-    emoteCatalogBusy = true
-    emoteStatus.Text = "Loading official Roblox emotes..."
+    Em.emoteCatalogBusy = true
+    Em.emoteStatus.Text = "Loading official Roblox emotes..."
 
     local params = CatalogSearchParams.new()
     params.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
@@ -16951,13 +17721,13 @@ local function loadRemoteEmoteCatalog(force)
 
     local pages
     for _ = 1, 3 do
-        local ok, result = pcall(function() return EmoteAvatarEditor:SearchCatalogAsync(params) end)
+        local ok, result = pcall(function() return Em.EmoteAvatarEditor:SearchCatalogAsync(params) end)
         if ok and result then pages = result; break end
         task.wait(1)
     end
     if not pages then
-        emoteCatalogBusy = false
-        emoteStatus.Text = "Official catalog unavailable; showing " .. tostring(#emoteCatalog) .. " cached emotes."
+        Em.emoteCatalogBusy = false
+        Em.emoteStatus.Text = "Official catalog unavailable; showing " .. tostring(#Em.emoteCatalog) .. " cached emotes."
         refreshEmbeddedEmotes()
         return
     end
@@ -16977,36 +17747,36 @@ local function loadRemoteEmoteCatalog(force)
                 end
             end
         end
-        emoteStatus.Text = "Loading official emotes: " .. tostring(#fetched)
+        Em.emoteStatus.Text = "Loading official emotes: " .. tostring(#fetched)
         if pages.IsFinished or #fetched >= 1000 then break end
         local advanced = pcall(function() pages:AdvanceToNextPageAsync() end)
         if not advanced then break end
         task.wait(0.12)
     end
 
-    emoteCatalogBusy = false
+    Em.emoteCatalogBusy = false
     if #fetched > 0 then
-        saveEmoteJson(EMOTE_CATALOG_CACHE, fetched)
+        saveEmoteJson(Em.EMOTE_CATALOG_CACHE, fetched)
         mergeEmoteCatalog(fetched)
-        emoteStatus.Text = "Official emotes ready: " .. tostring(#emoteCatalog)
+        Em.emoteStatus.Text = "Official emotes ready: " .. tostring(#Em.emoteCatalog)
     else
-        emoteStatus.Text = "No catalog results; showing " .. tostring(#emoteCatalog) .. " built-in emotes."
+        Em.emoteStatus.Text = "No catalog results; showing " .. tostring(#Em.emoteCatalog) .. " built-in emotes."
     end
     refreshEmbeddedEmotes()
 end
-emoteSearch:GetPropertyChangedSignal("Text"):Connect(refreshEmbeddedEmotes)
-emoteScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(queueRenderEmbeddedEmotes)
-emoteScroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(queueRenderEmbeddedEmotes)
-mkAction(secEmotes, "Stop Emote", function() stopEmbeddedEmote(); emoteStatus.Text = "Stopped." end, 5)
-mkAction(secEmotes, "Load All Emotes", function() task.spawn(function() loadRemoteEmoteCatalog(true) end) end, 6)
+Em.emoteSearch:GetPropertyChangedSignal("Text"):Connect(refreshEmbeddedEmotes)
+Em.emoteScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(queueRenderEmbeddedEmotes)
+Em.emoteScroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(queueRenderEmbeddedEmotes)
+UI.mkAction(Em.secEmotes, "Stop Emote", function() stopEmbeddedEmote(); Em.emoteStatus.Text = "Stopped." end, 5)
+UI.mkAction(Em.secEmotes, "Load All Emotes", function() task.spawn(function() loadRemoteEmoteCatalog(true) end) end, 6)
 tc(LP.CharacterRemoving:Connect(stopEmbeddedEmote))
 renderPinnedEmotesHUD()
 refreshEmbeddedEmotes()
 task.delay(0.35, function() loadRemoteEmoteCatalog(false) end)
 end
 buildEmotesTab()
-end
-    local secPacks = registerPlayerSubTabSection(mkSection(Pages.Player, "Animations", 1), "Animations")
+end)()
+    local secPacks = registerPlayerSubTabSection(UI.mkSection(Pages.Player, "Animations", 1), "Animations")
     local packSearch = S._mkSearchBox(secPacks, 1, "Search animation packs...")
     local packScroll = S._mkListScroll(secPacks, 2, MOBILE and 440 or 420)
     local function refreshPacks()
@@ -17072,7 +17842,7 @@ end
     -- Load the limited catalog slice in the background; the UI never renders more than 100 rows.
     fetchAllPacks(function() refreshPacks() end)
 
-    mkAction(secPacks, "Reset To Default Animations", function() resetToDefaultAnimations(false) end, 3)
+    UI.mkAction(secPacks, "Reset To Default Animations", function() resetToDefaultAnimations(false) end, 3)
 
     -- Re-apply the chosen pack after every respawn: MM2 rebuilds the Animate script each round, which
     -- would otherwise silently revert you to the default walk/idle mid-session.
@@ -17121,7 +17891,7 @@ end -- end Player tab do-block
 
     -- ---- subtab visibility ----
 
-do
+;(function()
     -- ===== FAST THROW / THROW WIND-UP =====
     -- The Knife's KnifeClient captures its wind-up ONCE at init: u7 = Knife:GetAttribute("ThrowSpeed"),
     -- with the re-throw cooldown u9 = 2*u7. The throw loop runs until u7 seconds elapse and the cooldown
@@ -17291,7 +18061,7 @@ do
         for obj in pairs(trackedProjectiles) do applyKnifeFlightSpeed(obj) end
     end
     tc(workspace.DescendantAdded:Connect(scanProjectileAncestor))
-    tc(RunService.Stepped:Connect(function()
+    tc(Svc.RunService.Stepped:Connect(function()
         for obj in pairs(trackedProjectiles) do
             if isProjectileObject(obj) then
                 applyKnifeFlightSpeed(obj)
@@ -17301,9 +18071,9 @@ do
         end
     end))
     S._ReapplyKnifeFlightSpeed()
-end
+end)()
 
-do
+;(function()
     -- ============ MURDERER KILL SUITE ============
     -- Confirmed kill primitive (decompiled KnifeClient + verified live one-shot): enter the stab state
     -- with KnifeStabbed:FireServer(), then fire HandleTouched:FireServer(part) at the victim's parts
@@ -17375,7 +18145,7 @@ do
         local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return nil end
         local best, bestD
-        for _, p in ipairs(Players:GetPlayers()) do
+        for _, p in ipairs(Svc.Players:GetPlayers()) do
             if p ~= LP and p.Character and not isWhitelisted(p) then
                 local r = p.Character:FindFirstChild("HumanoidRootPart")
                 local hum = p.Character:FindFirstChildOfClass("Humanoid")
@@ -17413,7 +18183,7 @@ do
     end
 
     local lastNear, lastSheriff, lastAura = 0, 0, 0
-    tc(RunService.Heartbeat:Connect(function()
+    tc(Svc.RunService.Heartbeat:Connect(function()
         -- Check the toggles BEFORE the lookup: all three are off by default, and
         -- getKnifeEvents() walks Character/Backpack with several FindFirstChild
         -- calls — that was running every single frame for every player, forever,
@@ -17425,7 +18195,7 @@ do
         -- Auto Kill Sheriff/Hero: delete the only threat the moment they're armed, so nobody can fight back.
         if S.AutoKillSheriff and (now - lastSheriff) >= 0.25 then
             lastSheriff = now
-            for _, p in ipairs(Players:GetPlayers()) do
+            for _, p in ipairs(Svc.Players:GetPlayers()) do
                 if p ~= LP and isArmed(p) then pcall(murdererKill, p) end
             end
         end
@@ -17443,7 +18213,7 @@ do
             local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
             local range = S.KillAuraRange or 18
             if myRoot then
-                for _, p in ipairs(Players:GetPlayers()) do
+                for _, p in ipairs(Svc.Players:GetPlayers()) do
                     if p ~= LP and p.Character then
                         local r = p.Character:FindFirstChild("HumanoidRootPart")
                         if r and (r.Position - myRoot.Position).Magnitude <= range then pcall(killInstant, p) end
@@ -17462,7 +18232,7 @@ do
                 return
             end
             local n = 0
-            for _, p in ipairs(Players:GetPlayers()) do
+            for _, p in ipairs(Svc.Players:GetPlayers()) do
                 if p ~= LP and p.Character and not isWhitelisted(p) then
                     local hum = p.Character:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 then
@@ -17475,16 +18245,16 @@ do
     end
 
     -- Click to Kill: left-click any player (or their body) to instantly kill them.
-    tc(UIS.InputBegan:Connect(function(input, gp)
+    tc(Svc.UIS.InputBegan:Connect(function(input, gp)
         if gp or not S.ClickKill then return end
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
         local m = LP:GetMouse()
         local hit = m and m.Target
         local ch = hit and hit:FindFirstAncestorWhichIsA("Model")
-        local p = ch and Players:GetPlayerFromCharacter(ch)
+        local p = ch and Svc.Players:GetPlayerFromCharacter(ch)
         if p then pcall(murdererKill, p) end
     end))
-end
+end)()
 
 -- Apply persisted presentation settings once every GUI and HUD object exists. The callbacks above
 -- also run live, while this final pass covers objects created after the early autoload read.
@@ -17500,7 +18270,7 @@ end)
 print("[Inertia]: Loaded.")
 
 -- ===== CUSTOM SOUNDS (Kill / Knife Kill / Win / Ambient Music) =====
-do
+;(function()
     local function playOnce(id, vol, pitch)
         task.spawn(function()
             local s = Instance.new("Sound")
@@ -17508,7 +18278,7 @@ do
             s.Volume = vol or 0.6
             s.PlaybackSpeed = pitch or 1
             s.RollOffMaxDistance = 0
-            s.Parent = SoundService
+            s.Parent = Svc.SoundService
             S._PlaySoundSafe(s)
             game:GetService("Debris"):AddItem(s, 8)
         end)
@@ -17611,14 +18381,14 @@ do
         tc(gf.OnClientEvent:Connect(function(_, _, _, hitPart)
             if not S.CustomKillSound or not hitPart then return end
             local mdl = hitPart:FindFirstAncestorWhichIsA("Model")
-            if mdl and Players:GetPlayerFromCharacter(mdl) then
+            if mdl and Svc.Players:GetPlayerFromCharacter(mdl) then
                 playOnce(S.CustomKillSoundId or "rbxassetid://4590662766", 0.7)
             end
         end))
     end)
 
     -- Knife kill: detect when another player's Humanoid dies while a Knife projectile exists
-    tc(Players.PlayerAdded:Connect(function(p)
+    tc(Svc.Players.PlayerAdded:Connect(function(p)
         p.CharacterAdded:Connect(function(ch)
             local hum = ch:WaitForChild("Humanoid", 10)
             if not hum then return end
@@ -17671,7 +18441,7 @@ do
             ambientSnd.Volume = S.AmbientMusicVol or 0.4
             ambientSnd.Looped = true
             ambientSnd.RollOffMaxDistance = 0
-            ambientSnd.Parent = SoundService
+            ambientSnd.Parent = Svc.SoundService
             ambientSnd:Play()
         end)
     end
@@ -17683,13 +18453,13 @@ do
     end
     S._StartAmbientMusic = startAmbient
     S._StopAmbientMusic = stopAmbient
-end
+end)()
 
 -- ===== TAB: BUTTONS (mobile) — the Floating Buttons manager =====
 -- Built LAST on purpose: it lists every control in AllBinds, and that list is
 -- only complete once every other tab has finished building.
 if MOBILE and Pages.Buttons then
-    local secFloat = mkSection(Pages.Buttons, "Floating Buttons", 1)
+    local secFloat = UI.mkSection(Pages.Buttons, "Floating Buttons", 1)
 
     local note = Instance.new("TextLabel")
     note.Parent = secFloat
@@ -17718,9 +18488,9 @@ if MOBILE and Pages.Buttons then
     filterBox.Text = ""
     filterBox.ClearTextOnFocus = false
     filterBox.TextXAlignment = Enum.TextXAlignment.Left
-    Corner(filterBox, 11)
-    Stroke(filterBox, T.Bd2, 1, 0.38)
-    Pad(filterBox, 0, 0, 12, 12)
+    UI.Corner(filterBox, 11)
+    UI.Stroke(filterBox, T.Bd2, 1, 0.38)
+    UI.Pad(filterBox, 0, 0, 12, 12)
 
     local paints = {}
     local order = {}
@@ -17750,8 +18520,8 @@ if MOBILE and Pages.Buttons then
         pill.TextColor3 = T.Tx2
         pill.Text = text
         pill.ZIndex = 3
-        Corner(pill, 9)
-        return pill, Stroke(pill, T.Bd2, 1, 0.42)
+        UI.Corner(pill, 9)
+        return pill, UI.Stroke(pill, T.Bd2, 1, 0.42)
     end
 
     for index, item in ipairs(order) do
@@ -17807,7 +18577,7 @@ if MOBILE and Pages.Buttons then
         if S._RefreshPageLayout then pcall(S._RefreshPageLayout, false) end
     end)
 
-    mkAction(secFloat, "Remove All Buttons", function()
+    UI.mkAction(secFloat, "Remove All Buttons", function()
         if S._floatClearAll then S._floatClearAll() end
         Notify("Buttons", "All floating buttons removed", 2)
     end, #order + 3)
@@ -17864,285 +18634,6 @@ S._UIBuildReady = true
 
 -- ============ CLICK MENU REMOVED ============
 -- Click Menu, its player rings, and its input handlers were removed.
--- ============ BODY: NEUTRAL SAUSAGE PROP + SPAWNER ============
--- One rigid model is used for both the back accessory and the floor prop. Spawned props have one
--- anchored root, while every visible part is welded to it, so gravity cannot split or tip the model.
-do
-    local secWiwi = S._RegisterBodySection and S._RegisterBodySection(mkSection(Pages.Player, "Sausage Prop", 1))
-    if secWiwi then
-        local wornModel
-        local spawned = {}
-        local SAUSAGE = Color3.fromRGB(208, 92, 58)
-        local SAUSAGE_DARK = Color3.fromRGB(126, 55, 40)
-        local HEAD_PINK = Color3.fromRGB(232, 140, 150)
-
-        local function clearWorn()
-            if wornModel then pcall(function() wornModel:Destroy() end) end
-            wornModel = nil
-        end
-
-        local function buildSausageProp(pivot, scale, anchorPart, withStand)
-            scale = math.clamp(tonumber(scale) or 1, 0.3, 4)
-            local model = Instance.new("Model")
-            model.Name = "InertiaSausageProp"
-            model.Parent = workspace
-
-            local root = Instance.new("Part")
-            root.Name = "Root"
-            root.Size = Vector3.new(0.2, 0.2, 0.2)
-            root.Transparency = 1
-            root.CanCollide = false
-            root.CanTouch = false
-            root.CanQuery = false
-            root.Massless = not withStand
-            -- Spawned props drop and settle where they land; the worn one is anchored until the weld
-            -- to the torso takes over below.
-            root.Anchored = not withStand
-            root.CFrame = pivot
-            root.Parent = model
-            model.PrimaryPart = root
-
-            local function visual(name, shape, size, offset, color)
-                local part = Instance.new("Part")
-                part.Name = name
-                part.Shape = shape
-                part.Size = size
-                part.Color = color
-                part.Material = Enum.Material.SmoothPlastic
-                -- Spawned props are physical so they drop and settle; the worn one stays weightless
-                -- and non-colliding, or it would shove your own character around.
-                part.CanCollide = withStand == true
-                part.CanTouch = false
-                part.CanQuery = false
-                part.Massless = not withStand
-                part.Anchored = false
-                part.CFrame = root.CFrame * offset
-                part.Parent = model
-                -- Executors reclaim unowned instances; without this the prop vanished on its own
-                -- after a while, which is what "they should not disappear" was about.
-                pcall(function() own(part) end)
-
-                -- Rigid by default. An earlier build hung everything off BallSocketConstraints and the
-                -- whole thing wobbled like jelly, which is what "it should not be floppy" meant --
-                -- so the joint is opt-in now rather than the only option.
-                if S.WiwiJiggle then
-                    local a0 = Instance.new("Attachment")
-                    a0.Parent = root
-                    local a1 = Instance.new("Attachment")
-                    a1.CFrame = CFrame.new(-offset.Position)
-                    a1.Parent = part
-                    local socket = Instance.new("BallSocketConstraint")
-                    socket.Attachment0 = a0
-                    socket.Attachment1 = a1
-                    socket.LimitsEnabled = true
-                    socket.UpperAngle = 22
-                    socket.Restitution = 0.1
-                    socket.Parent = part
-                    part.Massless = false
-                else
-                    local weld = Instance.new("WeldConstraint")
-                    weld.Part0 = root
-                    weld.Part1 = part
-                    weld.Parent = part
-                end
-                return part
-            end
-
-            -- Built along local +X, because that is the axis Roblox's Cylinder shape runs along.
-            -- Smooth primitives throughout: a cylinder shaft capped by spheres, not a stack of
-            -- blocks. Shape is set on a real Part, so these render as true cylinders and spheres.
-            local shaftLen = 2.45 * scale * (math.clamp(tonumber(S.WiwiLength) or 100, 20, 400) / 100)
-            local shaftR = 0.40 * scale * (math.clamp(tonumber(S.WiwiGirth) or 100, 30, 300) / 100)
-            local headR = shaftR * 1.30
-            local ballR = 0.46 * scale * (math.clamp(tonumber(S.WiwiBalls) or 100, 20, 300) / 100)
-            local shaftD = shaftR * 2
-
-            visual("Shaft", Enum.PartType.Cylinder,
-                Vector3.new(shaftLen, shaftD, shaftD), CFrame.identity, SAUSAGE)
-            -- Wider than the shaft and a different colour, so the silhouette reads at a glance
-            -- instead of looking like one uniform tube.
-            visual("Head", Enum.PartType.Ball,
-                Vector3.new(headR * 2, headR * 2, headR * 2),
-                CFrame.new(shaftLen / 2, 0, 0), HEAD_PINK)
-            -- Rounds off the base so the cylinder's flat end never shows between the spheres.
-            visual("Base", Enum.PartType.Ball,
-                Vector3.new(shaftD, shaftD, shaftD),
-                CFrame.new(-shaftLen / 2, 0, 0), SAUSAGE)
-            for i, side in ipairs({ -1, 1 }) do
-                visual("Ball" .. i, Enum.PartType.Ball,
-                    Vector3.new(ballR * 2, ballR * 2, ballR * 2),
-                    CFrame.new(-shaftLen / 2 - ballR * 0.30, -ballR * 0.28, side * ballR * 0.74),
-                    SAUSAGE)
-            end
-
-            -- Hair. Thin cylinders sprouting off the base sphere, count driven by the slider. Each
-            -- one is a part, so this is the only control here with a real cost -- hence a cap rather
-            -- than an open-ended number.
-            local hairCount = math.clamp(math.floor(tonumber(S.WiwiHair) or 0), 0, 40)
-            for i = 1, hairCount do
-                local a = (i / hairCount) * math.pi * 2
-                local tiltA = math.rad(35 + math.random() * 30)
-                local len = ballR * (0.9 + math.random() * 0.7)
-                visual("Hair" .. i, Enum.PartType.Cylinder,
-                    Vector3.new(len, 0.035 * scale, 0.035 * scale),
-                    CFrame.new(-shaftLen / 2 - ballR * 0.55, math.cos(a) * ballR * 0.6, math.sin(a) * ballR * 0.6)
-                        * CFrame.Angles(a, 0, tiltA),
-                    SAUSAGE_DARK)
-            end
-
-            -- The base stand is gone: it existed to prop these upright when they were anchored, and
-            -- now they tumble and lie where they fall, so a plinth welded to the bottom just read as
-            -- a stray disc.
-
-            if anchorPart and anchorPart.Parent then
-                root.Anchored = false
-                model.Parent = anchorPart.Parent
-                local attach = Instance.new("WeldConstraint")
-                attach.Part0 = anchorPart
-                attach.Part1 = root
-                attach.Parent = root
-            end
-            return model
-        end
-
-        local function rebuildWorn()
-            clearWorn()
-            if not S.WiwiEnabled then return end
-            local char = LP.Character
-            -- LowerTorso first: on R15 the UpperTorso origin sits mid-chest, so anchoring there put
-            -- the prop up by the ribs. R6 only has Torso.
-            local torso = char and (char:FindFirstChild("LowerTorso")
-                or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
-            if not torso then return end
-            local scale = math.clamp((tonumber(S.WiwiSize) or 100) / 100, 0.3, 3)
-            local tilt = math.clamp(tonumber(S.WiwiTilt) or -12, -80, 80)
-            local rise = math.clamp(tonumber(S.WiwiHeight) or 0, -100, 100) / 100
-
-            -- Orientation, spelled out because getting it wrong is exactly what "it is crooked" was.
-            -- A character's forward is its CFrame's -Z, and the model is built along +X, so the yaw
-            -- of +90 degrees is what turns the shaft to point forward instead of out of the hip.
-            -- The second rotation is the tilt, about local Z, so the slider reads as up/down.
-            local pivot = torso.CFrame
-                * CFrame.new(0, (-0.35 + rise) * scale, -0.55 * scale)
-                * CFrame.Angles(0, math.rad(90), 0)
-                * CFrame.Angles(0, 0, math.rad(tilt))
-            wornModel = buildSausageProp(pivot, scale, torso, false)
-        end
-        S._RebuildWiwi = rebuildWorn
-
-        mkToggle(secWiwi, "Sausage Accessory", false, function(v)
-            S.WiwiEnabled = v
-            rebuildWorn()
-        end, 1, "Wiwi")
-        mkSlider(secWiwi, "Accessory Size", 30, 300, 100, function(v)
-            S.WiwiSize = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2)
-        -- Two knobs instead of one hardcoded pose. Torso proportions differ between R6 and R15 and
-        -- between avatar scales, so a single fixed offset is crooked on somebody no matter what
-        -- number I pick; these let it be dialled in rather than argued about.
-        mkSlider(secWiwi, "Accessory Tilt", -80, 80, -12, function(v)
-            S.WiwiTilt = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.1)
-        mkSlider(secWiwi, "Accessory Height", -100, 100, 0, function(v)
-            S.WiwiHeight = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.2)
-        mkSlider(secWiwi, "Spawn Size", 30, 400, 100, function(v)
-            S.WiwiSpawnSize = v
-        end, 3)
-        mkSlider(secWiwi, "Length", 20, 400, 100, function(v)
-            S.WiwiLength = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.3)
-        mkSlider(secWiwi, "Girth", 30, 300, 100, function(v)
-            S.WiwiGirth = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.4)
-        mkSlider(secWiwi, "Balls Size", 20, 300, 100, function(v)
-            S.WiwiBalls = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.5)
-        mkSlider(secWiwi, "Hair", 0, 40, 0, function(v)
-            S.WiwiHair = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.6)
-        -- Erect drives the tilt slider to a preset instead of being a second, competing angle --
-        -- two controls writing the same pose would fight each other.
-        mkToggle(secWiwi, "Erect", false, function(v)
-            S.WiwiErect = v
-            S.WiwiTilt = v and -78 or 22
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.7)
-        mkToggle(secWiwi, "Jiggle Physics", false, function(v)
-            S.WiwiJiggle = v
-            if S.WiwiEnabled then rebuildWorn() end
-        end, 2.8)
-        mkSlider(secWiwi, "Spawn Count", 1, 40, 1, function(v) S.WiwiSpawnCount = v end, 3.1)
-        mkSlider(secWiwi, "Spawn Radius", 0, 120, 0, function(v) S.WiwiSpawnRadius = v end, 3.2)
-        mkAction(secWiwi, "Spawn Sausages", function()
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then Notify("Sausage", "Character is not ready.", 2) return end
-
-            local scale = math.clamp((tonumber(S.WiwiSpawnSize) or 100) / 100, 0.3, 4)
-            local target = hrp.Position + hrp.CFrame.LookVector * (4 + scale)
-            local params = RaycastParams.new()
-            params.FilterType = Enum.RaycastFilterType.Exclude
-            params.FilterDescendantsInstances = { char }
-            params.IgnoreWater = false
-            local result = workspace:Raycast(
-                target + Vector3.new(0, 20, 0),
-                Vector3.new(0, -80, 0),
-                params
-            )
-            local ground = result and result.Position or (hrp.Position - Vector3.new(0, 3, 0))
-            -- Matches the geometry above: shaft + head sphere + the ball/stand overhang at the base.
-            local totalHeight = (2.45 + 0.52 + 0.53) * scale
-            local pivot = CFrame.new(ground + Vector3.new(0, totalHeight / 2, 0))
-                * CFrame.Angles(0, 0, math.rad(90))
-            -- Scattered, not arranged. Random point in the disc rather than evenly around its edge,
-            -- and sqrt on the radius so they spread across the whole area instead of bunching in
-            -- the middle -- picking r linearly would crowd the centre.
-            -- They are dropped from above and left to physics: no ground snap, so they fall, bounce
-            -- off whatever is there and lie where they land.
-            local count = math.clamp(math.floor(tonumber(S.WiwiSpawnCount) or 1), 1, 40)
-            local radius = math.clamp(tonumber(S.WiwiSpawnRadius) or 0, 0, 120)
-            for _ = 1, count do
-                local pos = target
-                if radius > 0 then
-                    local a = math.random() * math.pi * 2
-                    local r = math.sqrt(math.random()) * radius
-                    pos = hrp.Position + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-                end
-                local drop = pos + Vector3.new(0, 6 + math.random() * 10, 0)
-                local p = CFrame.new(drop)
-                    * CFrame.Angles(math.random() * 6.2832, math.random() * 6.2832, math.random() * 6.2832)
-                table.insert(spawned, buildSausageProp(p, scale, nil, true))
-            end
-            Notify("Sausage", "Dropped " .. count .. ".", 2)
-        end, 4)
-        mkAction(secWiwi, "Clear Sausages", function()
-            for _, model in ipairs(spawned) do
-                pcall(function() model:Destroy() end)
-            end
-            table.clear(spawned)
-            Notify("Sausage", "Cleared.", 2)
-        end, 5)
-
-        tc(LP.CharacterAdded:Connect(function()
-            task.delay(1.2, function()
-                if S.WiwiEnabled then rebuildWorn() end
-            end)
-        end))
-        SG.Destroying:Connect(function()
-            clearWorn()
-            for _, model in ipairs(spawned) do pcall(function() model:Destroy() end) end
-        end)
-    end
-end
-
 -- ============ MISC > MUSIC ============
 -- Replaces the old "Boombox Lib" section. Everything plays through the hub's own Sound: the game's
 -- Remotes.Inventory.PlaySong is server -> CLIENT and takes (Sound, id), so it was never usable from
@@ -18151,7 +18642,7 @@ end
 -- Track labels come from community code dumps. Entries whose only label was a slur or a hateful
 -- phrase are omitted rather than relabelled -- there is no way to tell what those tracks are, and
 -- the label was not going in either way.
-do
+;(function()
     local MUSIC = {
     ["Meme & Classic"] = {
         { 6834218705, "Unknown 1" },
@@ -18526,7 +19017,7 @@ do
     },
 }
 
-    local secMusic = mkSection(Pages.Misc, "Music", 10.5)
+    local secMusic = UI.mkSection(Pages.Misc, "Music", 10.5)
     S._RegisterMiscSection(secMusic, "Music")
 
     local CATS = { "All", "Favourites" }
@@ -18644,7 +19135,7 @@ do
                 play.TextColor3 = T.Tx
                 pcall(function() play:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
                 play.Text = "  " .. e.name
-                Corner(play, 6)
+                UI.Corner(play, 6)
                 play.MouseButton1Click:Connect(function() SFX.Click(); playId(e.id, e.name) end)
 
                 local fav = Instance.new("TextButton")
@@ -18660,7 +19151,7 @@ do
                 fav.TextSize = 12
                 fav.TextColor3 = isFav(e.id) and T.Accent or T.Tx3
                 fav.Text = isFav(e.id) and "FAV" or "+"
-                Corner(fav, 6)
+                UI.Corner(fav, 6)
                 fav.MouseButton1Click:Connect(function()
                     SFX.Click()
                     local on = toggleFav(e.id)
@@ -18682,7 +19173,7 @@ do
                 copy.TextSize = 11
                 copy.TextColor3 = T.Tx3
                 copy.Text = "COPY"
-                Corner(copy, 6)
+                UI.Corner(copy, 6)
                 copy.MouseButton1Click:Connect(function()
                     SFX.Click()
                     local clip = setclipboard or toclipboard or writeclipboard or (syn and syn.write_clipboard)
@@ -18728,8 +19219,8 @@ do
         box.PlaceholderText = placeholder
         box.Text = ""
         box.ClearTextOnFocus = false
-        Corner(box, 6)
-        Stroke(box, T.Bd, 1, 0.4)
+        UI.Corner(box, 6)
+        UI.Stroke(box, T.Bd, 1, 0.4)
         return box
     end
 
@@ -18751,7 +19242,7 @@ do
         S.MusicVolume = v
         if sound then sound.Volume = math.clamp(v / 100, 0, 1) end
     end, 7)
-    mkToggle(secMusic, "Loop", false, function(v)
+    UI.mkToggle(secMusic, "Loop", false, function(v)
         S.MusicLoop = v
         if sound then sound.Looped = v end
     end, 8)
@@ -18759,7 +19250,7 @@ do
     scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(render)
     scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(render)
     refresh()
-end
+end)()
 
 -- Self Chams and Bullet Tracers removed.
 
@@ -18775,8 +19266,8 @@ end
 --
 -- ponytail: purely client-side. It works here because this is the user's own place; a server that
 -- validated positions would reject a 7777-stud step outright.
-do
-    local secDesync = mkSection(Pages.Motion, "Desync", 3.5)
+;(function()
+    local secDesync = UI.mkSection(Pages.Motion, "Desync", 3.5)
     -- Registered, or it belongs to no subtab and the switcher never hides it -- so it stays on
     -- screen under both Movement and Targets and reads as a duplicate card.
     if S._RegisterMotionMovementSection then pcall(S._RegisterMotionMovementSection, secDesync) end
@@ -18802,7 +19293,7 @@ do
     end
 
     -- AFTER physics, BEFORE replication.
-    tc(RunService.Heartbeat:Connect(function()
+    tc(Svc.RunService.Heartbeat:Connect(function()
         if not S.Desync then return end
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -18816,6 +19307,9 @@ do
         lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
         lastAng = hrp.AssemblyAngularVelocity
+        if S.DesyncAlways and lastVel.Magnitude < 0.1 then
+            hrp.AssemblyLinearVelocity = Vector3.new(0.1, 0.05, 0.1)
+        end
         applied = true
         hrp.CFrame = (lastCF + pos) * rot
     end))
@@ -18827,7 +19321,7 @@ do
     -- BindToRenderStep names are a global namespace, so this one is unique per load: cleaning up a
     -- stale copy must not unbind the live one.
     local restoreName = "InertiaDesyncRestore_" .. tostring(math.random(1, 1e9))
-    RunService:BindToRenderStep(restoreName, Enum.RenderPriority.First.Value - 1, function()
+    Svc.RunService:BindToRenderStep(restoreName, Enum.RenderPriority.First.Value - 1, function()
         if not applied then return end
         applied = false
         local char = LP.Character
@@ -18842,10 +19336,15 @@ do
         lastCF, lastVel, lastAng = nil, nil, nil
     end)
     SG.Destroying:Connect(function()
-        pcall(function() RunService:UnbindFromRenderStep(restoreName) end)
+        pcall(function() Svc.RunService:UnbindFromRenderStep(restoreName) end)
     end)
 
-    mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
+    
+    UI.mkToggle(secDesync, "Desync Always", false, function(v)
+        S.DesyncAlways = v
+    end, 1.5)
+
+    UI.mkToggle(secDesync, "Desync (Fake Position)", false, function(v)
         S.Desync = v
         if not v then
             -- Switched off mid-frame with an offset still applied: take it back off so the character
@@ -18871,7 +19370,7 @@ do
         local vLast, vCF, vApplied = nil, nil, false
         local VEL_SPAN = 7777
 
-        tc(RunService.Heartbeat:Connect(function()
+        tc(Svc.RunService.Heartbeat:Connect(function()
             if not S.VelDesync then return end
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -18894,7 +19393,7 @@ do
         end))
 
         local vName = "InertiaVelDesyncRestore_" .. tostring(math.random(1, 1e9))
-        RunService:BindToRenderStep(vName, Enum.RenderPriority.First.Value - 1, function()
+        Svc.RunService:BindToRenderStep(vName, Enum.RenderPriority.First.Value - 1, function()
             if not vApplied then return end
             vApplied = false
             local char = LP.Character
@@ -18906,10 +19405,10 @@ do
             vLast, vCF = nil, nil
         end)
         SG.Destroying:Connect(function()
-            pcall(function() RunService:UnbindFromRenderStep(vName) end)
+            pcall(function() Svc.RunService:UnbindFromRenderStep(vName) end)
         end)
 
-        mkToggle(secDesync, "Velocity Desync", false, function(v)
+        UI.mkToggle(secDesync, "Velocity Desync", false, function(v)
             S.VelDesync = v
             if not v then
                 local char = LP.Character
@@ -18922,17 +19421,17 @@ do
             end
         end, 2)
     end
-end
+end)()
 
 
 -- ============ FIELD OF VIEW + CUSTOM SKY ============
 -- Own do-block: this file sits on Luau's register ceiling, so nothing here may become a top-level
 -- local.
-do
+;(function()
     -- Visuals, not Misc. Misc is split into subtabs and an unregistered section there landed under
     -- Protection, which is nothing to do with the camera. Registered as an Environment section so it
     -- sits beside Custom Fog, which is the other thing that changes how the world looks.
-    local secView = mkSection(Pages.Visuals, "View", 5.3)
+    local secView = UI.mkSection(Pages.Visuals, "View", 5.3)
     if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secView) end
 
     -- FOV has to be re-asserted rather than set once. The game's own camera scripts write
@@ -18943,7 +19442,7 @@ do
     -- Snapshotting is also what makes the restore correct if the flag is flipped from anywhere other
     -- than the toggle, which is how the measurement caught it staying stuck at 100.
     local fovOriginal = nil
-    tc(RunService.RenderStepped:Connect(function()
+    tc(Svc.RunService.RenderStepped:Connect(function()
         local cam = workspace.CurrentCamera
         if not cam then return end
         if not S.CustomFOV then
@@ -18958,7 +19457,7 @@ do
         if math.abs(cam.FieldOfView - want) > 0.05 then cam.FieldOfView = want end
     end))
 
-    mkToggle(secView, "Custom FOV", false, function(v) S.CustomFOV = v end, 1)
+    UI.mkToggle(secView, "Custom FOV", false, function(v) S.CustomFOV = v end, 1)
     mkSlider(secView, "FOV", 20, 120, 70, function(v) S.FOVValue = v end, 2)
 
     -- Custom Sky removed on request. This sweep stays: the feature is gone, so nothing would ever
@@ -18971,401 +19470,572 @@ do
         local c = terrain and terrain:FindFirstChild("InertiaClouds")
         if c then c:Destroy() end
     end
-end
+end)()
 
--- ============ SKIN CATALOGUE ============
--- Reads the game's own live table, ReplicatedStorage.Database.Sync.Item. Deliberately not a static
--- dump: the same table measured 973 entries a while back and 997 today, so anything baked into this
--- file would already be lying. Entry shape, measured: ItemName, ItemType (Knife 628 / Gun 353 /
--- Misc 13), Rarity, Season, ItemID.
---
--- ponytail: catalogue and browser only. Applying a skin to the held weapon needs the structure of an
--- equipped Tool, and no weapon was in hand when this was measured -- Resources holds only Perks, so
--- the models are not client-side and the swap target is still unknown. Wiring Apply without that
--- would be guesswork, and guesswork is what put four wrong fixes in this file already.
-do
-    local secSkins = mkSection(Pages.Visuals, "Skins", 4.8)
-    -- Registered, or it belongs to no subtab and the switcher never hides it -- which is what made
-    -- it show up under all four at once.
-    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secSkins) end
-    -- Grid, not a text list: the ask was to see the weapons, so each entry is its catalogue
-    -- thumbnail with the name under it. Sync.Item carries an Image field per entry, which is a
-    -- Roblox thumbnail URL that ImageLabel.Image accepts directly -- no asset extraction anywhere.
-    local COLS, CARD_H, VIS_ROWS = 3, 74, 4
-    local all, shown, cards = {}, {}, {}
-    local filter, query = "Knife", ""
+-- ============ THEME EDITOR WINDOW (desktop only) ============
+-- A real window rather than a strip inside Settings: picking colours needs the swatch, the sliders
+-- and something that actually looks like the hub visible at the same time, which a 260px settings
+-- column cannot do. Skipped entirely on mobile -- there is no room for a 700px editor on a phone,
+-- and the settings-panel role picker stays the path there.
+;(function()
+    if MOBILE then return end
 
-    -- Knife / Gun subtabs, using the same button helper every other subtab bar in this file uses.
-    local skinBar = Instance.new("Frame")
-    skinBar.Name = "SkinSubTabBar"
-    skinBar.Parent = secSkins
-    skinBar.LayoutOrder = 1
-    skinBar.BackgroundTransparency = 1
-    skinBar.Size = UDim2.new(1, 0, 0, 28)
-    local skinBarList = Instance.new("UIListLayout")
-    skinBarList.FillDirection = Enum.FillDirection.Horizontal
-    skinBarList.SortOrder = Enum.SortOrder.LayoutOrder
-    skinBarList.Padding = UDim.new(0, 6)
-    skinBarList.Parent = skinBar
+    -- Roles grouped by the surface they paint, because "Elev" means nothing until you know it is
+    -- the inset behind a card's rows. Each tab is one part of the hub.
+    local TABS = {
+        { name = "GUI",     roles = { "BG", "Accent", "AccentSoft", "Glow", "Bd", "Bd2" } },
+        { name = "Card",    roles = { "Card", "Elev", "Hover", "ActiveBg" } },
+        { name = "Sidebar", roles = { "Sidebar", "Tx", "Tx2", "Tx3", "Tx4" } },
+        { name = "HUD",     roles = { "TgOn", "TgOff", "KnobOn", "KnobOff" } },
+    }
 
-    local knifeBtn = Instance.new("TextButton")
-    local gunBtn = Instance.new("TextButton")
-    local knifeStroke = mkSubTabBtn(skinBar, knifeBtn, "Knife", 1, 1 / 2, -6)
-    local gunStroke = mkSubTabBtn(skinBar, gunBtn, "Gun", 2, 1 / 2, -6)
+    local win = Instance.new("Frame")
+    win.Name = "ThemeEditorWindow"
+    win.Parent = SG
+    win.Active = true
+    win.Draggable = true
+    win.Visible = false
+    win.Size = UDim2.fromOffset(700, 452)
+    win.Position = UDim2.new(0.5, -350, 0.5, -226)
+    win.BackgroundColor3 = T.BG
+    win:SetAttribute("ThemeColorRole_BackgroundColor3", "BG")
+    win.BorderSizePixel = 0
+    win.ZIndex = 1200
+    UI.Corner(win, 12)
+    UI.Stroke(win, T.Bd2, 1, 0.2)
+    UI.Shadow(win, 0.7)
 
-    local list = Instance.new("ScrollingFrame")
-    list.Name = "SkinList"
-    list.Parent = secSkins
-    list.LayoutOrder = 3
-    list.Size = UDim2.new(1, 0, 0, CARD_H * VIS_ROWS)
-    list.BackgroundTransparency = 1
-    list.BorderSizePixel = 0
-    list.ScrollBarThickness = 4
-    list.CanvasSize = UDim2.new()
+    local hdr = Instance.new("Frame")
+    hdr.Parent = win
+    hdr.Size = UDim2.new(1, 0, 0, 40)
+    hdr.BackgroundColor3 = T.Card
+    hdr:SetAttribute("ThemeColorRole_BackgroundColor3", "Card")
+    hdr.BorderSizePixel = 0
+    hdr.ZIndex = 1201
+    UI.Corner(hdr, 12)
 
-    local count = Instance.new("TextLabel")
-    count.Parent = secSkins
-    count.LayoutOrder = 2
-    count.Size = UDim2.new(1, 0, 0, 16)
-    count.BackgroundTransparency = 1
-    count.Font = FM
-    count.TextSize = 11
-    count.TextXAlignment = Enum.TextXAlignment.Left
-    count.TextColor3 = T.Tx3
-    count.Text = "Loading catalogue..."
+    local hTitle = Instance.new("TextLabel")
+    hTitle.Parent = hdr
+    hTitle.BackgroundTransparency = 1
+    hTitle.Position = UDim2.fromOffset(16, 0)
+    hTitle.Size = UDim2.new(1, -60, 1, 0)
+    hTitle.Font = FB
+    hTitle.TextSize = 14
+    hTitle.TextXAlignment = Enum.TextXAlignment.Left
+    hTitle.TextColor3 = T.Tx
+    hTitle:SetAttribute("ThemeColorRole_TextColor3", "Tx")
+    hTitle.Text = "Theme Editor"
+    hTitle.ZIndex = 1202
 
-    -- Windowed in two dimensions: only COLS * (VIS_ROWS + 1) cards ever exist, and scrolling
-    -- repositions them. A grid layout with a card per entry would be 994 instances plus 994 image
-    -- requests, which is exactly the always-on cost that makes this hub stutter.
-    local function render()
-        local w = list.AbsoluteSize.X
-        if w <= 0 then w = 300 end
-        local cardW = (w - 6 * (COLS + 1)) / COLS
-        local topRow = math.floor(list.CanvasPosition.Y / CARD_H)
-        for i = 1, #cards do
-            local card = cards[i]
-            local slot = i - 1
-            local idx = topRow * COLS + slot + 1
-            local item = shown[idx]
-            if not item then
-                card.Visible = false
-            else
-                local r = math.floor(slot / COLS)
-                local c = slot % COLS
-                card.Visible = true
-                card.Size = UDim2.fromOffset(cardW, CARD_H - 6)
-                card.Position = UDim2.fromOffset(
-                    6 + c * (cardW + 6),
-                    (topRow + r) * CARD_H
-                )
-                card.Thumb.Image = item.Image or ""
-                card.Label.Text = item.ItemName or "?"
-                card.Label.TextColor3 = item.RarityColor or T.Tx
-            end
+    local hClose = Instance.new("TextButton")
+    hClose.Parent = hdr
+    hClose.AnchorPoint = Vector2.new(1, 0.5)
+    hClose.Position = UDim2.new(1, -12, 0.5, 0)
+    hClose.Size = UDim2.fromOffset(26, 26)
+    hClose.BackgroundColor3 = T.Elev
+    hClose:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev")
+    hClose.BorderSizePixel = 0
+    hClose.AutoButtonColor = false
+    hClose.Font = FB
+    hClose.TextSize = 12
+    hClose.TextColor3 = T.Tx2
+    hClose.Text = "X"
+    hClose.ZIndex = 1202
+    UI.Corner(hClose, 7)
+
+    -- ---- left: tabs ----
+    local rail = Instance.new("Frame")
+    rail.Parent = win
+    rail.Position = UDim2.fromOffset(12, 52)
+    rail.Size = UDim2.fromOffset(112, 388)
+    rail.BackgroundTransparency = 1
+    rail.ZIndex = 1201
+    local railLayout = Instance.new("UIListLayout")
+    railLayout.Parent = rail
+    railLayout.Padding = UDim.new(0, 4)
+    railLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- ---- middle: roles + sliders ----
+    local mid = Instance.new("Frame")
+    mid.Parent = win
+    mid.Position = UDim2.fromOffset(134, 52)
+    mid.Size = UDim2.fromOffset(238, 388)
+    mid.BackgroundTransparency = 1
+    mid.ZIndex = 1201
+
+    local roleList = Instance.new("ScrollingFrame")
+    roleList.Parent = mid
+    roleList.Size = UDim2.new(1, 0, 0, 180)
+    roleList.BackgroundColor3 = T.Card
+    roleList:SetAttribute("ThemeColorRole_BackgroundColor3", "Card")
+    roleList.BorderSizePixel = 0
+    roleList.ScrollBarThickness = 3
+    roleList.CanvasSize = UDim2.fromOffset(0, 0)
+    roleList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    roleList.ZIndex = 1202
+    UI.Corner(roleList, 8)
+    local rlLayout = Instance.new("UIListLayout")
+    rlLayout.Parent = roleList
+    rlLayout.Padding = UDim.new(0, 2)
+    rlLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    local rlPad = Instance.new("UIPadding")
+    rlPad.PaddingTop = UDim.new(0, 4); rlPad.PaddingBottom = UDim.new(0, 4)
+    rlPad.PaddingLeft = UDim.new(0, 4); rlPad.PaddingRight = UDim.new(0, 4)
+    rlPad.Parent = roleList
+
+    local swatch = Instance.new("Frame")
+    swatch.Parent = mid
+    swatch.Position = UDim2.fromOffset(0, 190)
+    swatch.Size = UDim2.new(1, 0, 0, 34)
+    swatch.BorderSizePixel = 0
+    swatch.ZIndex = 1202
+    UI.Corner(swatch, 8)
+    UI.Stroke(swatch, T.Bd, 1, 0.4)
+
+    local hexLbl = Instance.new("TextLabel")
+    hexLbl.Parent = swatch
+    hexLbl.BackgroundTransparency = 1
+    hexLbl.Size = UDim2.new(1, 0, 1, 0)
+    hexLbl.Font = FM
+    hexLbl.TextSize = 12
+    hexLbl.Text = ""
+    hexLbl.ZIndex = 1203
+
+    -- Own slider widget: mkSlider builds a full section row, which is the wrong shape here.
+    local function chSlider(y, label, getV, setV)
+        local row = Instance.new("Frame")
+        row.Parent = mid
+        row.Position = UDim2.fromOffset(0, y)
+        row.Size = UDim2.new(1, 0, 0, 40)
+        row.BackgroundTransparency = 1
+        row.ZIndex = 1202
+
+        local cap = Instance.new("TextLabel")
+        cap.Parent = row
+        cap.BackgroundTransparency = 1
+        cap.Size = UDim2.new(1, 0, 0, 14)
+        cap.Font = F
+        cap.TextSize = 11
+        cap.TextXAlignment = Enum.TextXAlignment.Left
+        cap.TextColor3 = T.Tx3
+        cap:SetAttribute("ThemeColorRole_TextColor3", "Tx3")
+        cap.ZIndex = 1203
+
+        local track = Instance.new("TextButton")
+        track.Parent = row
+        track.Position = UDim2.fromOffset(0, 20)
+        track.Size = UDim2.new(1, 0, 0, 14)
+        track.BackgroundColor3 = T.Elev
+        track:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev")
+        track.BorderSizePixel = 0
+        track.AutoButtonColor = false
+        track.Text = ""
+        track.ZIndex = 1203
+        UI.Corner(track, 7)
+
+        local fill = Instance.new("Frame")
+        fill.Parent = track
+        fill.Size = UDim2.new(0, 0, 1, 0)
+        fill.BackgroundColor3 = T.Accent
+        fill:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent")
+        fill.BorderSizePixel = 0
+        fill.ZIndex = 1204
+        UI.Corner(fill, 7)
+
+        local function redraw()
+            local v = getV()
+            cap.Text = label .. "  " .. tostring(v)
+            fill.Size = UDim2.new(v / 255, 0, 1, 0)
         end
-    end
-
-    local function refresh()
-        table.clear(shown)
-        local q = query:lower()
-        for _, it in ipairs(all) do
-            local okType = tostring(it.ItemType) == filter
-            local okName = q == "" or tostring(it.ItemName):lower():find(q, 1, true) ~= nil
-            if okType and okName then table.insert(shown, it) end
+        local dragging = false
+        local function setFromX(x)
+            local inset = 0
+            pcall(function() inset = game:GetService("GuiService"):GetGuiInset().X end)
+            local rel = math.clamp(((x + inset) - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
+            setV(math.floor(rel * 255 + 0.5))
+            redraw()
         end
-        count.Text = string.format("%s  -  %d shown", filter, #shown)
-        local rowsNeeded = math.ceil(#shown / COLS)
-        list.CanvasSize = UDim2.new(0, 0, 0, rowsNeeded * CARD_H)
-        render()
-    end
-
-    for i = 1, COLS * (VIS_ROWS + 1) do
-        local card = Instance.new("TextButton")
-        card.Parent = list
-        card.BackgroundColor3 = T.Elev
-        card.BackgroundTransparency = 0.3
-        card.BorderSizePixel = 0
-        card.AutoButtonColor = false
-        card.Text = ""
-        card.Visible = false
-        Corner(card, 6)
-
-        local thumb = Instance.new("ImageLabel")
-        thumb.Name = "Thumb"
-        thumb.Parent = card
-        thumb.AnchorPoint = Vector2.new(0.5, 0)
-        thumb.Position = UDim2.new(0.5, 0, 0, 4)
-        thumb.Size = UDim2.fromOffset(42, 42)
-        thumb.BackgroundTransparency = 1
-        thumb.ScaleType = Enum.ScaleType.Fit
-
-        local label = Instance.new("TextLabel")
-        label.Name = "Label"
-        label.Parent = card
-        label.Position = UDim2.new(0, 2, 1, -20)
-        label.Size = UDim2.new(1, -4, 0, 16)
-        label.BackgroundTransparency = 1
-        label.Font = FM
-        label.TextSize = 10
-        label.TextTruncate = Enum.TextTruncate.AtEnd
-        label.TextColor3 = T.Tx
-        cards[i] = card
-    end
-
-    local function setFilter(v)
-        filter = v
-        styleSubTabActive(knifeBtn, knifeStroke, v == "Knife")
-        styleSubTabActive(gunBtn, gunStroke, v == "Gun")
-        list.CanvasPosition = Vector2.new(0, 0)
-        refresh()
-    end
-    knifeBtn.MouseButton1Click:Connect(function() setFilter("Knife") end)
-    gunBtn.MouseButton1Click:Connect(function() setFilter("Gun") end)
-
-    list:GetPropertyChangedSignal("CanvasPosition"):Connect(render)
-    list:GetPropertyChangedSignal("AbsoluteSize"):Connect(render)
-
-    -- Spawned, never inline. Requiring a game ModuleScript on this thread poisons its ability to
-    -- write to the hub's own GUI -- that was the root cause of the config-restore bug.
-    task.spawn(function()
-        local ok, Sync = pcall(function()
-            return require(game:GetService("ReplicatedStorage").Database.Sync)
+        track.MouseButton1Down:Connect(function()
+            dragging = true
+            setFromX(Svc.UIS:GetMouseLocation().X)
         end)
-        if not (ok and Sync and Sync.Item) then
-            count.Text = "Catalogue unavailable"
-            return
-        end
-        -- ItemService exposes the game's own rarity palette, so the names read in the same colours
-        -- the real inventory uses instead of a second, invented scale.
-        local rarityColor = {}
-        pcall(function()
-            local IS = require(game:GetService("ReplicatedStorage").ClientServices.ItemService)
-            if IS and IS.GetRarityColor then
-                rarityColor = setmetatable({}, {
-                    __index = function(_, r)
-                        local okc, col = pcall(IS.GetRarityColor, r)
-                        return okc and col or nil
-                    end,
-                })
-            end
-        end)
-        for key, it in pairs(Sync.Item) do
-            if type(it) == "table" and it.ItemName then
-                table.insert(all, {
-                    Key = key,
-                    ItemName = it.ItemName,
-                    ItemType = it.ItemType,
-                    Rarity = it.Rarity,
-                    ItemID = it.ItemID,
-                    Image = it.Image,
-                    RarityColor = rarityColor[it.Rarity],
-                })
-            end
-        end
-        table.sort(all, function(a, b) return tostring(a.ItemName) < tostring(b.ItemName) end)
-        setFilter("Knife")
-    end)
-
-    S._SkinSearch = function(text)
-        query = text or ""
-        refresh()
-    end
-
-    -- ---- Applying a skin ----
-    -- Measured, not guessed: a weapon's look is a SpecialMesh named "Mesh" under the Tool's Handle,
-    -- carrying MeshId and TextureId. Writing those from the client is a local property change on a
-    -- replicated instance, so it is visual only -- nobody else sees it, which is what was asked.
-    --
-    -- The catch is where a given skin's MeshId comes from. Sync.Item carries a thumbnail and nothing
-    -- else -- no MeshId, no TextureId -- so the models are handed out by the server on equip and are
-    -- not enumerable from here. Rather than guess, the hub harvests: every weapon Tool that appears
-    -- in the world, yours or anyone else's, has its mesh recorded against its ItemID. In a populated
-    -- server that fills quickly, and a skin nobody has held yet is honestly reported as unseen
-    -- instead of silently doing nothing.
-    local library = {}
-    S._SkinLibrary = library
-
-    -- Seeded from known asset ids so a skin nobody in the server happens to be holding still
-    -- applies. The harvester below keeps running and overwrites any of these with what the game
-    -- actually hands out, so a seed being stale costs nothing -- it is a floor, not a source of
-    -- truth.
-    --
-    -- Two shapes, because a weapon's look is two properties. A MESH entry changes the shape and
-    -- leaves the texture alone; a TEXTURE entry is a knife re-skin, which is the default knife mesh
-    -- with a different texture painted on it.
-    local DEFAULT_KNIFE_MESH = "rbxassetid://121946387"
-    for name, id in pairs({
-        ["Default Knife"] = 121946387, ["Revolver"] = 97885508,
-        ["Fang"] = 116693735, ["Deathshard"] = 62350856,
-        ["Saw"] = 170903610, ["Luger"] = 95354288,
-        ["Heat"] = 105351545, ["Seer"] = 156467990,
-        ["Shark"] = 118281463, ["Splitter"] = 22787189,
-        ["Shadow"] = 86494914, ["Prince"] = 71037101,
-        ["Ghost"] = 64220952, ["Laser"] = 18268645,
-        ["Blood"] = 51757162, ["Phaser"] = 69567827,
-        ["MM1 Revolver"] = 25317304, ["MM1 Knife"] = 20721924,
-    }) do
-        library[name] = { MeshId = "rbxassetid://" .. id, TextureId = nil, Seeded = true }
-    end
-    for name, id in pairs({
-        ["Plasmite"] = 161369273, ["LMFAO"] = 160971237,
-        ["Marley"] = 161576918, ["Checker"] = 160167441,
-        ["Cheesy"] = 161425686, ["Krypto"] = 155572642,
-        ["Ice"] = 161313071, ["Neon"] = 159653652,
-        ["Rainbow"] = 157019835, ["Wanwood"] = 159653725,
-        ["Doge"] = 159758190, ["Splatter"] = 144012208,
-        ["Midnight"] = 161367322, ["Predator"] = 199611278,
-        ["Dew"] = 192294097,
-    }) do
-        library[name] = {
-            MeshId = DEFAULT_KNIFE_MESH,
-            TextureId = "rbxassetid://" .. id,
-            Seeded = true,
-        }
-    end
-
-    local function harvest(tool)
-        if not (tool and tool:IsA("Tool")) then return end
-        local id = tool:GetAttribute("ItemID") or tool:GetAttribute("ItemName")
-        if not id then return end
-        local handle = tool:FindFirstChild("Handle")
-        local mesh = handle and handle:FindFirstChildOfClass("SpecialMesh")
-        if not mesh then return end
-        library[tostring(id)] = {
-            MeshId = mesh.MeshId,
-            TextureId = mesh.TextureId,
-            Scale = mesh.Scale,
-            Name = tool:GetAttribute("ItemName"),
-        }
-    end
-
-    local function scanForWeapons()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character then
-                for _, t in ipairs(p.Character:GetChildren()) do harvest(t) end
-            end
-            local bp = p:FindFirstChildOfClass("Backpack")
-            if bp then
-                for _, t in ipairs(bp:GetChildren()) do harvest(t) end
-            end
-        end
-    end
-
-    -- 1 Hz, and only walking players' direct children. Weapons change hands on equip, not per frame,
-    -- so anything faster is pure cost.
-    task.spawn(function()
-        while SG and SG.Parent do
-            pcall(scanForWeapons)
-            task.wait(1)
-        end
-    end)
-
-    -- Every weapon you own, held or not. The first version only looked at the character, so it
-    -- refused with "hold a weapon first" whenever the tool was sitting in the backpack -- which in
-    -- this game is most of the time, since weapons are only in hand while actively swung.
-    local function ownedWeapons()
-        local out = {}
-        local char = LP.Character
-        if char then
-            for _, t in ipairs(char:GetChildren()) do
-                if t:IsA("Tool") and t:FindFirstChild("Handle") then table.insert(out, t) end
-            end
-        end
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        if bp then
-            for _, t in ipairs(bp:GetChildren()) do
-                if t:IsA("Tool") and t:FindFirstChild("Handle") then table.insert(out, t) end
-            end
-        end
-        return out
-    end
-
-    local function dressTool(tool, item, entry)
-        local handle = tool:FindFirstChild("Handle")
-        local mesh = handle and handle:FindFirstChildOfClass("SpecialMesh")
-        if not mesh then return false end
-        -- nil means "leave this one alone": a mesh-only seed changes the shape and keeps whatever
-        -- texture the weapon already has, which is what those entries describe.
-        if entry.MeshId then mesh.MeshId = entry.MeshId end
-        if entry.TextureId then mesh.TextureId = entry.TextureId end
-        if entry.Scale then mesh.Scale = entry.Scale end
-        pcall(function()
-            tool:SetAttribute("ItemName", item.ItemName)
-            tool:SetAttribute("Rarity", item.Rarity)
-        end)
-        return true
-    end
-
-    -- Remembered per weapon kind, so the choice survives the server handing you a fresh Tool at the
-    -- start of every round -- otherwise a skin lasted exactly until the next respawn.
-    local pending = {}
-
-    local function applySkin(item)
-        local entry = library[tostring(item.Key)] or library[tostring(item.ItemName)]
-        if not entry then
-            Notify("Skins", (item.ItemName or "?") .. ": mesh not seen yet.", 3)
-            return
-        end
-        local kind = tostring(item.ItemType)
-        pending[kind] = { item = item, entry = entry }
-        local done = 0
-        for _, tool in ipairs(ownedWeapons()) do
-            local isKnife = tool:GetAttribute("IsKnife") or tool.Name:find("Knife")
-            local toolKind = isKnife and "Knife" or "Gun"
-            if toolKind == kind and dressTool(tool, item, entry) then done = done + 1 end
-        end
-        if done > 0 then
-            Notify("Skins", "Applied " .. tostring(item.ItemName), 2)
-        else
-            Notify("Skins", "Saved: applies when you get a " .. kind:lower() .. ".", 3)
-        end
-    end
-
-    -- Re-dress anything the server gives us later.
-    local function watchFor(container)
-        if not container then return end
-        tc(container.ChildAdded:Connect(function(t)
-            if not t:IsA("Tool") then return end
-            task.wait(0.25)
-            local isKnife = t:GetAttribute("IsKnife") or t.Name:find("Knife")
-            local p = pending[isKnife and "Knife" or "Gun"]
-            if p and t.Parent then pcall(dressTool, t, p.item, p.entry) end
+        tc(Svc.UIS.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
         end))
-    end
-    watchFor(LP:FindFirstChildOfClass("Backpack"))
-    tc(LP.ChildAdded:Connect(function(c)
-        if c:IsA("Backpack") then watchFor(c) end
-    end))
-    tc(LP.CharacterAdded:Connect(function(char) watchFor(char) end))
-    if LP.Character then watchFor(LP.Character) end
-
-    for i = 1, #cards do
-        local card = cards[i]
-        card.MouseButton1Click:Connect(function()
-            local w = list.AbsoluteSize.X
-            if w <= 0 then return end
-            local topRow = math.floor(list.CanvasPosition.Y / CARD_H)
-            local item = shown[topRow * COLS + i]
-            if item then
-                SFX.Click()
-                applySkin(item)
+        tc(Svc.UIS.InputChanged:Connect(function(i)
+            if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+                setFromX(i.Position.X)
             end
+        end))
+        track.MouseButton1Click:Connect(function()
+            setFromX(Svc.UIS:GetMouseLocation().X)
+        end)
+        return redraw
+    end
+
+    -- ---- right: live preview ----
+    local prev = Instance.new("Frame")
+    prev.Parent = win
+    prev.Position = UDim2.fromOffset(384, 52)
+    prev.Size = UDim2.fromOffset(304, 388)
+    prev.BackgroundColor3 = T.BG
+    prev.BorderSizePixel = 0
+    prev.ClipsDescendants = true
+    prev.ZIndex = 1201
+    UI.Corner(prev, 10)
+    UI.Stroke(prev, T.Bd2, 1, 0.35)
+
+    local pvTitle = Instance.new("TextLabel")
+    pvTitle.Parent = prev
+    pvTitle.BackgroundTransparency = 1
+    pvTitle.Position = UDim2.fromOffset(12, 8)
+    pvTitle.Size = UDim2.new(1, -24, 0, 14)
+    pvTitle.Font = F
+    pvTitle.TextSize = 10
+    pvTitle.TextXAlignment = Enum.TextXAlignment.Left
+    pvTitle.Text = "PREVIEW"
+    pvTitle.ZIndex = 1202
+
+    -- A miniature of the real hub: sidebar, a card with rows, a toggle and a HUD panel. Painted
+    -- straight from T on every change, so it shows the theme rather than describing it.
+    local pvSide = Instance.new("Frame")
+    pvSide.Parent = prev
+    pvSide.Position = UDim2.fromOffset(12, 28)
+    pvSide.Size = UDim2.fromOffset(72, 200)
+    pvSide.BorderSizePixel = 0
+    pvSide.ZIndex = 1202
+    UI.Corner(pvSide, 8)
+
+    local pvSideItems = {}
+    for i = 1, 4 do
+        local it = Instance.new("Frame")
+        it.Parent = pvSide
+        it.Position = UDim2.fromOffset(8, 10 + (i - 1) * 24)
+        it.Size = UDim2.fromOffset(56, 16)
+        it.BorderSizePixel = 0
+        it.ZIndex = 1203
+        UI.Corner(it, 5)
+        pvSideItems[i] = it
+    end
+
+    local pvCard = Instance.new("Frame")
+    pvCard.Parent = prev
+    pvCard.Position = UDim2.fromOffset(94, 28)
+    pvCard.Size = UDim2.fromOffset(196, 200)
+    pvCard.BorderSizePixel = 0
+    pvCard.ZIndex = 1202
+    UI.Corner(pvCard, 8)
+    local pvCardStroke = UI.Stroke(pvCard, T.Bd, 1, 0.4)
+
+    local pvRows = {}
+    for i = 1, 4 do
+        local r = Instance.new("Frame")
+        r.Parent = pvCard
+        r.Position = UDim2.fromOffset(10, 12 + (i - 1) * 30)
+        r.Size = UDim2.fromOffset(176, 24)
+        r.BorderSizePixel = 0
+        r.ZIndex = 1203
+        UI.Corner(r, 6)
+        local lb = Instance.new("TextLabel")
+        lb.Parent = r
+        lb.BackgroundTransparency = 1
+        lb.Position = UDim2.fromOffset(8, 0)
+        lb.Size = UDim2.new(1, -50, 1, 0)
+        lb.Font = F
+        lb.TextSize = 10
+        lb.TextXAlignment = Enum.TextXAlignment.Left
+        lb.Text = ({ "Role Chams", "Name ESP", "Box ESP", "Tracers" })[i]
+        lb.ZIndex = 1204
+        local tg = Instance.new("Frame")
+        tg.Parent = r
+        tg.AnchorPoint = Vector2.new(1, 0.5)
+        tg.Position = UDim2.new(1, -8, 0.5, 0)
+        tg.Size = UDim2.fromOffset(26, 13)
+        tg.BorderSizePixel = 0
+        tg.ZIndex = 1204
+        UI.Corner(tg, 7)
+        local kn = Instance.new("Frame")
+        kn.Parent = tg
+        kn.AnchorPoint = Vector2.new(0, 0.5)
+        kn.Size = UDim2.fromOffset(9, 9)
+        kn.BorderSizePixel = 0
+        kn.ZIndex = 1205
+        UI.Corner(kn, 9999)
+        pvRows[i] = { row = r, label = lb, tog = tg, knob = kn, on = (i % 2 == 1) }
+    end
+
+    local pvHud = Instance.new("Frame")
+    pvHud.Parent = prev
+    pvHud.Position = UDim2.fromOffset(12, 240)
+    pvHud.Size = UDim2.fromOffset(278, 56)
+    pvHud.BorderSizePixel = 0
+    pvHud.ZIndex = 1202
+    UI.Corner(pvHud, 9)
+    local pvHudStroke = UI.Stroke(pvHud, T.Bd2, 1, 0.3)
+    local pvHudBar = Instance.new("Frame")
+    pvHudBar.Parent = pvHud
+    pvHudBar.AnchorPoint = Vector2.new(0, 0.5)
+    pvHudBar.Position = UDim2.new(0, 8, 0.5, 0)
+    pvHudBar.Size = UDim2.fromOffset(3, 20)
+    pvHudBar.BorderSizePixel = 0
+    pvHudBar.ZIndex = 1203
+    local pvHudTag = Instance.new("TextLabel")
+    pvHudTag.Parent = pvHud
+    pvHudTag.BackgroundTransparency = 1
+    pvHudTag.Position = UDim2.fromOffset(18, 0)
+    pvHudTag.Size = UDim2.new(1, -30, 1, 0)
+    pvHudTag.Font = FB
+    pvHudTag.TextSize = 11
+    pvHudTag.TextXAlignment = Enum.TextXAlignment.Left
+    pvHudTag.Text = "ROLE   INNOCENT"
+    pvHudTag.ZIndex = 1203
+
+    -- HUD element picker. Only meaningful on the HUD tab, so it hides itself elsewhere.
+    local HUD_SAMPLES = { "Role HUD", "Kill Feed", "Motion Graph", "Keybinds" }
+    local pvPickIdx = 1
+    local pvPick = Instance.new("TextButton")
+    pvPick.Parent = prev
+    pvPick.Position = UDim2.fromOffset(12, 344)
+    pvPick.Size = UDim2.fromOffset(278, 26)
+    pvPick.BorderSizePixel = 0
+    pvPick.AutoButtonColor = false
+    pvPick.Font = F
+    pvPick.TextSize = 10
+    pvPick.Text = "HUD element:  Role HUD"
+    pvPick.Visible = false
+    pvPick.ZIndex = 1203
+    UI.Corner(pvPick, 7)
+
+    local pvAccent = Instance.new("Frame")
+    pvAccent.Parent = prev
+    pvAccent.Position = UDim2.fromOffset(12, 306)
+    pvAccent.Size = UDim2.fromOffset(278, 30)
+    pvAccent.BorderSizePixel = 0
+    pvAccent.ZIndex = 1202
+    UI.Corner(pvAccent, 8)
+    local pvAccentTx = Instance.new("TextLabel")
+    pvAccentTx.Parent = pvAccent
+    pvAccentTx.BackgroundTransparency = 1
+    pvAccentTx.Size = UDim2.new(1, 0, 1, 0)
+    pvAccentTx.Font = FB
+    pvAccentTx.TextSize = 11
+    pvAccentTx.Text = "Accent"
+    pvAccentTx.ZIndex = 1203
+
+    local function repaintPreview()
+        local function C(role) return (Themes.Custom and Themes.Custom[role]) or T[role] or Color3.new(1, 1, 1) end
+        prev.BackgroundColor3 = C("BG")
+        pvTitle.TextColor3 = C("Tx3")
+        pvSide.BackgroundColor3 = C("Sidebar")
+        for i, it in ipairs(pvSideItems) do
+            it.BackgroundColor3 = (i == 1) and C("ActiveBg") or C("Hover")
+        end
+        pvCard.BackgroundColor3 = C("Card")
+        pvCardStroke.Color = C("Bd")
+        for _, r in ipairs(pvRows) do
+            r.row.BackgroundColor3 = C("Elev")
+            r.label.TextColor3 = C("Tx")
+            r.tog.BackgroundColor3 = r.on and C("TgOn") or C("TgOff")
+            r.knob.BackgroundColor3 = r.on and C("KnobOn") or C("KnobOff")
+            r.knob.Position = r.on and UDim2.new(1, -11, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
+        end
+        pvHud.BackgroundColor3 = C("Card")
+        pvHudStroke.Color = C("Bd2")
+        pvHudTag.TextColor3 = C("Tx2")
+        -- Each sample leans on a different role, so switching them is what makes a role visible.
+        local sample = HUD_SAMPLES[pvPickIdx]
+        if sample == "Role HUD" then
+            pvHudBar.BackgroundColor3 = C("Accent")
+            pvHudTag.Text = "ROLE   INNOCENT"
+        elseif sample == "Kill Feed" then
+            pvHudBar.BackgroundColor3 = C("TgOn")
+            pvHudTag.Text = "Player123        MURDERER"
+        elseif sample == "Motion Graph" then
+            pvHudBar.BackgroundColor3 = C("KnobOn")
+            pvHudTag.Text = "MOTION   142 sps"
+        else
+            pvHudBar.BackgroundColor3 = C("TgOff")
+            pvHudTag.Text = "F   Fly          M   Kill All"
+        end
+        pvPick.BackgroundColor3 = C("Elev")
+        pvPick.TextColor3 = C("Tx3")
+        pvPick.Text = "HUD element:  " .. sample
+        pvAccent.BackgroundColor3 = C("Accent")
+        pvAccentTx.TextColor3 = C("BG")
+    end
+
+    -- ---- state + wiring ----
+    local activeTab, selected = 1, TABS[1].roles[1]
+    local r255, g255, b255 = 255, 255, 255
+    local redrawR, redrawG, redrawB
+    local roleButtons = {}
+
+    local function currentColor()
+        return (Themes.Custom and Themes.Custom[selected]) or T[selected] or Color3.new(1, 1, 1)
+    end
+    local function refreshSwatch()
+        local c = Color3.fromRGB(r255, g255, b255)
+        swatch.BackgroundColor3 = c
+        hexLbl.Text = string.format("%s   #%02X%02X%02X", selected, r255, g255, b255)
+        hexLbl.TextColor3 = (r255 + g255 + b255) > 380 and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(240, 240, 240)
+    end
+    local function pushColor()
+        Themes.Custom = Themes.Custom or {}
+        Themes.Custom[selected] = Color3.fromRGB(r255, g255, b255)
+        S.SelectedTheme = "Custom"
+        refreshSwatch()
+        repaintPreview()
+        if applyTheme then pcall(applyTheme, "Custom") end
+    end
+    local function loadRole()
+        local c = currentColor()
+        r255, g255, b255 = math.round(c.R * 255), math.round(c.G * 255), math.round(c.B * 255)
+        refreshSwatch()
+        if redrawR then redrawR(); redrawG(); redrawB() end
+        for role, btn in pairs(roleButtons) do
+            local on = (role == selected)
+            btn.BackgroundColor3 = on and T.ActiveBg or T.Elev
+            btn.TextColor3 = on and T.Tx or T.Tx3
+        end
+    end
+
+    redrawR = chSlider(232, "Red",   function() return r255 end, function(v) r255 = v; pushColor() end)
+    redrawG = chSlider(276, "Green", function() return g255 end, function(v) g255 = v; pushColor() end)
+    redrawB = chSlider(320, "Blue",  function() return b255 end, function(v) b255 = v; pushColor() end)
+
+    local function buildRoleList()
+        for _, c in ipairs(roleList:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        roleButtons = {}
+        for i, role in ipairs(TABS[activeTab].roles) do
+            local b = Instance.new("TextButton")
+            b.Parent = roleList
+            b.Size = UDim2.new(1, 0, 0, 24)
+            b.BackgroundColor3 = T.Elev
+            b.BorderSizePixel = 0
+            b.AutoButtonColor = false
+            b.Font = F
+            b.TextSize = 11
+            b.TextXAlignment = Enum.TextXAlignment.Left
+            b.Text = "   " .. role
+            b.LayoutOrder = i
+            b.ZIndex = 1203
+            UI.Corner(b, 6)
+            local dot = Instance.new("Frame")
+            dot.Parent = b
+            dot.AnchorPoint = Vector2.new(1, 0.5)
+            dot.Position = UDim2.new(1, -8, 0.5, 0)
+            dot.Size = UDim2.fromOffset(14, 14)
+            dot.BorderSizePixel = 0
+            dot.BackgroundColor3 = (Themes.Custom and Themes.Custom[role]) or T[role] or Color3.new(1, 1, 1)
+            dot.ZIndex = 1204
+            UI.Corner(dot, 4)
+            roleButtons[role] = b
+            b.MouseButton1Click:Connect(function()
+                SFX.Click()
+                selected = role
+                loadRole()
+            end)
+        end
+        selected = TABS[activeTab].roles[1]
+        loadRole()
+    end
+
+    local tabButtons = {}
+    for i, tab in ipairs(TABS) do
+        local b = Instance.new("TextButton")
+        b.Parent = rail
+        b.Size = UDim2.new(1, 0, 0, 30)
+        b.BackgroundColor3 = T.Elev
+        b.BorderSizePixel = 0
+        b.AutoButtonColor = false
+        b.Font = FB
+        b.TextSize = 11
+        b.Text = tab.name
+        b.LayoutOrder = i
+        b.ZIndex = 1202
+        UI.Corner(b, 7)
+        tabButtons[i] = b
+        b.MouseButton1Click:Connect(function()
+            SFX.Click()
+            activeTab = i
+            for j, tb in ipairs(tabButtons) do
+                tb.BackgroundColor3 = (j == i) and T.ActiveBg or T.Elev
+                tb.TextColor3 = (j == i) and T.Tx or T.Tx3
+            end
+            buildRoleList()
+            pvPick.Visible = (TABS[i].name == "HUD")
+            repaintPreview()
         end)
     end
-end
+
+    -- reset buttons
+    local function actionBtn(y, label, colorRole, fn)
+        local b = Instance.new("TextButton")
+        b.Parent = mid
+        b.Position = UDim2.fromOffset(0, y)
+        b.Size = UDim2.new(0.5, -3, 0, 28)
+        b.BackgroundColor3 = T[colorRole] or T.Elev
+        b.BorderSizePixel = 0
+        b.AutoButtonColor = false
+        b.Font = FB
+        b.TextSize = 10
+        b.TextColor3 = T.Tx
+        b.Text = label
+        b.ZIndex = 1203
+        UI.Corner(b, 7)
+        b.MouseButton1Click:Connect(function() SFX.Click(); fn() end)
+        return b
+    end
+    local resetOne = actionBtn(364, "Reset Role", "Elev", function()
+        if Themes.Custom then Themes.Custom[selected] = nil end
+        if applyTheme then pcall(applyTheme, S.SelectedTheme or "Custom") end
+        loadRole(); repaintPreview(); buildRoleList()
+    end)
+    local resetAll = actionBtn(364, "Reset All", "Elev", function()
+        Themes.Custom = {}
+        if applyTheme then pcall(applyTheme, S.SelectedTheme or "Custom") end
+        loadRole(); repaintPreview(); buildRoleList()
+    end)
+    resetAll.Position = UDim2.new(0.5, 3, 0, 364)
+
+    tabButtons[1].BackgroundColor3 = T.ActiveBg
+    tabButtons[1].TextColor3 = T.Tx
+    for j = 2, #tabButtons do tabButtons[j].TextColor3 = T.Tx3 end
+    buildRoleList()
+    repaintPreview()
+
+    pvPick.MouseButton1Click:Connect(function()
+        SFX.Click()
+        pvPickIdx = pvPickIdx % #HUD_SAMPLES + 1
+        repaintPreview()
+    end)
+
+    hClose.MouseButton1Click:Connect(function() SFX.Click(); win.Visible = false end)
+
+    -- Replaces the settings-strip toggle: same entry point, real window behind it.
+    S._OpenThemeEditor = function()
+        win.Visible = not win.Visible
+        if win.Visible then
+            buildRoleList()
+            repaintPreview()
+        end
+    end
+end)()
 
 -- ============ MOVEMENT EXTRAS + CUSTOM FOG ============
 -- Own do-block: this file sits on Luau's register ceiling and the limit applies per function as well
 -- as to the main chunk, so nothing here may become a top-level local.
-do
-    local secJump = mkSection(Pages.Misc, "Movement Extras", 2.5)
+;(function()
+    local secJump = UI.mkSection(Pages.Misc, "Movement Extras", 2.5)
     if S._RegisterMiscSection then pcall(S._RegisterMiscSection, secJump, "Protection") end
 
     -- Infinity Jump. S.InfiniteJump was already declared in the defaults table and listed among the
     -- saved config keys, but no toggle and no implementation ever existed -- the flag was read by
     -- nothing. JumpRequest fires on every jump input including a held space bar, so re-asserting the
     -- Jumping state there is all this needs; no per-frame work while it is off.
-    tc(UIS.JumpRequest:Connect(function()
+    tc(Svc.UIS.JumpRequest:Connect(function()
         if not S.InfiniteJump then return end
         local char = LP.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -19373,8 +20043,30 @@ do
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end))
-    mkToggle(secJump, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 1)
+    UI.mkToggle(secJump, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 1)
 
-    -- Custom Fog removed on request. S.FogEnabled stays false, so the pre-existing fog engine in
-    -- applyAtmo() stays dormant and the map's own lighting is untouched.
-end
+    -- ---- Fog ----
+    -- Drives the fog engine that already lives in applyAtmo(). Two genuinely different renderers,
+    -- not two presets: Classic is the legacy FogStart/FogEnd pair, which needs every Atmosphere
+    -- object gone to draw at all; Atmosphere is density-based scattering and needs one present.
+    -- applyAtmo() handles that swap, so the mode cycle is the only thing that has to be chosen.
+    local secFog = UI.mkSection(Pages.Misc, "Fog", 2.6)
+    if S._RegisterMiscSection then pcall(S._RegisterMiscSection, secFog, "Protection") end
+    local function reFog() if applyAtmo then pcall(applyAtmo) end end
+    UI.mkToggle(secFog, "Fog", false, function(v) S.FogEnabled = v; reFog() end, 1)
+    UI.mkCycle(secFog, "Fog Mode", { "Atmosphere", "Classic" }, "Atmosphere", function(v)
+        S.FogMode = v; reFog()
+    end, 2)
+    UI.mkCycle(secFog, "Fog Colour",
+        { "Gray", "White", "Black", "Blue", "Purple", "Pink", "Cyan", "Orange", "Green", "Red" },
+        "Gray", function(v) S.FogColorName = v; reFog() end, 3)
+    UI.mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; reFog() end, 4)
+    -- Atmosphere mode
+    mkSlider(secFog, "Density (%)", 0, 95, 40, function(v) S.FogDensity = v; reFog() end, 5)
+    mkSlider(secFog, "Haze (%)", 0, 100, 24, function(v) S.FogHaze = v; reFog() end, 6)
+    mkSlider(secFog, "Glare (%)", 0, 100, 0, function(v) S.FogGlare = v; reFog() end, 7)
+    mkSlider(secFog, "Offset (%)", -100, 100, 0, function(v) S.FogOffset = v; reFog() end, 8)
+    -- Classic mode
+    mkSlider(secFog, "Classic Start", 0, 2000, 0, function(v) S.FogStart = v; reFog() end, 9)
+    mkSlider(secFog, "Classic End", 1, 5000, 500, function(v) S.FogEnd = v; reFog() end, 10)
+end)()
