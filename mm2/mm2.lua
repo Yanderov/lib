@@ -5078,7 +5078,7 @@ do
 -- ==========================================================
 -- CUSTOM ASSET FETCHER (GitHub Integration)
 -- ==========================================================
-local BASE_URL = "https://raw.githubusercontent.com/Yanderov/snpware_assets/master/"
+local BASE_URL = "https://raw.githubusercontent.com/Yanderov/lib/main/assets/"
 local function fetchCustomAsset(assetPath, subfolder)
     if not assetPath or assetPath == "" then return "" end
     local customasset = getcustomasset or getsynasset
@@ -5281,6 +5281,16 @@ for _, cursor in ipairs(CustomAssets.Cursors) do
     table.insert(cursorPaths, cursor.Path)
 end
 
+-- Two skybox sets, concatenated into the one indexed list the picker, the saved config index and
+-- the preview array all address by position. The set is carried on each entry so a picker can show
+-- a filtered view without any of that indexing changing.
+CustomAssets.Skyboxes = {}
+for _, sky in ipairs(CustomAssets.SkyboxesNormal or {}) do
+    sky.Set = "Normal"; table.insert(CustomAssets.Skyboxes, sky)
+end
+for _, sky in ipairs(CustomAssets.SkyboxesTroll or {}) do
+    sky.Set = "Troll"; table.insert(CustomAssets.Skyboxes, sky)
+end
 local skyPaths = {}
 for _, sky in ipairs(CustomAssets.Skyboxes) do
     local faces = sky and sky.Files
@@ -5517,7 +5527,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     end
     mkAction(secCustoms, "Choose Skybox", function()
         local currentSky = math.clamp(tonumber(S.SkyboxPickerIndex) or ((S.SkyboxIndex or 0) + 1), 1, #skyNames)
-        S._OpenOptionPicker("Skybox", skyNames, currentSky, function(pick)
+        S._OpenOptionPicker("Skybox (Normal + Troll)", skyNames, currentSky, function(pick)
             S.SkyboxPickerIndex = pick
             local lighting = game:GetService("Lighting")
             if pick <= 1 then
@@ -5687,7 +5697,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
     local function auditionGunSound(index)
         local path = gunPaths[index]
         if not path then return end
-        local id = fetchCustomAsset(path, "gun_sounds")
+        local id = fetchCustomAsset(path, "gun_sounds_v2")
         if id == "" then
             Notify("Gun Sound", "Could not download Custom " .. index, 3)
             return
@@ -5738,7 +5748,7 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
             local path = index and gunPaths[index]
             if not path then return end
             task.spawn(function()
-                local fetchedId = fetchCustomAsset(path, "gun_sounds")
+                local fetchedId = fetchCustomAsset(path, "gun_sounds_v2")
                 if requestId == gunSoundRequest and fetchedId ~= "" then
                     S.CustomGunSoundId = fetchedId
                     if S._RefreshGunSounds then pcall(S._RefreshGunSounds) end
