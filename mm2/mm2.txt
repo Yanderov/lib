@@ -6132,8 +6132,8 @@ end, 6)
                     beam.Segments = 12
                     beam.CurveSize0 = sign * 0.6 * length          -- bow each feather into a wing arc
                     beam.CurveSize1 = -sign * 0.2 * length
-                    beam.Width0 = 0.34 * scale
-                    beam.Width1 = 0.03 * scale
+                    beam.Width0 = 0.5 * scale
+                    beam.Width1 = 0.04 * scale
                     beam.FaceCamera = true
                     beam.LightEmission = 0.28                       -- low: less bloom
                     beam.LightInfluence = 0.4
