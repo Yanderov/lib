@@ -75,8 +75,8 @@ local S = {
     Bhop = false, BhopMax = 28, SpeedGlitch = false, AirSpeed = 50,
     ClickTP = false,
     AutoSaveCfg = true,
-    GuiTransparency = 0.15, UIBlur = 0, UIGlass = 0,
-    HudTransparency = 0.20,
+    GuiTransparency = 0,
+    HudTransparency = 0,
     HeadSit = false,
     Orbit = false, OrbitSpeed = 20, OrbitDist = 6, OrbitHeight = 0,
     Bang = false, BangSpeed = 3, Jerk = false,
@@ -449,9 +449,6 @@ local Translations = {
     -- Display aliases only: keep the original keys stable for configs, binds and search.
     ENG = {
         ["Notification Position"] = "Notify Position",
-        ["UI & HUD Transparency (%)"] = "UI/HUD Fade",
-        ["Background Blur"] = "UI Blur",
-        ["Glass Sheen (%)"] = "Glass Sheen",
         ["Custom Assets (GitHub)"] = "Custom Assets",
         ["Enable Custom Cursor / Crosshair"] = "Custom Cursor",
         ["Choose Cursor / Crosshair"] = "Select Cursor",
@@ -869,6 +866,15 @@ S._UpdateLanguage = updateLanguage
 S._UpdateTextSizes = updateTextSizes
 
 -- Synchronously pre-load presentation settings before creating the interface.
+-- No config on disk means a genuinely fresh start: stock Default theme, no custom palette and a
+-- fully opaque window. Themes.Custom is cleared here as well, because a leftover custom palette
+-- from an earlier session would otherwise still tint the stock theme through the role lookup.
+if not (readfile and isfile and isfile("MM2_Configs/_autoload.json")) then
+    S.SelectedTheme = "Default"
+    S.GuiTransparency = 0
+    S.HudTransparency = 0
+    Themes.Custom = {}
+end
 pcall(function()
     if readfile and isfile and isfile("MM2_Configs/_autoload.json") then
         local data = game:GetService("HttpService"):JSONDecode(readfile("MM2_Configs/_autoload.json"))
@@ -2526,27 +2532,8 @@ end
 -- settings scope so it retains the local scrolling container, then run it once
 -- the builder is ready.
 S._BuildTransparencySetting = function()
-    local initialTrans = math.clamp(math.round((tonumber(S.GuiTransparency) or 0.15) * 100), 0, 85)
-    mkSlider(mScroll, "UI & HUD Transparency (%)", 0, 85, initialTrans, function(v)
-        S.GuiTransparency = v / 100
-        S.HudTransparency = math.clamp((v / 100) + 0.05, 0, 0.90)
-        updateGuiTransparency()
-        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-    end, 9, true)
-    -- Blur is a Lighting BlurEffect, so it blurs the GAME behind the panel. Roblox has no
-    -- backdrop filter, so that is the only real "frosted" option; it is driven only while the menu
-    -- is open (see the RenderStepped hook that reads S.UIBlur) and removed when it is closed.
-    mkSlider(mScroll, "Background Blur", 0, 24, math.clamp(tonumber(S.UIBlur) or 0, 0, 24), function(v)
-        S.UIBlur = v
-        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-    end, 9.1, true)
-    -- Glass is a gloss gradient over the window: a highlight down the top edge fading out, which
-    -- is what reads as "glass" once the panel is already translucent.
-    mkSlider(mScroll, "Glass Sheen (%)", 0, 100, math.clamp(tonumber(S.UIGlass) or 0, 0, 100), function(v)
-        S.UIGlass = v
-        if S._ApplyGlass then pcall(S._ApplyGlass) end
-        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
-    end, 9.2, true)
+    -- UI/HUD Fade, UI Blur and Glass Sheen removed for good. The engine behind them is gone too,
+    -- so nothing can resurrect the sliders from a stale config.
 end
 
 
