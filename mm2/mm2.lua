@@ -121,6 +121,7 @@ local S = {
     SheriffSilentAimFOVEnabled = true,
     SheriffSilentAimPiercing = false,
     SheriffAntiDesync = false,
+    ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -7401,6 +7402,130 @@ do
     mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
     mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 4)
 
+    -- ===== FORCE SHOOT =====
+    -- Read off the live GunClient (Workspace.<sheriff>.Gun.GunClient): Tool.Activated fires
+    -- `Parent.Shoot:FireServer(originCF, targetCF)` with NO debounce, NO ammo check and NO reload
+    -- gate of any kind. So there is no client cooldown to strip -- the delay is entirely in
+    -- GunServer, whose bytecode does not replicate. What Force Shoot removes is everything the
+    -- client puts between your click and that remote: Tool.Activated, the `equipped` flag, and
+    -- Tool.Enabled going false while the server thinks you are reloading. It fires the same wire
+    -- format on its own interval instead.
+    --
+    -- The call stays `:FireServer` (method syntax) on purpose: that routes through the hub's
+    -- __namecall hook, so Silent Aim / Piercing still rewrite the target on every forced shot.
+    --
+    -- ponytail: the server's own rate limit is untouchable from here. If GunServer drops shots
+    -- above some rate, this fires into that drop -- raise Fire Delay until it lands.
+    local secGunFire = mkSection(Pages.Combat, "Gun Fire", 1.5)
+    secGunFire.Parent:SetAttribute("ConfigSection", "Silent Aim")
+    mkToggle(secGunFire, "Force Shoot", false, function(v) S.ForceShoot = v end, 1)
+    mkToggle(secGunFire, "Hold Mouse to Fire", true, function(v) S.ForceShootHold = v end, 2)
+    mkSlider(secGunFire, "Fire Delay (ms)", 0, 500, 60, function(v) S.ForceShootDelay = v end, 3)
+    do
+        local function heldGun()
+            local c = LP.Character
+            local function pick(container)
+                if not container then return nil end
+                for _, t in ipairs(container:GetChildren()) do
+                    if t:IsA("Tool") and t:FindFirstChild("Shoot") then return t end
+                end
+                return nil
+            end
+            -- Character first: a gun in the Backpack is not equipped, and the server rejects a shot
+            -- from a tool that is not held. Backpack is the fallback only so the auto-equip below
+            -- has something to reach for.
+            return pick(c), pick(LP:FindFirstChildOfClass("Backpack"))
+        end
+
+        -- Reproduces WeaponService.GetMouseTargetCFrame rather than requiring the module: requiring
+        -- a game ModuleScript inline costs the calling thread its access to our own GUI. Verified
+        -- against the live module -- same position to the bit.
+        --
+        -- The retry loop is the part that is easy to miss and matters: the game's WeaponRaycast
+        -- ignores WeaponPassthrough-tagged instances AND re-casts past anything with
+        -- Transparency == 1, so a shot aimed through an invisible pane targets what is behind it. A
+        -- single raycast would stop dead on the pane and send the wrong target CFrame.
+        local function mouseTargetCF()
+            local cam = workspace.CurrentCamera
+            if not cam then return nil end
+            local m = UIS:GetMouseLocation()
+            local x, y = m.X, m.Y
+            local lock = LP:FindFirstChild("PlayerScripts") and LP.PlayerScripts:FindFirstChild("MouseLock")
+            if lock and lock:GetAttribute("Enabled") == true then
+                x, y = cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2
+            end
+            local ray = cam:ViewportPointToRay(x, y)
+            local ignore = { LP.Character }
+            -- Fetched here, not hoisted to a local: this file sits on Luau's 200-register ceiling
+            -- and GetService is a cached hash lookup, which is nothing next to the raycasts below.
+            for _, v in ipairs(game:GetService("CollectionService"):GetTagged("WeaponPassthrough")) do
+                table.insert(ignore, v)
+            end
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = ignore
+            local hit
+            -- Bounded, unlike the game's `while true`: a stack of invisible parts is a hang there,
+            -- and this runs on a fire loop rather than one click.
+            for _ = 1, 12 do
+                hit = workspace:Raycast(ray.Origin, ray.Direction * 300, params)
+                if not hit or not hit.Instance or hit.Instance.Transparency ~= 1 then break end
+                table.insert(ignore, hit.Instance)
+                params.FilterDescendantsInstances = ignore
+            end
+            return CFrame.new(hit and hit.Position or (ray.Origin + ray.Direction * 300))
+        end
+
+        local mouseDown = false
+        tc(UIS.InputBegan:Connect(function(i, processed)
+            if processed then return end
+            if i.UserInputType == Enum.UserInputType.MouseButton1
+                or i.UserInputType == Enum.UserInputType.Touch then
+                mouseDown = true
+            end
+        end))
+        tc(UIS.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1
+                or i.UserInputType == Enum.UserInputType.Touch then
+                mouseDown = false
+            end
+        end))
+
+        task.spawn(function()
+            while S.Gui and S.Gui.Parent do
+                local delay = math.max(tonumber(S.ForceShootDelay) or 60, 0) / 1000
+                if not S.ForceShoot or S.Destroyed then
+                    task.wait(0.2)
+                elseif S.ForceShootHold ~= false and not mouseDown then
+                    task.wait(0.03)
+                else
+                    pcall(function()
+                        local held, stowed = heldGun()
+                        local gun = held or stowed
+                        if not gun then return end
+                        -- Equip it ourselves if it is only in the backpack. Cheap, and it is the
+                        -- difference between "nothing happens" and firing on the frame you enable it.
+                        if not held and stowed then
+                            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:EquipTool(stowed) end
+                            return
+                        end
+                        -- The server greys the tool out while it considers you reloading; Activated
+                        -- would stop firing there. We do not use Activated, and putting Enabled back
+                        -- is local-only, so the icon stays lit too.
+                        if gun.Enabled == false then gun.Enabled = true end
+                        local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                        local att = hrp and hrp:FindFirstChild("GunRaycastAttachment")
+                        local target = mouseTargetCF()
+                        if not att or not target then return end
+                        gun.Shoot:FireServer(att.WorldCFrame, target)
+                    end)
+                    task.wait(delay > 0 and delay or 0.03)
+                end
+            end
+        end)
+    end
+
     local secKnifeAim = mkSection(Pages.Combat, "Knife Aim", 2)
     secKnifeAim.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
     mkToggle(secKnifeAim, "Silent Aim", false, function(v) S.KnifeSilentAim = v end, 1, "Knife Silent Aim")
@@ -7476,6 +7601,7 @@ do
         styleSubTabActive(survivorsBtn, survivorsStroke, isSurvivors)
 
         secSheriffAim.Parent.Visible = isSheriff
+        secGunFire.Parent.Visible = isSheriff
         secKnifeAim.Parent.Visible = isMurderer
         secKnifeThrow.Parent.Visible = isMurderer
         secMurder.Parent.Visible = isMurderer
