@@ -1,4 +1,3 @@
--- Generated from the asset folders; do not hand-edit.
 local CustomAssets = {
     GunSounds = {
         { Name = "Headshot", Path = "headshot.mp3" },

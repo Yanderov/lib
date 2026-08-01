@@ -1,16 +1,3 @@
--- INERTIA launcher — pick a game, it runs.
---
--- Design rules this file follows, and the reasons they exist:
---  * One dark theme, no dividers, no status strip, no decoration that isn't a
---    game card. The old launcher's white hairline and empty side margins were
---    the whole reason it looked unfinished.
---  * Nothing is sized in fixed pixels. Every dimension is derived from the
---    viewport in fit(), so the same window works on a 5" phone, a tablet in
---    either orientation, and a 4K monitor.
---  * PC / MOBILE is a switch, not a guess. Touch detection only picks the
---    starting side; the launcher exports the choice as _G.INERTIA_MOBILE, and
---    the hub scripts build their entire interface from that flag.
-
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -46,8 +33,6 @@ local T = {
 	Bad = Color3.fromRGB(228, 100, 100),
 }
 
--- rbxthumb only serves GameIcon at 50x50 and 150x150 — any other size (the
--- 420 this used before) is silently rejected and every icon renders blank.
 local function gameIcon(id)
 	return "rbxthumb://type=GameIcon&id=" .. tostring(id) .. "&w=150&h=150"
 end
@@ -89,17 +74,12 @@ local function grad(object, topColor, bottomColor, rotation)
 	return value
 end
 
--- Touch-only devices start on the mobile build; the switch below always wins.
 local MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local REPO = "https://raw.githubusercontent.com/Yanderov/lib/refs/heads/main/"
 
--- rbxthumb://type=GameIcon needs the UNIVERSE id, not the place id — a place id
--- silently resolves to nothing, which is why every icon used to render blank.
 local Games = {
 	{ name = "Murder Mystery 2", desc = "Innocent, Sheriff, Murderer", icon = 66654135, file = "mm2/mm2" },
-	-- 6170143659 = universe of place 18199615050 ("Demonology🕯️" by Blaqk Magic
-	-- Blue). The old id pointed at a random user's empty starter place, which is
-	-- why this card showed the generic Roblox bridge screenshot.
+
 	{ name = "Demonology", desc = "Co-op ghost hunting", icon = 6170143659, file = "demonology/demonology" },
 	{ name = "Pressure", desc = "Hadal Blacksite, deep-sea horror", icon = 4367208330, file = "pressure/pressure" },
 }
@@ -129,9 +109,6 @@ local Scale = Instance.new("UIScale")
 Scale.Scale = 0.92
 Scale.Parent = Main
 
---------------------------------------------------------------------------------
--- HEADER
---------------------------------------------------------------------------------
 local Header = Instance.new("Frame")
 Header.Name = "Header"
 Header.Parent = Main
@@ -153,8 +130,6 @@ Close.Font = Enum.Font.GothamMedium
 corner(Close, 9)
 local closeStroke = stroke(Close, 0.5)
 
--- PC / MOBILE segmented switch. The sliding pill is the only moving part, so
--- the two labels never shift and the control reads instantly.
 local Switch = Instance.new("Frame")
 Switch.Parent = Header
 Switch.AnchorPoint = Vector2.new(1, 0.5)
@@ -187,9 +162,6 @@ end
 local PcOption = mkSwitchOption("PC", false)
 local MobileOption = mkSwitchOption("MOBILE", true)
 
---------------------------------------------------------------------------------
--- GAME CARDS
---------------------------------------------------------------------------------
 local List = Instance.new("ScrollingFrame")
 List.Name = "Games"
 List.Parent = Main
@@ -212,18 +184,16 @@ local function launch(entry)
 	busy = true
 	setLoading(entry, "downloading")
 	task.defer(function()
-		-- The build flag is what the hub reads to decide which interface to
-		-- construct; set it BEFORE the chunk runs, never after.
+
 		_G.INERTIA_MOBILE = MOBILE
-		-- Fetch the latest commit hash from the GitHub API. By using the exact SHA
-		-- instead of a branch name, we bypass the raw.githubusercontent.com cache entirely.
+
 		local sha = "main"
 		local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
 		if okApi and type(apiRes) == "string" then
 			local extracted = apiRes:match('"sha"%s*:%s*"([^"]+)"')
 			if extracted then sha = extracted end
 		end
-		
+
 		local payloadPath = entry.file .. (MOBILE and "_mobile" or "")
 		local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".lua"
 		local ok, source = pcall(function() return game:HttpGet(url) end)
@@ -238,10 +208,7 @@ local function launch(entry)
 			return
 		end
 		setLoading(entry, "starting")
-		-- Compile and run as separate steps.  `loadstring(source)()` collapses a
-		-- compile failure into ":<line>: attempt to call a nil value" (calling
-		-- the nil loadstring returned) — worthless for debugging.  Split, the
-		-- real compiler message reaches the console.
+
 		local chunk, compileError = loadstring(source)
 		if type(chunk) ~= "function" then
 			busy = false
@@ -309,8 +276,6 @@ for index, entry in ipairs(Games) do
 	corner(play, 10)
 	local playStroke = stroke(play, 0.5)
 
-	-- No hover scale: a 1px UIStroke on a fractionally scaled frame rasterizes
-	-- crooked (uneven thickness around the corners). Color/stroke feedback only.
 	local function hover(on)
 		tween(card, 0.14, { BackgroundColor3 = on and T.Elev or T.Card }):Play()
 		tween(cardStroke, 0.14, { Transparency = on and 0.25 or 0.5 }):Play()
@@ -329,12 +294,6 @@ for index, entry in ipairs(Games) do
 	Cards[index] = { card = card, icon = icon, name = name, desc = desc, play = play, entry = entry }
 end
 
---------------------------------------------------------------------------------
--- LOADER OVERLAY
---------------------------------------------------------------------------------
--- Compact by design: an icon, the game name, one status word and an
--- indeterminate sweep. No log, no percentage we'd have to fake, no second
--- window — it covers the launcher rather than opening beside it.
 local Overlay = Instance.new("Frame")
 Overlay.Name = "Loader"
 Overlay.Parent = Main
@@ -412,13 +371,6 @@ setLoading = function(entry, status, failed)
 	end
 end
 
---------------------------------------------------------------------------------
--- RESPONSIVE LAYOUT
---------------------------------------------------------------------------------
--- Every size in the UI is computed here from the current viewport, and fit()
--- re-runs on any viewport change — resize, rotation, split view. Switching
--- PC/MOBILE re-runs it too, which is what makes the switch visibly change the
--- whole layout instead of only the download URL.
 local function fit()
 	local camera = Workspace.CurrentCamera
 	local vp = camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -430,8 +382,7 @@ local function fit()
 	local width, height
 	if MOBILE then
 		width = math.clamp(vp.X * (portrait and 0.92 or 0.6), 260, 460)
-		-- Height comes from the CONTENT, not the screen: three game rows do not
-		-- justify a two-thirds-of-the-display sheet with a void underneath.
+
 		local contentH = headerH + #Games * 72 + (#Games - 1) * 8 + pad + 6
 		height = math.min(contentH, math.floor(vp.Y * 0.9))
 	else
@@ -466,8 +417,7 @@ local function fit()
 
 	for _, item in ipairs(Cards) do
 		if MOBILE then
-			-- Phone: a row per game — icon, text block, launch button. Tall tiles
-			-- in a horizontal strip would each be about a thumb wide.
+
 			local rowH = 72
 			item.card.Size = UDim2.new(1, 0, 0, rowH)
 			item.icon.Position = UDim2.fromOffset(10, 10)
@@ -483,8 +433,7 @@ local function fit()
 			item.play.Size = UDim2.fromOffset(70, 34)
 			item.play.TextSize = 11
 		else
-			-- Desktop: equal-width tiles, sized by scale so three cards always
-			-- fill the row exactly whatever the window width ends up being.
+
 			item.card.Size = UDim2.new(1 / #Cards, -8, 1, 0)
 			local inner = math.floor(width - pad * 2 - 8 * (#Cards - 1))
 			local tileW = math.floor(inner / #Cards)
@@ -536,9 +485,6 @@ do
 	end)
 end
 
---------------------------------------------------------------------------------
--- WINDOW
---------------------------------------------------------------------------------
 local function closeWindow()
 	if not ScreenGui.Parent then return end
 	tween(Scale, 0.16, { Scale = 0.94 }):Play()
@@ -564,8 +510,7 @@ do
 				local p, s = gui.AbsolutePosition, gui.AbsoluteSize
 				return pos.X >= p.X and pos.X <= p.X + s.X and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
 			end
-			-- Without this hit test a tap on the switch or the close button starts
-			-- a window drag instead of pressing them.
+
 			if over(Switch) or over(Close) then return end
 			dragging = true; startPointer = input.Position; startPosition = Main.Position
 			input.Changed:Connect(function()

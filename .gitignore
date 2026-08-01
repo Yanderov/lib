@@ -10,3 +10,9 @@ mm2/scratch/
 mm2/*.py
 *.py
 diff.txt
+
+# Commented masters, kept out of the published payloads on purpose.
+.src-comments/
+__pycache__/
+strip_comments.py
+PUBLISHING.md

@@ -1,17 +1,6 @@
--- Runnable check for the Anti-Desync target resolver in mm2.lua.
--- Run:  ./luau.exe test_antidesync.lua
---
--- The resolver is the one piece of the aim path with real branching, and every branch is a silent
--- wrong answer when it breaks -- a missed shot, not an error. This mirrors its logic against fake
--- position streams so a regression shows up here instead of in a round.
---
--- Keep in sync with resolveTargetPos in mm2.lua. If you change MAX_STEP / STALE_AFTER / the bounds
--- there, change them here and re-run.
-
 local MAX_STEP = 200
 local STALE_AFTER = 2.5
 
--- Minimal Vector3 stand-in: luau.exe has no Roblox types.
 local V = {}
 V.__index = V
 local function vec(x, y, z) return setmetatable({ x = x, y = y, z = z }, V) end
@@ -25,7 +14,7 @@ local ZERO = vec(0, 0, 0)
 
 local function makeResolver()
     local cache = nil
-    -- raw = replicated position, vel = replicated velocity, now = clock, origin = shooter position
+
     return function(raw, vel, now, origin)
         local inBounds = (raw - origin):Magnitude() <= 600 and math.abs(raw.y - origin.y) <= 400
         local plausible = true
@@ -86,7 +75,7 @@ end
 do
     print("a +/-7777 position spike is rejected and projected through")
     local r = makeResolver()
-    r(vec(10, 0, 0), vec(20, 0, 0), 0.0, origin)      -- walking +20 studs/s
+    r(vec(10, 0, 0), vec(20, 0, 0), 0.0, origin)
     r(vec(10.33, 0, 0), vec(20, 0, 0), 1 / 60, origin)
     local pos, why = r(vec(7777, 500, -7777), vec(0, 0, 0), 2 / 60, origin)
     check("spike not returned", why == "projected")
@@ -96,8 +85,7 @@ end
 
 do
     print("an IN-BOUNDS but impossible jump is still rejected")
-    -- This is the case the old bounds-only filter waved through: 300 studs in one frame, well
-    -- inside the map, so it looked sane and the aim followed it.
+
     local r = makeResolver()
     r(vec(0, 0, 0), vec(10, 0, 0), 0.0, origin)
     local pos, why = r(vec(300, 0, 0), vec(10, 0, 0), 1 / 60, origin)
@@ -107,8 +95,7 @@ end
 
 do
     print("an in-bounds jump becomes plausible again given enough time")
-    -- 400 studs in half a second is impossible; 400 studs in three seconds is just walking. The
-    -- step filter is per-second, so time alone is enough to re-accept it -- no stale reset needed.
+
     local r = makeResolver()
     r(vec(0, 0, 0), vec(0, 0, 0), 0.0, origin)
     local _, why1 = r(vec(400, 0, 0), vec(0, 0, 0), 0.5, origin)
@@ -120,8 +107,7 @@ end
 
 do
     print("a permanently out-of-bounds target gives up rather than aiming at a ghost")
-    -- The stale path is for frames that can never be accepted: a target sitting outside the map
-    -- entirely. Holding a two-second-old ghost forever would be worse than trusting the raw frame.
+
     local r = makeResolver()
     r(vec(0, 0, 0), vec(5, 0, 0), 0.0, origin)
     local _, why1 = r(vec(7777, 500, -7777), vec(0, 0, 0), 0.5, origin)
@@ -135,8 +121,7 @@ do
     print("a desynced VELOCITY is never cached as the projection vector")
     local r = makeResolver()
     r(vec(0, 0, 0), vec(0, 0, 0), 0.0, origin)
-    -- Position is fine, velocity is a 7777 spike. If that got cached, the next projection would
-    -- throw the aim point hundreds of studs away.
+
     r(vec(1, 0, 0), vec(7777, 7777, 7777), 1 / 60, origin)
     local pos = r(vec(9999, 0, 0), vec(0, 0, 0), 2 / 60, origin)
     check("projection stays sane", (pos - vec(1, 0, 0)):Magnitude() < 10)
@@ -146,7 +131,7 @@ do
     print("projection is capped at what a player could actually walk")
     local r = makeResolver()
     r(vec(0, 0, 0), vec(0, 0, 0), 0.0, origin)
-    r(vec(3, 0, 0), vec(180, 0, 0), 1 / 60, origin)   -- fast but legal
+    r(vec(3, 0, 0), vec(180, 0, 0), 1 / 60, origin)
     local pos = r(vec(8000, 0, 0), vec(0, 0, 0), 2.0, origin)
     local travelled = (pos - vec(3, 0, 0)):Magnitude()
     check("never exceeds MAX_STEP * age", travelled <= MAX_STEP * (2.0 - 1 / 60) + 1e-6)

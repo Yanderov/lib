@@ -1,10 +1,5 @@
--- DEMONOLOGY - MOBILE BUILD (generated, do not edit by hand).
--- Identical source to demonology/demonology.lua with the build flag forced on.
--- Regenerate after ANY edit to the source:   .\build_mobile.ps1
 _G.INERTIA_MOBILE = true
---=====================================================================
---// DEMONOLOGY - evidence tracker & automation (shared INERTIA UI)
---=====================================================================
+
 local RS = game:GetService("RunService")
 local PS = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
@@ -14,30 +9,17 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local plr = PS.LocalPlayer
 local MenuKeybind = Enum.KeyCode.Insert
 
---=====================================================================
---// BUILD MODE (PC / MOBILE)
---=====================================================================
--- The launcher's PC/MOBILE switch sets _G.INERTIA_MOBILE before running this
--- file, and that flag always wins: auto-detect alone is wrong on tablets with a
--- keyboard, on emulators and on touchscreen PCs.  Without a launcher we fall
--- back to "touch, no keyboard".
 local MOBILE = _G.INERTIA_MOBILE
 if MOBILE == nil then MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled end
 MOBILE = MOBILE == true
 
--- Every measurement that has to differ between a mouse pointer and a fingertip
--- lives here, so the layout code below stays ONE code path instead of two
--- parallel UIs.  Touch targets follow the 44px minimum.  Window sizes are Scale
--- based on mobile (see relayout), never fixed pixels.
 local M = MOBILE and {
 	rowH = 40, rowFont = 13, rowGap = 8,
 	trackW = 48, trackH = 26, knob = 20,
 	sliderH = 58, barH = 10, grab = 18,
 	btnH = 42, cycleW = 120, cycleH = 30,
 	titleH = 56, navH = 56, navItemW = 84,
-	-- Mobile navigation is a LEFT ICON RAIL, not a bottom strip: the compact
-	-- panel is short, so vertical space is the scarce axis and a bottom bar
-	-- would eat it.  railItemH keeps each target above the 44px touch minimum.
+
 	railW = 62, railItemH = 48,
 	sectionPad = 10,
 } or {
@@ -53,13 +35,11 @@ local function Events()
 	return ReplicatedStorage:WaitForChild("Events")
 end
 
--- Forward Declarations
 local Main
 local cleanESP
 local makeElementDraggable
 local mouseUnlockToggle
 
--- Shared State
 local S = {
 	Connections = {},
 	CheckSpeed = 1,
@@ -172,7 +152,6 @@ local F  = Enum.Font.Gotham
 local FM = Enum.Font.GothamMedium
 local FB = Enum.Font.GothamBold
 
--- UI Helpers
 local function Corner(i, r)
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, r or 6)
@@ -214,7 +193,6 @@ local function Shadow(i, transparency)
 	return s
 end
 
--- Lucide navigation icons (ISC): https://github.com/lucide-icons/lucide
 local NAV_ICON_DATA = {
 	["eye"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAC+klEQVRoge2YwU8TQRTGvwWCxEQu9VLTyAkPeCF6ABKTEjnI34EHCByoV2uix14ketMLfwFq8A9ADAcBb8iJg6AmkBAhJBATG9Kfh50mzXS2O20XEN0v2bTbfd/33kxn3r55UooUKVKk+J8RJCECXJU0LOme+bwhKSPpujH5KelA0q6kVUkrktaCIPiVhP+WAHQC48AboEzzKBvuONB5noF3AVPAtxaCjsKO0ew66+DHgC8JBm5jAxhrJiavPQBckfRS0mSESUXh2v4kaU3SlsI1f2CeZ8x1S9KQpBGFe6UjQu+1pNkgCH77xBcXfB/wOWLGtoHHQK4F3ZzhbkdorwM32w3+NrDvED8EZoHuthyEPrqN1qHDzz4w0KpwP7DnEF0EMu0G7vCXMdo29oD+ZsVywA9LqGL+8qh1W+VmgRKwSZgqy+Z7CcjGcDuMj4rl+zu+y5Qwv390zMREDC8AZoATB7eKE2PTMHkAEw7uMj7vC+CJg1zwCH6uQeA25jwG8cjBK8YFPwicWqR5j0HPNBF8FdMeuvMW5xQYbER4bxG+AtdinGSpXzZrQB7oMVfe/FaLY+L3RC/1aXYxyviuY5bue8xSyRF83Vol3Fv2IEoe+mOOuO64DN9ZRh/ixA1v0+LlG9jmLdtNTx/LFu+ty+jIMhr1FLcr0Z4Gtj2WbdnTx6jFO6o+a5jTLwNqB2AvmaeeGlvW/VADW/uZzY3CM+t+qc6Cy76JjbErjfbGOPg70qghXO4XmSGdRynxnLMoJQyxnWJumnBpROHY2MQF/9DB9SvmjECOsIStRQUocvbldJF2yukasYs40NhJBGCXZg80NaIDRB8pCyR3pCyQ9JGyxkEf4QHbhW3zl7d6qC/S5qG+mbbKC0lTESbVtsqq/NoqwwpbK1H+X0kqJNJWqQXhW3EjYsaSwAYeb/92B1FtLe4kGPgOMMk590g7gQfAAq03dxeMRstVcZLt9SGF7fURSVm52+t7CtuPK5LWL7S9niJFihQp/gn8AXDP9oufq13tAAAAAElFTkSuQmCC",
 	["user-round"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAACtklEQVRoge2YP2/TQBjGX6NmKZHo1KUZTLsgkZ1/G5WCBBISYSISTPQDwAwfofxZygQrHQCJwhiVmU9AWLJVIplQCCURlX4MOUvuGzuxz2e7FXkkS3mdu+d53vPd6/OJLLDA/w3PJRmwIiK3RaQpIhdEZM38dSAiHRH5ICJ7nuf9dKmbGcAy8BQYMh9D03a5bN8iIgLUgW4C4xpdoF62+U1gYGE+wADYLMt8PcZ8G7gH+EDFXL65145JotgnwWTO62nTBxoJ+jZM2zC6FLkmmCzCMHqAn6K/H5HEkxwtHxNfYbrazB35CJ6G4hgC5/LwrIUfKOF2Bi69Ju6n5ThjodtU8WsLjgBvVHw3A1cyAB01an4GLl9xfXNoNVb0lxKtZOCqKK5BWg6bKXSiYJPAgYrXIlslg+6ruefCJoGOiq9YcAS4quLvGbiS4aSVURtRVy+yG4qjmBeZEddbiX6ackqZWwlj4HRv5oyRWdvpFtPb6Rbx2+mLhZoPJeHig+Z6KeZDSbRI9i2sMQRaZRpfB3YzjH6AXWC9aPNbwNiB+QBjYKsI40vAyxgTR8A+8Ai4BmwAVXNtmHuPTZujGI4XwFKe5vciREfANrCagmvV9BlF8H3MJQkzOhpfgFoGzprh0Hju0nsw5zV2yPAtEOKuAK8i+B+68B5UG71gd5yQH9fRSYyB8y6IdancdzHyETqViOn0NivpZUU4IsOcT6BXY3phX8pC+F6RbTv0G6f5TGm+syU6CxyGiP6SolTagkmJDb8nfmOzUwWaeu7n4DdOW6+FO3FtZ30T31TxZzf2EuGTim/FNZyVgC5hX63tpIfW8uMazkpAH3n8sHVjgZ6K0x/dMH0CV3XjLZF2VWnHntjNegKHod99z/OG7izOhtHqh279SU1iqlDPXPpEOneUrb/AAqcF/wBeUYgm6DTGZQAAAABJRU5ErkJggg==",
@@ -318,8 +296,6 @@ local function MakeNavIcon(parent, kind)
 	return { slot = slot, image = image }
 end
 
-
--- Root GUI Setup
 local SG = Instance.new("ScreenGui")
 SG.Name = "Demonology"
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -340,15 +316,13 @@ else
 end
 S.Gui = SG
 
--- Toast Notification System
 local NHost = Instance.new("Frame")
 NHost.Name = "Notifs"
 NHost.Parent = SG
 NHost.AnchorPoint = Vector2.new(0.5, 0)
 NHost.BackgroundTransparency = 1
 NHost.BorderSizePixel = 0
--- Mobile pushes the toast column below the Dynamic Island (top-center, on by
--- default there) — at 0.04 the two stacked on top of each other.
+
 NHost.Position = MOBILE and UDim2.new(0.5, 0, 0, 62) or UDim2.new(0.5, 0, 0.04, 0)
 NHost.Size = UDim2.new(0, 360, 0, 240)
 NHost.ZIndex = 900
@@ -433,8 +407,7 @@ function UIStyle:ApplyHUDScale(scale)
 				scaler.Name = "HUDUserScale"
 				scaler.Parent = object
 			end
-			-- MobileFit shrinks fixed-pixel HUDs (the Dynamic Island foremost)
-			-- to a narrow phone screen; 1 everywhere else.
+
 			scaler.Scale = S.HUDScale * (tonumber(object:GetAttribute("MobileFit")) or 1)
 		end
 	end
@@ -520,8 +493,7 @@ local function Notify(title, msg, dur, style)
     local fromTop = notificationPosition:sub(1, 3) == "Top"
     local slideX = fromLeft and -18 or (fromRight and 18 or 0)
     local slideY = (not fromLeft and not fromRight) and (fromTop and -12 or 12) or 0
-    -- A fixed 352px toast hangs off the edge of a narrow phone screen; follow
-    -- the viewport there instead.
+
     local toastWidth = 240
     if MOBILE then
         local camera = workspace.CurrentCamera
@@ -802,13 +774,8 @@ local function NotifyToggle(label, enabled)
     Notify(label, enabled and 'Enabled' or 'Disabled', 1.8)
 end
 
--- Main Window Shell Setup.  WW/WH is the DESKTOP design size; the mobile build
--- never uses a pixel size — expandedSize is Scale-based and recomputed by
--- relayout() on every viewport/orientation change.
 local WW, WH = 900, 580
--- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
--- stay visible and playable around it.  relayout() re-proportions this per
--- orientation immediately; these are just the first-frame values.
+
 local expandedSize = MOBILE and UDim2.fromScale(0.86, 0.56) or UDim2.fromOffset(WW, WH)
 Main = Instance.new("Frame")
 Main.Name = "Main"
@@ -826,9 +793,7 @@ local mainSt = Stroke(Main, T.Bd, 1, 0.1)
 Shadow(Main, 0.15)
 Grad(Main, T.White:Lerp(T.Accent, 0.10), T.White:Lerp(T.Elev, 0.06), 90)
 if MOBILE then
-	-- The MaxSize is what actually keeps the panel compact: on a tablet a pure
-	-- Scale size would still cover most of the screen.  MinSize keeps it usable
-	-- on a small phone — below ~300 wide the rail + a row no longer fit.
+
 	local limit = Instance.new("UISizeConstraint")
 	limit.MaxSize = Vector2.new(540, 430)
 	limit.MinSize = Vector2.new(300, 260)
@@ -888,11 +853,7 @@ local function mkWinBtn(txt, xOff)
 	return b
 end
 local CloseBtn = mkWinBtn("X", MOBILE and -14 or -12)
--- Desktop: minimize.  Mobile: minimize is pointless on a sheet you close
--- outright, so the slot becomes the Interface button — the profile card that
--- opened it lives in the desktop sidebar, which mobile drops.
 
--- Drag Utility
 makeElementDraggable = function(frame, handle)
 	handle = handle or frame
 	local dragging, dragInput, dragStart, startPos, startOrigin
@@ -902,9 +863,7 @@ makeElementDraggable = function(frame, handle)
 				dragging = true
 				dragStart = input.Position
 				startPos = frame.Position
-				-- Top-left at drag start, in parent space: the clamp below offsets
-				-- from this fixed origin, not from the live (already moved)
-				-- AbsolutePosition, or the delta would compound every frame.
+
 				startOrigin = frame.Parent and (frame.AbsolutePosition - frame.Parent.AbsolutePosition) or nil
 				local conn
 				conn = input.Changed:Connect(function()
@@ -925,12 +884,7 @@ makeElementDraggable = function(frame, handle)
 	tc(UIS.InputChanged:Connect(function(input)
 		if input == dragInput and dragging then
 			local delta = input.Position - dragStart
-			-- On touch, anything dragged past the screen edge is unrecoverable (no
-			-- window list to get it back) and the spot is persisted by autosave — so
-			-- keep every draggable fully on screen and store the result as pure Scale,
-			-- which also survives a rotation.  Clamping the TOP-LEFT and converting
-			-- back through the frame's own AnchorPoint keeps this correct for the
-			-- centre-anchored Main window and the corner-anchored HUD panels alike.
+
 			local host = MOBILE and startOrigin and frame.Parent and frame.Parent.AbsoluteSize
 			if host and host.X > 0 and host.Y > 0 then
 				local size = frame.AbsoluteSize
@@ -951,9 +905,6 @@ end
 
 makeElementDraggable(Main, TBar)
 
--- Navigation is a vertical rail on BOTH builds — desktop labelled, mobile a
--- narrow icon rail.  Same instance and the same tab buttons downstream; only
--- the width and the item shape differ.
 local SB = Instance.new("ScrollingFrame")
 SB.Name = "Sidebar"
 SB.Parent = Main
@@ -989,15 +940,11 @@ SBLayout.Parent = SB
 SBLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SBLayout.FillDirection = Enum.FillDirection.Vertical
 SBLayout.HorizontalAlignment = MOBILE and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Left
--- Centering is for the mobile strip only; the desktop list must stay top-aligned
--- or the profile card and tabs drift to the middle of the sidebar.
+
 SBLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 SBLayout.Padding = UDim.new(0, MOBILE and 6 or 5)
 Pad(SB, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
 
--- The profile card is desktop sidebar furniture: a bottom tab bar has room for
--- tabs and nothing else, so mobile reaches Interface settings through the
--- header gear instead.
 if not MOBILE then
 local ProfileButton = Instance.new("TextButton")
 ProfileButton.Name = "Profile"; ProfileButton.Parent = SB; ProfileButton.LayoutOrder = -100
@@ -1042,7 +989,7 @@ ContentArea.Name = "Content"
 ContentArea.Parent = Main
 ContentArea.BackgroundTransparency = 1
 ContentArea.BorderSizePixel = 0
--- Mobile gets the full width (no sidebar to clear); the tab bar below navigates.
+
 ContentArea.Position = MOBILE and UDim2.new(0, M.railW + 12, 0, M.titleH) or UDim2.new(0, 164, 0, 48)
 ContentArea.Size = MOBILE and UDim2.new(1, -(M.railW + 18), 1, -(M.titleH + 8)) or UDim2.new(1, -172, 1, -48)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -1065,10 +1012,7 @@ local function mkPage(name)
     sf.Size = UDim2.new(1, 0, 1, 0)
     sf.AutomaticSize = Enum.AutomaticSize.None
     sf.Visible = false
-    -- Tab header, shown ONLY while searching so the combined multi-tab results list is labelled by
-    -- which tab each group of settings came from (applySearch appends the match count, e.g.
-    -- "COMBAT  ·  4"). Styled as a subtle pill so it separates the groups instead of blending into
-    -- the section titles. Hidden during normal single-tab browsing.
+
     local hdr = Instance.new("TextLabel")
     hdr.Name = "SearchHdr"
     hdr.Parent = sf
@@ -1094,9 +1038,7 @@ local function mkSBItem(name, iconKind, page, order)
 	btn.Name = name
 	btn.Parent = SB
 	btn.LayoutOrder = order
-	-- Offset height, not Scale: inside a ScrollingFrame a Scale height measures
-	-- the frame, not the padded content box, so a Scale=1 pill would overflow
-	-- the tab bar by exactly the padding and drag the canvas with it.
+
 	btn.Size = MOBILE and UDim2.new(0, M.railW - 12, 0, M.railItemH) or UDim2.new(1, 0, 0, 34)
 	btn.AutoButtonColor = false
 	btn.BackgroundTransparency = 1
@@ -1105,22 +1047,18 @@ local function mkSBItem(name, iconKind, page, order)
 	Corner(btn, MOBILE and 12 or 9)
 	local bar = Instance.new("Frame")
 	bar.Parent = btn
-	-- Active marker: a short accent bar on the leading edge in both builds.
+
 	bar.Size = MOBILE and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 20)
 	bar.Position = MOBILE and UDim2.new(0, -4, 0.5, -12) or UDim2.new(0, 0, 0.5, -10)
 	bar.BackgroundColor3 = T.Accent
 	bar.BorderSizePixel = 0
 	bar.Visible = false
 	Corner(bar, 2)
-	-- Icons on BOTH builds: every current tab has a glyph now, so the mobile rail
-	-- can lead with the icon instead of falling back to a uniform text strip.
-	-- Lay the row out from the CAPABILITY, not from whether this call succeeded
-	-- (see the same note in the other hubs): a glyph fetched late must not shift
-	-- the caption relative to its neighbours.
+
 	local navIcons = MakeNavIcon ~= nil
 	local icon = MakeNavIcon(btn, iconKind)
 	if icon and MOBILE then
-		-- Rail item: glyph centred near the top, caption underneath it.
+
 		icon.slot.AnchorPoint = Vector2.new(0.5, 0)
 		icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
 		icon.slot.Size = UDim2.fromOffset(24, 24)
@@ -1130,8 +1068,7 @@ local function mkSBItem(name, iconKind, page, order)
 	label.Parent = btn
 	label.BackgroundTransparency = 1
 	if MOBILE then
-		-- getcustomasset is missing on some executors, so the icon can be nil; the
-		-- caption then owns the whole pill instead of leaving a gap.
+
 		label.Position = navIcons and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
 		label.Size = navIcons and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
 		label.TextSize = navIcons and 9 or 11
@@ -1193,14 +1130,12 @@ mkSBItem("Main", "ghost", Pages["Main"], 1)
 mkSBItem("Visuals", "eye", Pages["Visuals"], 2)
 mkSBItem("Player", "user-round", Pages["Player"], 3)
 mkSBItem("Settings", "settings-2", Pages["Settings"], 4)
--- Floating buttons are a touch feature, so the tab that manages them only
--- exists on the mobile build.
+
 if MOBILE then
 	mkPage("Buttons")
 	mkSBItem("Buttons", "panels-top-left", Pages["Buttons"], 9)
 end
--- Desktop sidebar furniture: inside the mobile tab STRIP this card renders as
--- a squashed sliver at the end of the scroll and overlaps the sheet corner.
+
 if not MOBILE then
 	local card = Instance.new("Frame")
 	card.Name = "QuickStatus"; card.Parent = SB; card.LayoutOrder = 100
@@ -1262,7 +1197,6 @@ if not MOBILE then
 end
 refreshSB()
 
--- Section & Control Builders
 local ConfigControls = {}
 openAppearance = (function()
 	local panel = Instance.new("Frame")
@@ -1430,17 +1364,6 @@ tc(UIS.InputBegan:Connect(function(input, processed)
 	end
 end))
 
---=====================================================================
---// FLOATING BUTTONS (mobile build only)
---=====================================================================
--- One draggable on-screen button per function, spawned from the "BTN" chip on
--- the function's row or from the Buttons tab.  Tap = fire the same trigger the
--- desktop keybind fires; drag = move it; the position is saved as SCALE, so a
--- layout survives a re-inject, a rotation and a different phone.
---
--- Controls register themselves through S._floatRegister, which is the same
--- callback the keybind entry already carries — nothing is declared twice and
--- the two builds cannot drift apart.
 local FloatReg = {}
 local FloatPos = {}
 do
@@ -1449,8 +1372,7 @@ do
 	FloatHost.Parent = SG
 	FloatHost.BackgroundTransparency = 1
 	FloatHost.Size = UDim2.fromScale(1, 1)
-	-- Above the draggable HUD windows (ZIndex 851-866) or the buttons land
-	-- underneath them and become untappable; below the toast column (900).
+
 	FloatHost.ZIndex = 895
 	FloatHost.Visible = MOBILE
 	S._floatHost = FloatHost
@@ -1458,10 +1380,6 @@ do
 	local Buttons = {}
 	local spawnIndex = 0
 
-	-- Binds are registered freely by each feature, so there is no icon per bind.
-	-- Keyword-map onto the embedded nav set instead: a glyph reads far better than
-	-- wrapped shouty text inside a 48px circle.  First match wins, so the more
-	-- specific words are listed first.
 	local FLOAT_ICON_RULES = {
 		{ "menu", "panels-top-left" },
 		{ "esp", "scan-eye" },
@@ -1547,8 +1465,7 @@ do
 
 		local saved = FloatPos[id]
 		if type(saved) ~= "table" or type(saved.x) ~= "number" or type(saved.y) ~= "number" then
-			-- Fresh buttons stack down the left edge instead of landing on top of
-			-- each other; the user drags them wherever they want.
+
 			spawnIndex = spawnIndex + 1
 			saved = { x = 0.08, y = math.min(0.22 + (spawnIndex - 1) * 0.12, 0.9) }
 			FloatPos[id] = saved
@@ -1580,9 +1497,6 @@ do
 		dot.BorderSizePixel = 0
 		Corner(dot, 99)
 
-		-- Glyph between the state dot and the caption.  Nil when the executor has no
-		-- getcustomasset, in which case the caption keeps the old full-height layout
-		-- instead of leaving a hole where the icon would have been.
 		local glyph = MakeNavIcon and MakeNavIcon(frame, floatIconKind(id, entry.label))
 		if glyph then
 			glyph.slot.AnchorPoint = Vector2.new(0.5, 0)
@@ -1614,9 +1528,6 @@ do
 		local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
 		Buttons[id] = record
 
-		-- Drag vs tap: anything under 8px of travel is a tap.  Without the
-		-- threshold every tap that wobbles a pixel would move the button and
-		-- never fire, which is the usual "my button does nothing" bug on touch.
 		local pressPos, dragging, moveConn, endConn
 		local function finish()
 			if moveConn then moveConn:Disconnect(); moveConn = nil end
@@ -1649,8 +1560,7 @@ do
 		tc(frame.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.Touch
 				and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-			-- A second finger landing on the same button would otherwise orphan
-			-- the first press's connections, leaking one per multi-touch.
+
 			if moveConn then moveConn:Disconnect(); moveConn = nil end
 			if endConn then endConn:Disconnect(); endConn = nil end
 			pressPos, dragging = input.Position, false
@@ -1691,8 +1601,7 @@ do
 
 	S._floatSet = function(id, on)
 		if not MOBILE then return end
-		-- The menu button is permanent: on a device with no keyboard, removing it
-		-- would leave no way to reopen the hub.
+
 		if id == "ui:menu" and not on then return end
 		if on then
 			createButton(id)
@@ -1707,7 +1616,6 @@ do
 
 	S._floatToggle = function(id) S._floatSet(id, not S._floatIsOn(id)) end
 
-	-- Config restore hands us the whole saved layout at once.
 	S._floatApplyMap = function(map)
 		if not MOBILE then return end
 		local keepMenu = FloatPos["ui:menu"]
@@ -1721,8 +1629,7 @@ do
 				end
 			end
 		end
-		-- A config saved before the menu button existed must not strand the user
-		-- without a way back into the hub.
+
 		if FloatReg["ui:menu"] then
 			if not FloatPos["ui:menu"] then FloatPos["ui:menu"] = keepMenu end
 			createButton("ui:menu")
@@ -1735,7 +1642,6 @@ do
 		for id in pairs(Buttons) do S._floatSet(id, false) end
 	end
 
-	-- The chip that sits at the right edge of a control row on mobile.
 	S._floatChip = function(parent, id, rightOffset)
 		local chip = Instance.new("TextButton")
 		chip.Name = "Float_" .. id
@@ -1767,8 +1673,6 @@ do
 		return chip
 	end
 
-	-- Active-state dots: a cheap poll over the handful of live buttons rather
-	-- than a per-frame loop over the whole registry.
 	if MOBILE then
 		task.spawn(function()
 			while FloatHost.Parent do
@@ -1780,14 +1684,13 @@ do
 			local size = buttonSize()
 			for _, button in pairs(Buttons) do
 				button.frame.Size = UDim2.fromOffset(size, size)
-				-- Keep the caption in step with the glyph layout chosen in createButton.
+
 				button.label.TextSize = button.glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
 			end
 		end))
 	end
 end
 
--- Shared subtab helpers; optional width overrides support three-column bars.
 local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
     btn.Name = text
     btn.Parent = bar
@@ -1801,8 +1704,7 @@ local function mkSubTabBtn(bar, btn, text, order, widthScale, gapOffset)
     Corner(btn, 6)
     return Stroke(btn, T.Bd, 1, 0.4)
 end
--- Deduped: Blink and InvisibleFE each declared their own identical "disconnect every connection in
--- this list" closure. One shared helper, called as `conns = disconnectAll(conns)`.
+
 local function disconnectAll(conns)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     return {}
@@ -1839,8 +1741,6 @@ local function relayoutPage(page)
         top = top + subBarHeight + gap
     end
 
-    -- Section cards carry an "Inner" frame (mkSection); stack them in a masonry
-    -- of 1 column on phones, up to 3 on wide desktop windows.
     local cards = {}
     for _, child in ipairs(page:GetChildren()) do
         if child:IsA("Frame") and child.Visible and child ~= subBar and child:FindFirstChild("Inner") then
@@ -1879,14 +1779,9 @@ local function relayoutPage(page)
     page.Size = UDim2.new(1, 0, 0, requiredHeight)
 end
 local function refreshPageLayouts()
-    -- Clear the queued flag only after the whole pass: relayoutPage writes to every
-    -- card, re-firing each card's AbsoluteSize watcher; a still-set flag makes those
-    -- self-triggered signals no-ops instead of re-entrant task.defer calls.
+
     ContentArea.ScrollingEnabled = true
-    -- Only the page(s) actually on screen need laying out.  Sorting and
-    -- repositioning every card on every page each pass — re-queued by any live
-    -- label that changes size — is the bulk of the "menu is laggy" cost.  Hidden
-    -- pages collapse to zero height so they cannot inflate the scroll canvas.
+
     for _, page in pairs(Pages) do
         if page.Visible then
             relayoutPage(page)
@@ -1928,7 +1823,6 @@ end
 S._QueuePageLayout = queuePageLayout
 queuePageLayout()
 end
-
 
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")
@@ -2011,7 +1905,7 @@ local function mkStat(parent, label, order)
 		val.Text = tostring(text)
 		val.TextColor3 = color or T.White
 	end
-	
+
 	return api
 end
 
@@ -2073,7 +1967,7 @@ local function mkEvidenceRow(parent, label, order)
 			lbl.TextColor3 = T.Tx2
 		end
 	end
-	
+
 	return api
 end
 
@@ -2091,7 +1985,7 @@ local function mkToggle(parent, label, default, callback, order, noPersistState,
 	lbl.Parent = row
 	lbl.BackgroundTransparency = 1
 	lbl.Position = UDim2.new(0, 8, 0, 0)
-	-- Reserve the switch plus the chip beside it, whichever build we're on.
+
 	lbl.Size = UDim2.new(1, -(M.trackW + (MOBILE and 74 or 58)), 1, 0)
 	lbl.Font = F
 	lbl.TextSize = M.rowFont
@@ -2179,9 +2073,6 @@ local function mkToggle(parent, label, default, callback, order, noPersistState,
 		TweenService:Create(row, TweenInfo.new(0.12), { BackgroundTransparency = 1 }):Play()
 	end)
 
-	-- Keybinds are a DESKTOP-only control surface; on mobile the same trigger is
-	-- reached through a floating on-screen button instead, registered here so
-	-- both builds share one definition of "what this control does".
 	local entry = { label = label, bindKey = not MOBILE and defaultBind or nil, trigger = toggle }
 	if defaultBind and not MOBILE then
 		BindReg[defaultBind] = entry
@@ -2233,7 +2124,7 @@ local function mkToggle(parent, label, default, callback, order, noPersistState,
 			end
 		end,
 	})
-	
+
 	return api
 end
 
@@ -2264,8 +2155,7 @@ local function mkAction(parent, label, callback, order)
 		if not PendingBind then callback() end
 	end)
 	if MOBILE then
-		-- No right click on a touch screen: the row's chip spawns the on-screen
-		-- button for this action instead of asking for a key.
+
 		local floatId = "action:" .. cfgId(parent, label)
 		S._floatRegister(floatId, label, callback, nil)
 		S._floatChip(btn, floatId, -8)
@@ -2393,10 +2283,7 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 			if S._RequestAutoSave then S._RequestAutoSave() end
 		end
 	end
-	-- Touch counts as a drag here.  Matching only MouseButton1/MouseMovement (as
-	-- this did) makes every slider dead on a phone — you could see the bar but
-	-- never move it.  Freezing the page scroll for the drag is the other half:
-	-- a touch drag inside a ScrollingFrame scrolls the page as well.
+
 	frame.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1
 			or i.UserInputType == Enum.UserInputType.Touch then
@@ -2431,7 +2318,7 @@ local function mkSlider(parent, label, min, max, def, callback, order)
 		get = function() return val end,
 		set = api.set,
 	})
-	
+
 	return api
 end
 
@@ -2521,7 +2408,7 @@ local function mkCycle(parent, label, options, labels, default, callback, order)
 		get = function() return options[idx] end,
 		set = setByValue,
 	})
-	
+
 	return api
 end
 
@@ -2590,13 +2477,12 @@ local function mkDragHUD(name, pos, size, z)
 	ct.Position = UDim2.new(0, 10, 0, 33)
 	ct.Size = UDim2.new(1, -20, 1, -40)
 	ct.ZIndex = z + 1
-	
+
 	makeElementDraggable(f, tb)
 	HUDEls[name] = { frame = f, content = ct, setLocked = function(v) end }
 	return HUDEls[name]
 end
 
--- ESP Tags Setup
 S.EspTags = {}
 local function centerOffsetFor(adornee)
 	if not adornee:IsA("Model") then return Vector3.new(0, 0, 0) end
@@ -2724,7 +2610,6 @@ do
 	end))
 end
 
--- Config Persistence
 do
 	local CONFIG_DIR = "DemonologyConfig"
 	local CONFIG_FILE = CONFIG_DIR .. "/settings.json"
@@ -2784,7 +2669,6 @@ do
 	end
 end
 
--- Window Controls (Minimize / Close)
 local minimized = false
 
 local function cleanupAndClose()
@@ -2833,33 +2717,27 @@ local function requestClose()
 	cleanupAndClose()
 end
 CloseBtn.MouseButton1Click:Connect(function()
-	-- Mobile: X only hides the sheet (the floating MENU button brings it back).
-	-- Destroying the hub here would also destroy that button, leaving a touch
-	-- user with no way to reopen anything short of re-injecting.
+
 	if MOBILE then
-		-- setMenuOpen is declared further down; by the time a click can happen
-		-- it has published itself on S.
+
 		if S._SetMenuOpen then S._SetMenuOpen(false) end
 		return
 	end
 	requestClose()
 end)
 
--- The menu starts hidden and is toggled explicitly with Insert.
 local MenuOpen = false
 local menuAnimating = false
 local function setMenuOpen(open)
 	if menuAnimating or MenuOpen == open then return end
 	menuAnimating = true
 	MenuOpen = open
-	-- Floating buttons hide while the sheet is open: they are gameplay
-	-- controls, and stacked on top of the menu they just cover its rows.
+
 	if MOBILE and S._floatHost then S._floatHost.Visible = not open end
 	if open then
 		Main.Visible = true
 		if MOBILE then
-			-- Droplet, outwards: the window is spat out of the Dynamic Island,
-			-- growing from a bead at the island back to where it was left.
+
 			Main.Position = S._islandPoint and S._islandPoint() or UDim2.new(0.5, 0, 0, 34)
 			Main.Size = UDim2.new(0, 0, 0, 0)
 			TweenService:Create(Main, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -2874,7 +2752,7 @@ local function setMenuOpen(open)
 		tw.Completed:Wait()
 	else
 		if MOBILE then
-			-- Droplet, inwards: shrink and slide into the island, then hide.
+
 			S._menuHome = Main.Position
 			TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 				Position = S._islandPoint and S._islandPoint() or UDim2.new(0.5, 0, 0, 34)
@@ -2909,13 +2787,6 @@ tc(UIS.InputBegan:Connect(function(input)
 	end
 end))
 
---=====================================================================
---// RESPONSIVE LAYOUT
---=====================================================================
--- Runs on every viewport change (resize, rotation, split view).  Nothing in the
--- UI may assume a screen size: the desktop window shrinks to fit a small
--- monitor, the mobile sheet re-proportions between portrait and landscape, and
--- the toast column follows the screen instead of a fixed 360px.
 do
 	local function relayout()
 		local camera = workspace.CurrentCamera
@@ -2924,17 +2795,14 @@ do
 		local portrait = vp.Y >= vp.X
 
 		if MOBILE then
-			-- Compact floating panel, capped by the UISizeConstraint above.  Landscape
-			-- (how most phones are held in Roblox) stays deliberately narrow so the
-			-- play area beside it is usable; portrait can afford more width.
+
 			expandedSize = portrait and UDim2.fromScale(0.86, 0.56) or UDim2.fromScale(0.54, 0.78)
 		else
 			WW = math.min(900, math.floor(vp.X - 40))
 			WH = math.min(580, math.floor(vp.Y - 40))
 			expandedSize = UDim2.fromOffset(WW, WH)
 		end
-		-- Only resize a window that is actually open: writing Size while it is
-		-- closed would pop the collapsed (0,0) window back onto the screen.
+
 		if Main.Visible and not minimized then Main.Size = expandedSize end
 		NHost.Size = UDim2.fromOffset(
 			math.clamp(math.floor(vp.X * (MOBILE and 0.3 or 0.4)), MOBILE and 150 or 220, MOBILE and 210 or 360), 240)
@@ -2951,7 +2819,6 @@ do
 	end))
 end
 
--- Mouse Unlock overrides
 do
 	local capturedBehavior = nil
 	local function forceMouseDefault()
@@ -2971,14 +2838,11 @@ do
 		end
 	end
 	tc(RS.RenderStepped:Connect(forceMouseDefault))
-		
+
 	S.MouseUnlockCleanup = function()
 	end
 end
 
-------------------------------------------------------------------
---// GAME LOGIC
-------------------------------------------------------------------
 S.OldLighting = {
 	Ambient = Lighting.Ambient,
 	OutdoorAmbient = Lighting.OutdoorAmbient,
@@ -3097,7 +2961,6 @@ local function UseHauntedMirror()
 	Notify("Haunted Mirror", "Finished", "success", 2)
 end
 
--- Sound Muters
 local function makeSoundMuter(matchFn)
 	local original = {}
 	local on = false
@@ -3125,7 +2988,7 @@ local function makeSoundMuter(matchFn)
 			table.clear(original)
 		end
 	end
-	
+
 	return api
 end
 local MusicMuter = makeSoundMuter(function(snd)
@@ -3154,7 +3017,6 @@ S.UnmuteAllOnClose = function()
 	AllSoundMuter.set(false)
 end
 
--- Teleports
 local function TpOutside()
 	local ok, err = pcall(function()
 		local pegboard = workspace:WaitForChild("Map"):WaitForChild("Rooms"):WaitForChild("Base Camp"):WaitForChild("Pegboard")
@@ -3223,7 +3085,6 @@ local function TpToHidingSpot()
 	return ok
 end
 
--- Lights & Spirit Box
 local function ToggleLightNow(on)
 	local map = workspace:FindFirstChild("Map")
 	local Rooms = map and map:FindFirstChild("Rooms")
@@ -3260,17 +3121,17 @@ local function UseSpiritBox()
 	local Chara = plr.Character
 	if not Chara then return end
 	local hunting = S.Ghost:GetAttribute("Hunting") == true
-	
+
 	if tick() - DelaySBTick > 0.8 then
 		DelaySBTick = tick()
 		if hunting then
 			TpOutside()
 			return
 		end
-		
+
 		Chara:PivotTo(S.Ghost:GetPivot() * CFrame.new(0, 0, 10))
 		task.wait(0.1)
-		
+
 		local hasBox, slot = CheckInventory("Spirit Box")
 		if not hasBox then
 			local found, model = FindItem("Spirit Box")
@@ -3296,9 +3157,6 @@ local function UseSpiritBox()
 	end
 end
 
-------------------------------------------------------------------
---// EVIDENCE CHECKS
-------------------------------------------------------------------
 local function TrackTemp()
 	local Temp, TempRoom = 100, nil
 	if not S.Rooms then return Temp, TempRoom end
@@ -3474,14 +3332,8 @@ local function buildGhostMatrixList(parent, rowH, onResize)
 	return scroll, labels
 end
 
-------------------------------------------------------------------
---// PAGE: EVIDENCE
-------------------------------------------------------------------
 local StatEvidence, StatGhostInfo, GuesserLabel, EvidenceProgress
--- Section registry shared by EVERY page builder below.  It used to be declared
--- inside this first `do` block, so every later page (Ghost Tools, Teleport, HUD,
--- ...) was writing to a nil global instead — "attempt to index nil with 'tools'"
--- the moment the Ghost Tools page was built.
+
 local Sec = {}
 do
 	local page = Pages["Main"]
@@ -3569,7 +3421,6 @@ do
 	end, 3)
 end
 
--- Round & Ghost Acquisiton Watcher
 local lastGhostInstance = nil
 task.spawn(function()
 	local waited = false
@@ -3638,7 +3489,6 @@ S.RecreateGhostEsp = function()
 	if S.Ghost then CreateGhostEspInstances() end
 end
 
--- HEARTBEAT Loop
 local LowestTemp = 100
 local LowestTempRoom = nil
 local HighestEMFLevel = 1
@@ -3851,9 +3701,6 @@ do
 	if existing and S.UpdateEvidenceEsp then S.UpdateEvidenceEsp() end
 end
 
-------------------------------------------------------------------
---// PAGE: GHOST & HUNT
-------------------------------------------------------------------
 do
 	local page = Pages["Main"]
 	local tools = mkSection(page, "Ghost Tools", 1); Sec.tools = tools
@@ -3911,9 +3758,6 @@ do
 	end, 4)
 end
 
-------------------------------------------------------------------
---// PAGE: AUTOMATION
-------------------------------------------------------------------
 do
 	local page = Pages["Main"]
 
@@ -4064,9 +3908,6 @@ do
 	end, 1)
 end
 
-------------------------------------------------------------------
---// PAGE: ESP
-------------------------------------------------------------------
 do
 	local page = Pages["Visuals"]
 	local ItemEspList = {}
@@ -4076,9 +3917,7 @@ do
 	local HideEspList = {}
 	local InteractableEspList = {}
 	local RoomDoorEspList = {}
-	-- Doors the player has walked through this round. Once a door is this
-	-- close it's counted as passed and its tag stops rendering, so Door ESP
-	-- only ever clutters the screen with what's still ahead of you.
+
 	local PassedDoors = {}
 
 	local function getEspRoot(inst)
@@ -4177,10 +4016,6 @@ do
 		return nil
 	end
 
-	-- Every room door (not the special ExitDoor, which already has its own
-	-- tag above) tagged as "Door" — except ones close enough that we've
-	-- clearly already walked through them, which get marked passed and
-	-- excluded for the rest of the round instead of cluttering the screen.
 	local function UpdateRoomDoorEsp()
 		for _, e in ipairs(RoomDoorEspList) do destroyEspTag(e) end
 		table.clear(RoomDoorEspList)
@@ -4216,10 +4051,9 @@ do
 	end
 
 	local function UpdateESP()
-		-- 1. Evidence ESP
+
 		UpdateEvidenceEsp()
 
-		-- 2. Item ESP
 		for _, e in ipairs(ItemEspList) do destroyEspTag(e) end
 		table.clear(ItemEspList)
 		if S.ItemEsp then
@@ -4230,13 +4064,11 @@ do
 			end
 		end
 
-		-- 3. Places ESP
 		UpdateNamedEsp(S.FuseEsp, FuseEspList, { "fuse", "breaker" }, "Fuse Box", Color3.fromRGB(160, 160, 160))
 		UpdateNamedEsp(S.ExitEsp, DoorEspList, { "exitdoor" }, "Exit", Color3.fromRGB(180, 180, 180))
 		UpdateRoomDoorEsp()
 		UpdateNamedEsp(S.HidingEsp, HideEspList, { "closet", "locker", "wardrobe", "hiding" }, "Hide", Color3.fromRGB(140, 140, 140))
 
-		-- 4. Interactables ESP
 		UpdateNamedEsp(S.InteractableEsp, InteractableEspList, { "keyboard", "mouse", "plant", "frame", "toothbrush", "toothpaste", "doll", "tarot", "music", "mirror", "voodoo", "circle", "bone" }, "Interactable", Color3.fromRGB(120, 160, 200))
 	end
 	S.UpdateEvidenceEsp = UpdateEvidenceEsp
@@ -4563,13 +4395,10 @@ do
 	end
 end
 
-------------------------------------------------------------------
---// PAGE: MOVEMENT
-------------------------------------------------------------------
 do
 	local page = Pages["Player"]
 	local move = mkSection(page, "Movement", 1); Sec.move = move
-	
+
 	tc(RS.Heartbeat:Connect(function()
 		if WalkSpeedEnabled and plr.Character then
 			local hum = plr.Character:FindFirstChildOfClass("Humanoid")
@@ -4578,7 +4407,7 @@ do
 			end
 		end
 	end))
-	
+
 	mkSlider(move, "Walk Speed", 0, 100, 16, function(v)
 		if v == 16 then
 			WalkSpeedEnabled = false
@@ -4611,18 +4440,18 @@ do
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		if not hrp or not hum then return end
-		
+
 		local bg = Instance.new("BodyGyro")
 		bg.P = 9e4
 		bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
 		bg.cframe = hrp.CFrame
 		bg.Parent = hrp
-		
+
 		local bv = Instance.new("BodyVelocity")
 		bv.velocity = Vector3.new(0, 0.1, 0)
 		bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
 		bv.Parent = hrp
-		
+
 		flyConn = RS.Heartbeat:Connect(function()
 			if not Flying or not char.Parent or not hrp.Parent then
 				toggleFly(false)
@@ -4636,7 +4465,7 @@ do
 			if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
 			if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
 			if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-			
+
 			if moveDir.Magnitude > 0 then
 				bv.velocity = moveDir.Unit * FlySpeed
 			else
@@ -4713,9 +4542,6 @@ do
 	end
 end
 
-------------------------------------------------------------------
---// PAGE: TELEPORT
-------------------------------------------------------------------
 do
 	local page = Pages["Player"]
 	local tp = mkSection(page, "Teleports", 1); Sec.tp = tp
@@ -4804,7 +4630,7 @@ do
 			end
 			if #pList == 0 then pList = {"None"} end
 			playerCycle.update(pList)
-			
+
 			local iList = {}
 			local itemsFolder = workspace:FindFirstChild("Items")
 			if itemsFolder then
@@ -4825,9 +4651,6 @@ do
 	end)
 end
 
-------------------------------------------------------------------
---// PAGE: MISC
-------------------------------------------------------------------
 do
 	local page = Pages["Settings"]
 	local util = mkSection(page, "Utility", 1); Sec.misc_util = util
@@ -4861,9 +4684,6 @@ do
 	end
 end
 
-------------------------------------------------------------------
---// PAGE: HUD
-------------------------------------------------------------------
 do
 	local page = Pages["Visuals"]
 	local panels = mkSection(page, "HUD Panels", 1); Sec.panels = panels
@@ -4893,7 +4713,7 @@ do
 	kbLbl.TextWrapped = true
 	kbLbl.LineHeight = 1.3
 	kbLbl.Text = "Insert — show / hide menu"
-	-- Keybinds don't exist on the touch build, so neither does their HUD toggle.
+
 	if not MOBILE then
 		mkToggle(panels, "Keybinds HUD", false, function(v)
 			keybindsHud.frame.Visible = v
@@ -5061,9 +4881,6 @@ do
 		end))
 	end
 
-	-- Dynamic Island: floating top-center status bar matched to mm2's look (brand dot + label,
-	-- divider, then STATE / PING / FPS / TIME). Built from raw T.* colors so UIStyle:ReplaceColor
-	-- recolors it on theme switch automatically; the DynamicIslandGradient name already has a handler.
 	local island = Instance.new("Frame")
 	island.Name = "HUD_Watermark"
 	island.Parent = SG
@@ -5075,8 +4892,7 @@ do
 	island.BackgroundColor3 = T.Sidebar
 	island.BackgroundTransparency = 0.008
 	island.BorderSizePixel = 0
-	-- On by default on mobile: it is that build's only always-on HUD, and the
-	-- menu animates in and out of it.
+
 	island.Visible = MOBILE
 	island.ZIndex = 864
 	Corner(island, 15)
@@ -5153,10 +4969,6 @@ do
 		NotifyToggle("Dynamic Island", v)
 	end, 8)
 
-	-- The mobile menu animates in and out of this bar like a droplet, so the
-	-- island publishes its own centre (in Scale, from the live AbsolutePosition
-	-- so HUD scale and screen size are already accounted for) and a squash it
-	-- plays when the window is swallowed or spat back out.
 	S._islandPoint = function()
 		local camera = workspace.CurrentCamera
 		local vp = camera and camera.ViewportSize
@@ -5166,7 +4978,7 @@ do
 		local centre = island.AbsolutePosition + island.AbsoluteSize / 2
 		return UDim2.fromScale(math.clamp(centre.X / vp.X, 0, 1), math.clamp(centre.Y / vp.Y, 0, 1))
 	end
-	-- Keep the island inside a narrow (portrait) phone screen.
+
 	if MOBILE then
 		local function fitIsland()
 			local camera = workspace.CurrentCamera
@@ -5180,8 +4992,7 @@ do
 	end
 	S._islandGulp = function(outward)
 		if not island.Visible then return end
-		-- Read the target from S.HUDScale, not from the live UIScale: a gulp that
-		-- lands mid-tween would otherwise bake in a transient value.
+
 		local base = S.HUDScale * (tonumber(island:GetAttribute("MobileFit")) or 1)
 		TweenService:Create(islandScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {
 			Scale = base * (outward and 1.1 or 0.9),
@@ -5227,15 +5038,8 @@ do
 	end
 end
 
---=====================================================================
---// TAB: BUTTONS (mobile) — the Floating Buttons manager
---=====================================================================
--- Built LAST on purpose: it lists every registered control, and that registry
--- is only complete once every other tab has finished building.
 if MOBILE and Pages["Buttons"] then
-	-- The menu button drives the window itself rather than a game feature, and
-	-- it is the one button that cannot be removed: deleting it on a device with
-	-- no keyboard would leave no way to reopen the menu at all.
+
 	S._floatRegister("ui:menu", "Menu", function() setMenuOpen(not MenuOpen) end, function() return MenuOpen end)
 
 	local secFloat = mkSection(Pages["Buttons"], "Floating Buttons", 1)
@@ -5257,7 +5061,7 @@ if MOBILE and Pages["Buttons"] then
 	for id, entry in pairs(FloatReg) do
 		table.insert(order, { id = id, label = tostring(entry.label or id) })
 	end
-	-- Menu first, then alphabetical: the one permanent button stays at the top.
+
 	table.sort(order, function(a, b)
 		if (a.id == "ui:menu") ~= (b.id == "ui:menu") then return a.id == "ui:menu" end
 		return string.lower(a.label) < string.lower(b.label)
@@ -5335,26 +5139,19 @@ if MOBILE and Pages["Buttons"] then
 		for _, paint in pairs(paints) do pcall(paint) end
 	end
 
-	-- Layout persistence rides the existing config system: one more entry in
-	-- ConfigControls, saved and restored exactly like every toggle.
 	table.insert(ConfigControls, {
 		id = "#floatbuttons",
 		get = function() return S._floatGetMap() end,
 		set = function(v) if type(v) == "table" then S._floatApplyMap(v) end end,
 	})
 
-	-- The menu button exists from the first frame, before any config has loaded.
 	S._floatSet("ui:menu", true)
 end
 
--- Config callbacks can depend on round-only folders. Restore them away from
--- the UI thread so a missing game object can never prevent Insert from opening
--- the menu.
 task.spawn(function()
 	if S._LoadConfig then S._LoadConfig() end
 end)
 
--- Auto-open Main Door
 task.spawn(function()
 	task.wait(30)
 	for _, v in pairs(workspace:GetDescendants()) do

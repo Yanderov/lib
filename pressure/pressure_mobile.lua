@@ -1,40 +1,10 @@
---!strict
--- PRESSURE HUB - MOBILE BUILD (generated, do not edit by hand).
--- Identical source to pressure/pressure.lua with the build flag forced on.
--- Regenerate after ANY edit to the source:   .\build_mobile.ps1
 _G.INERTIA_MOBILE = true
--- PRESSURE HUB (Hadal Blacksite) — Inertia design engine, full rebuild.
---
--- Engine facts, all live-verified this session:
---  * Speed goes through the game's own StatusEffects.GetSpeed hook — the
---    game rewrites Humanoid.WalkSpeed every frame from CameraModule, so a
---    raw WalkSpeed loop fights it and loses.
---  * Oxygen is client-side: Main.OxygenTank.TankValue (0..100).
---  * Interactions are ProximityPrompts: doors = <Model>.Root, drawers and
---    cabinets = HighLight, pickups/currency/keycards = ProxyPart,
---    lockers = Locker part.
---  * The real next-room door carries ProgressDoor=true. Dead-end fakes are
---    NoEntry/BentDoor/DeadEndDoor/BrokenDoor models (no prompt at all).
---  * A "void" locker (the one with a monster inside) is a Locker model bound
---    to the MonsterLocker interaction — it has a lowercase `highlight` child
---    instead of the safe locker's `HighLight`.
---  * The keypad's real code sits in LocalPlayer:GetAttribute("Code") the
---    moment the server sets it — no need to search for the paper note.
---  * Sidebar layout bug class: NEVER give a decorative sibling of
---    list-managed buttons a Scale-based Size — UIListLayout treats every
---    GuiObject child as a stack item, decorative or not, and a Scale=1
---    height item shoves everything else off-window. All dividers here are
---    parented outside the list, and every list button gets an explicit
---    LayoutOrder.
 
 if _G.Pressure_Script then
 	pcall(function() _G.Pressure_Script:Destroy() end)
 	_G.Pressure_Script = nil
 end
--- _G doesn't reliably survive every re-execution path this session produced
--- (two "PressureHub" ScreenGuis were found live — one in PlayerGui, one in
--- CoreGui — after _G.Pressure_Script alone failed to catch the older one).
--- Sweep every plausible UI parent by NAME instead of trusting global state.
+
 do
 	local Players2 = game:GetService("Players")
 	local parents = {}
@@ -51,9 +21,7 @@ do
 	local seen = {}
 	for _, parent in ipairs(parents) do
 		if parent then
-			-- Fast path for the two actual parents used by common executors.
-			-- It also works when CoreGui hides nested descendants from a script
-			-- enumeration but still allows direct access to RobloxGui.
+
 			for _, guiName in ipairs({ "PressureHub", "PressureESP" }) do
 				local direct = parent:FindFirstChild(guiName)
 				if direct and direct:IsA("ScreenGui") then
@@ -61,9 +29,7 @@ do
 					pcall(function() direct:Destroy() end)
 				end
 			end
-			-- gethui may be nested below CoreGui.  A direct FindFirstChild misses
-			-- that protected container and leaves an old menu over the new one.
-			-- Sweep descendants as well, but only our uniquely named ScreenGuis.
+
 			for _, inst in ipairs(parent:GetDescendants()) do
 				if not seen[inst] and inst:IsA("ScreenGui") and (inst.Name == "PressureHub" or inst.Name == "PressureESP") then
 					seen[inst] = true
@@ -72,9 +38,7 @@ do
 			end
 		end
 	end
-	-- ESP tags are parented to world objects rather than either ScreenGui.
-	-- Remove stale tags from an older injection too, otherwise re-running the
-	-- script leaves duplicate highlights and billboards behind.
+
 	for _, inst in ipairs(game:GetService("Workspace"):GetDescendants()) do
 		if inst.Name == "PressureEspTag" or inst.Name == "PressureEspHL" or inst.Name == "PressureTeammateCham" then
 			pcall(function() inst:Destroy() end)
@@ -96,23 +60,10 @@ local LP = Players.LocalPlayer
 local _origMaxZoom = LP.CameraMaxZoomDistance
 local function cam() return Workspace.CurrentCamera end
 
---------------------------------------------------------------------------------
--- BUILD MODE (PC / MOBILE)
---------------------------------------------------------------------------------
--- The launcher's PC/MOBILE switch sets _G.INERTIA_MOBILE before running this
--- file, and that flag always wins: auto-detect alone is wrong on tablets with
--- a keyboard, on emulators, and on PCs with a touchscreen.  Without a launcher
--- we fall back to "touch, no keyboard".
 local MOBILE = _G.INERTIA_MOBILE
 if MOBILE == nil then MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled end
 MOBILE = MOBILE == true
 
--- Every measurement that has to differ between a mouse pointer and a fingertip
--- lives here, so the layout code below stays ONE code path instead of two
--- parallel UIs.  Touch targets follow the 44px minimum — anything smaller is a
--- coin flip under a thumb.  Nothing here is a "shrunk desktop" number: the
--- mobile column is drawn from phone-app metrics, and window sizes themselves
--- are Scale-based (see relayout()), never fixed pixels.
 local M = MOBILE and {
 	rowH = 40, rowFont = 13, rowGap = 8,
 	trackW = 48, trackH = 26, knob = 20,
@@ -120,9 +71,7 @@ local M = MOBILE and {
 	btnH = 42,
 	titleH = 84, footerH = 0,
 	navH = 56, navItemW = 72,
-	-- Mobile navigation is a LEFT ICON RAIL, not a bottom strip: the compact
-	-- panel is short, so vertical space is the scarce axis and a bottom bar
-	-- would eat it.  railItemH keeps each target above the 44px touch minimum.
+
 	railW = 62, railItemH = 48,
 	sectionPadX = 10, sectionPadY = 10, corner = 12,
 } or {
@@ -135,55 +84,43 @@ local M = MOBILE and {
 	sectionPadX = 14, sectionPadY = 12, corner = 11,
 }
 
---------------------------------------------------------------------------------
--- STATE
---------------------------------------------------------------------------------
 local S = {
 	Connections = {}, Gui = nil, Destroyed = false,
-	-- Top Right is the Roblox leaderboard's corner on a phone; centre the toasts
-	-- there instead (they clear the Dynamic Island, which ends around y=42).
+
 	UITheme = "Default", UITextScale = 1, HUDScale = 1,
 	NotificationPosition = MOBILE and "Top Center" or "Top Right",
-	-- Motion
+
 	SpeedEnabled = false, CustomWalkSpeed = 24, CrouchSpeed = 10, SprintMod = 45,
 	JumpEnabled = false, CustomJumpPower = 50,
 	Fly = false, FlySpeed = 50, NoClip = false, InfiniteJump = false,
 	Spinbot = false, SpinSpeed = 20,
 	FastSwim = false, SwimSpeed = 32, GliderSpeed = 60, InfiniteOxygen = false,
-	-- Visuals / ESP
+
 	EntityESP = false, WallDwellerESP = false, EyefestESP = false, SquiddleESP = false,
 	CarnationESP = false, HazardESP = false, DoorESP = false, LockerESP = false,
 	DrawerESP = false, ItemESP = false, KronerESP = false, KeycardESP = false, ObjectiveESP = false,
 	NameESP = false, BoxESP = false, HealthESP = false, TracerESP = false, ESPMaxDist = 1500,
 	PlayerChams = false, ThreatRadar = false, StatusHUD = false, NextDoorTracer = false,
-	-- Keybind HUD is meaningless without a keyboard; the Dynamic Island is the
-	-- mobile build's default HUD (and the thing the menu animates in and out of).
+
 	KeybindHUD = not MOBILE, DynamicIsland = MOBILE,
 	FullBright = false, NoFog = false, Brightness = 2,
 	LowLightVision = false, CleanScreenEffects = false, VisualContrast = 0, VisualSaturation = 100,
 	CamFOVEnabled = false, CamFOV = 70,
-	-- Combat / defense
+
 	EntityWarning = false, WarningSound = false, AutoHideInLocker = false,
 	AntiEyefest = false, AutoDozerStealth = false, AutoShakeParasite = false,
 	RemoveJumpscares = false, BossAlerts = false,
-	-- Automation
+
 	AutoOpenDoors = false, AutoCollectItems = false, AutoSearchDrawers = false,
 	AutoCollectKeys = false, AutoRefillBatteries = false, AutoTurnValves = false, AutoRepairGenerators = false,
 	AutoDisarmLandmines = false,
 	RoomTracker = false, InstantInteract = false, PromptReach = false,
-	-- Player
+
 	AntiAFK = false,
-	-- UI
-	-- Insert, not RightShift: Roblox's stock MouseLockController binds
-	-- BOTH LeftShift and RightShift to its own shift-lock toggle, so every
-	-- RightShift press was also flipping the game's own mouse-lock feature
-	-- and fighting our unlock — this is the actual root cause behind
-	-- "mouse never unlocks", confirmed live (MouseBehavior snapped back to
-	-- LockCenter even with the menu open and our enforcement loop running).
+
 	MenuKeybind = Enum.KeyCode.Insert,
 	Keybinds = {},
-	-- Mobile only: id -> {x=scale, y=scale} for every on-screen floating button.
-	-- Stored as SCALE so a saved layout survives a rotation or a different phone.
+
 	FloatButtons = {},
 }
 S.Mobile = MOBILE
@@ -191,10 +128,6 @@ _G.Pressure_Script = S
 
 local function tc(conn) table.insert(S.Connections, conn); return conn end
 
--- Collision state belongs to the character, not to the feature.  Record the
--- original value once and restore exactly that value when neither Fly nor
--- Noclip needs it; forcing every part to true breaks accessories and maps
--- that intentionally use non-collidable character parts.
 local function restoreNoClip()
 	local touched = S._noclipTouched
 	if not touched then return end
@@ -207,9 +140,6 @@ local function restoreNoClip()
 end
 S._restoreNoClip = restoreNoClip
 
--- A few game-owned tables are adjusted by sliders.  Keep their original
--- values per table/field so unloading the hub does not leave altered movement
--- values behind, even when a setting was applied after the module loaded.
 local function setGameField(container, key, value)
 	if type(container) ~= "table" then return end
 	S._gameFieldOriginal = S._gameFieldOriginal or {}
@@ -295,8 +225,7 @@ end
 S._restoreLighting = restoreLightingState
 
 local function applyLightingOverrides()
-	-- Preserve game lighting changes that happen while this override is active.
-	-- Without this, turning it off after a room transition restores an old room.
+
 	local function absorbGameLightingChanges(original)
 		local applied = S._lightingApplied
 		if not applied then return end
@@ -371,9 +300,6 @@ local function applyLightingOverrides()
 	rememberLightingWrite()
 end
 
---------------------------------------------------------------------------------
--- GAME BRIDGE — speed hook, jumpscare hook, remote lookup
---------------------------------------------------------------------------------
 local GameMain = nil
 local SpeedHook = { installed = false, orig = nil, se = nil }
 local JumpscareHook = { installed = false, orig = nil, mod = nil }
@@ -404,9 +330,6 @@ local function applyModuleTuning()
 	end
 end
 
--- Swimming owns CurrentSwimSpeed itself while the player accelerates and slows
--- down.  Touching that field from our timer fights its interpolation and causes
--- the underwater drift/jitter that was reported.  We only tune the static cap.
 local function saveSwimDefaults(sw)
 	if type(sw) ~= "table" then return nil end
 	if not S._savedSwim then
@@ -527,9 +450,6 @@ function S:Destroy()
 	if self.Gui then pcall(function() self.Gui:Destroy() end) end
 end
 
---------------------------------------------------------------------------------
--- SOUND
---------------------------------------------------------------------------------
 local SndCache = {}
 local function snd(id, pitch, vol)
 	task.spawn(function() pcall(function()
@@ -548,10 +468,6 @@ local SFX = {
 	Pop = function() snd("rbxassetid://4590662766", 1.2, 0.35) end,
 }
 
---------------------------------------------------------------------------------
--- Shared visual system from HUD_ClickGUI_Module.lua. Gameplay colors (ESP,
--- warnings and world highlights) stay independent from these interface roles.
---------------------------------------------------------------------------------
 local THEMES = {
 	Default = {
 		BG=Color3.fromRGB(3,3,3), Sidebar=Color3.fromRGB(4,4,4), Card=Color3.fromRGB(8,8,8), Elev=Color3.fromRGB(13,13,13),
@@ -657,7 +573,6 @@ local function Tween(inst, time, props, style, dir)
 	return TweenService:Create(inst, TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
 end
 
--- Lucide navigation icons (ISC): https://github.com/lucide-icons/lucide
 S._NavIconData = {
 	["eye"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAAC+klEQVRoge2YwU8TQRTGvwWCxEQu9VLTyAkPeCF6ABKTEjnI34EHCByoV2uix14ketMLfwFq8A9ADAcBb8iJg6AmkBAhJBATG9Kfh50mzXS2O20XEN0v2bTbfd/33kxn3r55UooUKVKk+J8RJCECXJU0LOme+bwhKSPpujH5KelA0q6kVUkrktaCIPiVhP+WAHQC48AboEzzKBvuONB5noF3AVPAtxaCjsKO0ew66+DHgC8JBm5jAxhrJiavPQBckfRS0mSESUXh2v4kaU3SlsI1f2CeZ8x1S9KQpBGFe6UjQu+1pNkgCH77xBcXfB/wOWLGtoHHQK4F3ZzhbkdorwM32w3+NrDvED8EZoHuthyEPrqN1qHDzz4w0KpwP7DnEF0EMu0G7vCXMdo29oD+ZsVywA9LqGL+8qh1W+VmgRKwSZgqy+Z7CcjGcDuMj4rl+zu+y5Qwv390zMREDC8AZoATB7eKE2PTMHkAEw7uMj7vC+CJg1zwCH6uQeA25jwG8cjBK8YFPwicWqR5j0HPNBF8FdMeuvMW5xQYbER4bxG+AtdinGSpXzZrQB7oMVfe/FaLY+L3RC/1aXYxyviuY5bue8xSyRF83Vol3Fv2IEoe+mOOuO64DN9ZRh/ixA1v0+LlG9jmLdtNTx/LFu+ty+jIMhr1FLcr0Z4Gtj2WbdnTx6jFO6o+a5jTLwNqB2AvmaeeGlvW/VADW/uZzY3CM+t+qc6Cy76JjbErjfbGOPg70qghXO4XmSGdRynxnLMoJQyxnWJumnBpROHY2MQF/9DB9SvmjECOsIStRQUocvbldJF2yukasYs40NhJBGCXZg80NaIDRB8pCyR3pCyQ9JGyxkEf4QHbhW3zl7d6qC/S5qG+mbbKC0lTESbVtsqq/NoqwwpbK1H+X0kqJNJWqQXhW3EjYsaSwAYeb/92B1FtLe4kGPgOMMk590g7gQfAAq03dxeMRstVcZLt9SGF7fURSVm52+t7CtuPK5LWL7S9niJFihQp/gn8AXDP9oufq13tAAAAAElFTkSuQmCC",
 	["crosshair"] = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAA9hAAAPYQGoP6dpAAADC0lEQVRoge2asU4bQRCGZ1NHsmiSgspIRlCE4BeAIsg1ooMOpeJVQrpQQEpcQIVS8AJ5AqSk4ApIGihMAZGgASG+FLe213Nre+98Z/sk/sq+nX/2n7u93dmdE3nFZGHycAIYEVkSkXURqYvIgojMishba/IgItciEonImYj8EJFfxhjy6D8zgDqwC1ySHpeWW5+E8CpwnEF0PxwD1XEIrwBfgcccxbfxaH1XihI/D0QDBFwB+8AmsOJpX7Ft+9a2HyKglrf4NeDO09kT8A1YJn6RXU4PVJuxnD3rQ+MWWMtL/DbwrDp4AQ4ZMG4HBaDsqtbXi6I8A9ujil/ziL8DGgHcoAAc+wbJp/wMfMoqvuZxGAHzgfxUAViO7z27Je07QTzbaEcRMJPCR+oALG+mT9/hsxPxdObiLvTOOz5aDr+VkjsP/FMadkPJc/TO8y8EjHmPnw0bRAvYyMBv0PtiPxKy2JFcYQ/Tdp4XgKbScjSMUFeEp6CoC4IdDXqd6Mmd3ijOlvp/YIz5W6zM/jDG/BGR7+rypteYeHXUWeVy4SqHwDMqLlCrftvwozK88hqOGfbGXittS+12dwitK+7pxDccImI1nKrLHa1uAHpj8bMoURmgtXS0ugEsKKPrwuSkh9aymLAA7glDpoVpGOgufCG4b/OM4yDNeL8xxrzPOYCWiLwLtTfGGJHkOlA6uAE8BHJuRGSnAC071ncIklpJprArucobAcCq0ha129wnECne7HjkBUFrOW//cAM4U0arhclJD61Fay1vKqENS5fMdYaQzTlOFP/zuIQOgNZw0jdH80Q79RsaH6m8W0pLqlLmTb0ll/dYxToo98GWdVQjPtbTjqb/aNFxOO7DXT1ssh/uOo77Ha83gblRAyCeKpsUcbzudDKowLFHvH6kLXDUGVzgGO3Oe4KoMbzEdABskUx/sde2rI3ObVzkX2JygqgQl0aLKvLtUlSRTwVSBY5yFH/EJFIW4nH8hWyF7gvLHanQneenBh+k+6nBovg/NTiX7qcGv6fh5O8Vo+I/UeCznCCfR4oAAAAASUVORK5CYII=",
@@ -757,10 +672,6 @@ function S._MakeNavIcon(parent, kind)
 	return { slot = slot, image = image }
 end
 
-
---------------------------------------------------------------------------------
--- GUI SHELL
---------------------------------------------------------------------------------
 local SG = Instance.new("ScreenGui")
 SG.Name = "PressureHub"
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -776,7 +687,6 @@ if not uiP then uiP = LP:WaitForChild("PlayerGui") end
 SG.Parent = uiP
 S.Gui = SG
 
--- Toasts
 local NHost = Instance.new("Frame")
 NHost.Name = "Notifs"
 NHost.Parent = SG
@@ -879,8 +789,7 @@ function UIStyle:ApplyHUDScale(scale)
 						scaler.Name = "HUDUserScale"
 						scaler.Parent = object
 					end
-					-- MobileFit shrinks fixed-pixel HUDs (the Dynamic Island
-					-- foremost) to a narrow phone screen; 1 everywhere else.
+
 					scaler.Scale = S.HUDScale * (tonumber(object:GetAttribute("MobileFit")) or 1)
 				end
 			end
@@ -929,8 +838,7 @@ local function Notify(title, msg, dur, tone)
 	toast.BorderSizePixel = 0
 	toast.ClipsDescendants = true
 	toast.LayoutOrder = NOrder
-	-- Width follows NHost (sized from the viewport in relayout) instead of a
-	-- fixed 276/324 pair, so a toast can never run off a narrow phone screen.
+
 	toast.Size = UDim2.new(0.86, 0, 0, 0)
 	toast.ZIndex = 901
 	Corner(toast, 9)
@@ -983,13 +891,12 @@ local function Notify(title, msg, dur, tone)
 		if toast.Parent then toast:Destroy() end
 	end)
 end
--- Warning banner
+
 local WarnFrame = Instance.new("Frame")
 WarnFrame.Name = "EntityAlert"
 WarnFrame.Parent = SG
 WarnFrame.AnchorPoint = Vector2.new(0.5, 0)
--- Pushed further down on mobile: the Dynamic Island (on by default there) owns
--- the top ~58px, and 0.11 of a short landscape screen lands right on it.
+
 WarnFrame.Position = UDim2.new(0.5, 0, MOBILE and 0.19 or 0.11, 0)
 WarnFrame.Size = UDim2.new(0, 404, 0, 58)
 WarnFrame.BackgroundColor3 = Color3.fromRGB(16, 13, 14)
@@ -1049,10 +956,6 @@ local function ShowEntityWarning(entityName, subText)
 	task.delay(3.5, function() if warnToken == my then WarnFrame.Visible = false end end)
 end
 
--- Main window.  WW/WH is the DESKTOP design size only; the mobile build never
--- uses a pixel size at all — it is Scale-based and re-fitted by relayout() on
--- every viewport/orientation change (see below), which is what makes the same
--- window look right on a 5" phone and a tablet.
 local WW, WH = 920, 590
 
 local Main = Instance.new("Frame")
@@ -1063,9 +966,7 @@ Main.BackgroundColor3 = T.BG
 Main.BorderSizePixel = 0
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.Position = UDim2.fromScale(0.5, 0.5)
--- Mobile is a COMPACT floating panel, not a full-screen sheet: the game has to
--- stay visible and playable around it.  relayout() re-proportions this per
--- orientation immediately; these are just the first-frame values.
+
 Main.Size = MOBILE and UDim2.fromScale(0.86, 0.56) or UDim2.fromOffset(WW, WH)
 Main.ClipsDescendants = true
 Main.Visible = false
@@ -1075,16 +976,13 @@ Shadow(Main, 0.2)
 local mainScale = Instance.new("UIScale"); mainScale.Parent = Main
 mainScale.Scale = 0.9
 if MOBILE then
-	-- The MaxSize is what actually keeps the panel compact: on a tablet a pure
-	-- Scale size would still cover most of the screen.  MinSize keeps it usable
-	-- on a small phone — below ~300 wide the rail + a row no longer fit.
+
 	local limit = Instance.new("UISizeConstraint")
 	limit.MaxSize = Vector2.new(540, 430)
 	limit.MinSize = Vector2.new(300, 260)
 	limit.Parent = Main
 end
 
--- Title bar
 local TBar = Instance.new("Frame")
 TBar.Name = "TBar"
 TBar.Parent = Main
@@ -1107,15 +1005,11 @@ TSub.Size = UDim2.new(0, 180, 0, 15)
 TSub.Font = F; TSub.Text = "HADAL BLACKSITE"; TSub.TextColor3 = T.Tx3; TSub.TextSize = MOBILE and 11 or 12
 TSub.TextXAlignment = Enum.TextXAlignment.Left
 
--- Search bar
 local UIRegistry = {}
 local SearchEmpty
 local SearchBox = Instance.new("TextBox")
 SearchBox.Parent = TBar
--- Desktop: right edge at WW-100, a real 16px gap from btnMin.
--- Mobile: its own full-width row UNDER the title — a 170px box wedged between
--- a title and two buttons is unusable with a thumb, and the header has the
--- vertical room on a phone that a 50px desktop bar does not.
+
 if MOBILE then
 	SearchBox.AnchorPoint = Vector2.new(0, 0)
 	SearchBox.Position = UDim2.new(0, 16, 0, 48)
@@ -1183,13 +1077,11 @@ local function applySearch()
 end
 SearchBox:GetPropertyChangedSignal("Text"):Connect(applySearch)
 
--- Window buttons
 local function mkWinBtn(txt, xOff)
 	local b = Instance.new("TextButton")
 	b.Parent = TBar
 	b.AnchorPoint = Vector2.new(1, 0.5)
-	-- Mobile pins the two header buttons to the TITLE row (they must clear the
-	-- full-width search row below), and grows them to a 40px touch target.
+
 	b.Position = MOBILE and UDim2.new(1, xOff, 0, 26) or UDim2.new(1, xOff, 0.5, 0)
 	b.Size = MOBILE and UDim2.new(0, 34, 0, 34) or UDim2.new(0, 32, 0, 28)
 	b.BackgroundColor3 = T.Elev
@@ -1203,33 +1095,21 @@ local function mkWinBtn(txt, xOff)
 	return b
 end
 local btnClose = mkWinBtn("X", MOBILE and -14 or -16)
--- Desktop: minimize. Mobile: minimize is pointless (the window is a sheet you
--- close outright), so the slot becomes the Interface/appearance button — the
--- profile card that opened it lives in the desktop sidebar, which mobile drops.
--- Modal releases the first-person cursor while this visible menu owns input.
--- Because the button is inside Main, hiding Main disables the release too.
+
 btnClose.Modal = true
 
--- Menu visibility drives mouse unlock: the mouse is free ONLY while this
--- menu is open. No toggle, no Alt bind — closing the menu instantly hands
--- the mouse back to first-person aim.
 local menuOpen = false
--- Where the window rests when open.  Captured on close so a dragged window
--- comes back where the user left it rather than snapping to centre.
--- Kept on S rather than as a local: this chunk sits at Luau's 200-register
--- ceiling, and a field costs none.
+
 S._menuHome = UDim2.fromScale(0.5, 0.5)
 local function setMenuVisible(v)
 	if v == menuOpen and Main.Visible == v then return end
 	menuOpen = v
-	-- Floating buttons hide while the sheet is open: they are gameplay
-	-- controls, and under the sheet they'd eat its edge taps anyway.
+
 	if MOBILE and S._floatHost then S._floatHost.Visible = not v end
 	if v then
 		Main.Visible = true
 		if MOBILE then
-			-- Droplet, outwards: the window is "spat out" of the Dynamic Island,
-			-- growing from a bead at the island down to its resting place.
+
 			Main.Position = S._islandPoint and S._islandPoint() or UDim2.new(0.5, 0, 0, 34)
 			mainScale.Scale = 0.06
 			Tween(Main, 0.34, { Position = S._menuHome }, Enum.EasingStyle.Back, Enum.EasingDirection.Out):Play()
@@ -1243,7 +1123,7 @@ local function setMenuVisible(v)
 	else
 		SFX.Off()
 		if MOBILE then
-			-- Droplet, inwards: shrink and slide into the island, then hide.
+
 			S._menuHome = Main.Position
 			local target = S._islandPoint and S._islandPoint() or UDim2.new(0.5, 0, 0, 34)
 			Tween(Main, 0.26, { Position = target }, Enum.EasingStyle.Quad, Enum.EasingDirection.In):Play()
@@ -1259,20 +1139,15 @@ local function setMenuVisible(v)
 			Tween(mainScale, 0.15, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In):Play()
 			task.delay(0.15, function() if not menuOpen then Main.Visible = false end end)
 		end
-		-- Touch devices have no mouse to lock; forcing LockCenter there fights
-		-- the game's own touch camera instead of restoring anything.
+
 		if not MOBILE then
 			pcall(function() UIS.MouseBehavior = Enum.MouseBehavior.LockCenter; UIS.MouseIconEnabled = false end)
 		end
 	end
 end
--- Keep the fallback after all camera work in case Pressure overrides Modal.
--- Unbound in Destroy since BindToRenderStep isn't a Connection.
+
 if not MOBILE then
-	-- Assign only when the value actually drifted.  This runs EVERY frame for as
-	-- long as the menu is open, and the old version both re-wrote MouseBehavior
-	-- unconditionally and allocated a fresh pcall closure each frame — per-frame
-	-- work and GC churn for a property that is already correct almost always.
+
 	local function unlockMouse()
 		if UIS.MouseBehavior ~= Enum.MouseBehavior.Default then
 			UIS.MouseBehavior = Enum.MouseBehavior.Default
@@ -1286,8 +1161,6 @@ if not MOBILE then
 	end)
 end
 
--- btnMin's click handler is wired further down, once Sidebar/Footer/etc.
--- exist — minimizing has to hide them explicitly (see there for why).
 btnClose.MouseButton1Click:Connect(function() setMenuVisible(false) end)
 tc(UIS.InputBegan:Connect(function(input)
 	local typing = false
@@ -1297,14 +1170,11 @@ tc(UIS.InputBegan:Connect(function(input)
 	end
 end))
 
--- Window drag
 do
 	local dragging, dragStart, startPos, startCentre = false, nil, nil, nil
 	tc(TBar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			-- TextBox and title-bar buttons bubble input through TBar.  Without
-			-- this hit test, clicking Search starts a window drag and makes the
-			-- search feel broken.
+
 			local pos = input.Position
 			local function over(gui)
 				local p, s = gui.AbsolutePosition, gui.AbsoluteSize
@@ -1325,10 +1195,7 @@ do
 	tc(UIS.InputChanged:Connect(function(input)
 		if dragging and input == dragInput and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local d = input.Position - dragStart
-			-- A compact floating panel dragged past the screen edge is unrecoverable
-			-- on touch (no window list to get it back), and the spot is remembered as
-			-- the reopen position — so keep the whole panel on screen and store the
-			-- result as pure Scale, which also survives a rotation.
+
 			local host = MOBILE and startCentre and Main.Parent and Main.Parent.AbsoluteSize
 			if host and host.X > 0 and host.Y > 0 then
 				local half = Main.AbsoluteSize / 2
@@ -1346,21 +1213,14 @@ do
 	end))
 end
 
---------------------------------------------------------------------------------
--- SIDEBAR + CONTENT
---------------------------------------------------------------------------------
 local Body = Instance.new("Frame")
 Body.Name = "Body"
 Body.Parent = Main
 Body.BackgroundTransparency = 1
 Body.Position = UDim2.new(0, 0, 0, M.titleH)
--- Desktop reserves the footer strip; mobile has no bottom bar to reserve now
--- that navigation is a left rail, so the body runs to the bottom edge.
+
 Body.Size = UDim2.new(1, 0, 1, -(M.titleH + (MOBILE and 8 or 32)))
 
--- Navigation is a vertical rail on BOTH builds — desktop labelled, mobile a
--- narrow icon rail.  Same instance and the same tab buttons downstream; only
--- the width and the item shape differ.
 local Sidebar = Instance.new(MOBILE and "ScrollingFrame" or "Frame")
 Sidebar.Name = "Sidebar"
 Sidebar.Parent = Body
@@ -1378,12 +1238,7 @@ else
 	Sidebar.Position = UDim2.fromOffset(8, 0)
 	Sidebar.Size = UDim2.new(0, 144, 1, -8)
 end
--- ClipsDescendants on Main clips to a plain RECTANGLE, not the rounded shape
--- UICorner draws — so a flat-cornered child poked a sharp square corner
--- through Main's rounded edge (worst at bottom-left, where Sidebar meets
--- Footer). Matching Main's own radius here rounds it away; the two corners
--- this creates mid-window (top-right/bottom-right of Sidebar) sit against
--- Main's own near-identical near-black BG, invisible in practice.
+
 Corner(Sidebar, MOBILE and 16 or 10)
 Stroke(Sidebar, T.Bd2, 1, 0.32)
 Pad(Sidebar, MOBILE and 6 or 8, MOBILE and 6 or 8, 8, 8)
@@ -1391,16 +1246,13 @@ local SBLayout = Instance.new("UIListLayout")
 SBLayout.Parent = Sidebar
 SBLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SBLayout.FillDirection = Enum.FillDirection.Vertical
--- Both builds stack from the top: a centred rail would drift the tabs into the
--- middle as soon as they no longer fill the column.
+
 SBLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 SBLayout.HorizontalAlignment = MOBILE and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Left
 SBLayout.Padding = UDim.new(0, MOBILE and 6 or 4)
 
 local openAppearance
--- The profile card and the quick-status card are desktop sidebar furniture.
--- A bottom tab bar has room for tabs and nothing else, so mobile drops both
--- and reaches Interface settings through the header gear instead.
+
 if not MOBILE then
 local ProfileButton = Instance.new("TextButton")
 ProfileButton.Name = "Profile"
@@ -1452,12 +1304,6 @@ ProfileButton.MouseLeave:Connect(function() Tween(ProfileButton, 0.14, { Backgro
 ProfileButton.MouseButton1Click:Connect(function() if openAppearance then openAppearance() end end)
 end
 
--- Divider: parented to Body (NOT Sidebar) on purpose. Sidebar's UIListLayout
--- treats every GuiObject child as a stack item — a Scale-height decorative
--- line sitting inside it would get a full-height slot and push every real
--- tab button below the window's clipped bounds. This is the exact bug class
--- that made the sidebar tabs vanish before; the fix is structural, not a
--- one-off patch.
 local SBLine = Instance.new("Frame")
 SBLine.Name = "SBLine"
 SBLine.Parent = Body
@@ -1473,7 +1319,7 @@ ContentArea.Name = "Content"
 ContentArea.Parent = Body
 ContentArea.BackgroundTransparency = 1
 ContentArea.BorderSizePixel = 0
--- Both builds clear the nav rail on the left; mobile's is just narrower.
+
 ContentArea.Position = MOBILE and UDim2.new(0, M.railW + 12, 0, 0) or UDim2.new(0, 164, 0, 0)
 ContentArea.Size = MOBILE and UDim2.new(1, -(M.railW + 18), 1, 0) or UDim2.new(1, -172, 1, 0)
 ContentArea.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -1493,8 +1339,6 @@ SearchEmpty.Text = "No matching functions"
 SearchEmpty.Visible = false
 SearchEmpty.ZIndex = 20
 
--- Footer.  Mobile has no room for a status strip and no keyboard hint to show,
--- so it is built (FootMid is written to by the room tracker) but never shown.
 local Footer = Instance.new("Frame")
 Footer.Parent = Main
 Footer.BackgroundColor3 = T.Sidebar
@@ -1524,13 +1368,6 @@ FootRight.Size = UDim2.new(0, 220, 1, 0)
 FootRight.Font = F; FootRight.Text = "Insert — menu"; FootRight.TextColor3 = T.Tx3; FootRight.TextSize = 12
 FootRight.TextXAlignment = Enum.TextXAlignment.Right
 
--- Minimize has to explicitly hide these, not just shrink Main and rely on
--- ClipsDescendants: Footer is anchored to Main's own BOTTOM edge via Scale,
--- so as Main's height tweens down to just the title bar, Footer's anchor
--- rides that shrinking edge up and ends up rendered directly under the
--- title bar instead of disappearing — a second bar squeezed in with no
--- content between them, mid-tween showing a jarring half-clipped flash of
--- Sidebar/ContentArea. Hiding them outright avoids all of that.
 local isMinimized = false
 
 local function mkPage(name)
@@ -1543,10 +1380,7 @@ local function mkPage(name)
     sf.Size = UDim2.new(1, 0, 1, 0)
     sf.AutomaticSize = Enum.AutomaticSize.None
     sf.Visible = false
-    -- Tab header, shown ONLY while searching so the combined multi-tab results list is labelled by
-    -- which tab each group of settings came from (applySearch appends the match count, e.g.
-    -- "COMBAT  ·  4"). Styled as a subtle pill so it separates the groups instead of blending into
-    -- the section titles. Hidden during normal single-tab browsing.
+
     local hdr = Instance.new("TextLabel")
     hdr.Name = "SearchHdr"
     hdr.Parent = sf
@@ -1576,8 +1410,7 @@ local TAB_DEFS = {
 	{ name = "Misc", icon = "wrench" },
 	{ name = "Config", icon = "settings-2" },
 }
--- Floating buttons are a touch feature, so the tab that manages them only
--- exists on the mobile build — right after Config, where settings live.
+
 if MOBILE then table.insert(TAB_DEFS, { name = "Buttons", icon = "settings-2" }) end
 
 local SBItems = {}
@@ -1587,11 +1420,7 @@ local function mkSBItem(name, iconKind, page, order)
 	btn.Name = "Tab_" .. name
 	btn.Parent = Sidebar
 	btn.LayoutOrder = order
-	-- Mobile tabs are fixed-width pills in a horizontal strip; desktop tabs are
-	-- full-width rows in a vertical list.
-	-- Offset height, not Scale: inside a ScrollingFrame a Scale height measures
-	-- the frame, not the padded content box, so a Scale=1 pill would overflow
-	-- the tab bar by exactly the padding and drag the canvas with it.
+
 	btn.Size = MOBILE and UDim2.new(0, M.railW - 12, 0, M.railItemH) or UDim2.new(1, 0, 0, 34)
 	btn.AutoButtonColor = false
 	btn.BackgroundTransparency = 1
@@ -1601,7 +1430,7 @@ local function mkSBItem(name, iconKind, page, order)
 
 	local barInd = Instance.new("Frame")
 	barInd.Parent = btn
-	-- Active marker: a short accent bar on the leading edge in both builds.
+
 	barInd.Size = MOBILE and UDim2.new(0, 3, 0, 24) or UDim2.new(0, 3, 0, 20)
 	barInd.Position = MOBILE and UDim2.new(0, -4, 0.5, -12) or UDim2.new(0, 0, 0.5, -10)
 	barInd.BackgroundColor3 = T.Accent
@@ -1609,18 +1438,10 @@ local function mkSBItem(name, iconKind, page, order)
 	barInd.Visible = false
 	Corner(barInd, 2)
 
-	-- Icons on BOTH builds: every tab now has a glyph (the mobile-only "Buttons"
-	-- tab reuses the settings glyph), so the rail can lead with the
-	-- icon instead of falling back to a uniform text strip.
-	-- Lay the row out from the CAPABILITY, not from whether this call succeeded:
-	-- glyphs are fetched with getcustomasset after a disk write, so an early tab can
-	-- come back without one while a later tab gets it, and keying the caption offset
-	-- off the per-call result left those tabs at a different indent than their
-	-- neighbours. The slot is reserved either way.
 	local navIcons = S._MakeNavIcon ~= nil
 	local icon = S._MakeNavIcon(btn, iconKind)
 	if icon and MOBILE then
-		-- Rail item: glyph centred near the top, caption underneath it.
+
 		icon.slot.AnchorPoint = Vector2.new(0.5, 0)
 		icon.slot.Position = UDim2.new(0.5, 0, 0, 5)
 		icon.slot.Size = UDim2.fromOffset(24, 24)
@@ -1629,9 +1450,7 @@ local function mkSBItem(name, iconKind, page, order)
 	local label = Instance.new("TextLabel")
 	label.Parent = btn; label.BackgroundTransparency = 1
 	if MOBILE then
-		-- getcustomasset is missing on some executors, so the icon can be nil; the
-		-- caption then owns the whole pill instead of leaving a gap where the
-		-- glyph would have been.
+
 		label.Position = navIcons and UDim2.new(0, 1, 0, 29) or UDim2.new(0, 1, 0, 0)
 		label.Size = navIcons and UDim2.new(1, -2, 0, 15) or UDim2.new(1, -2, 1, 0)
 		label.TextSize = navIcons and 9 or 11
@@ -1750,13 +1569,8 @@ activePage = Pages.Visuals
 Pages.Visuals.Visible = true
 refreshSB()
 
---------------------------------------------------------------------------------
--- CONTROL BUILDERS
---------------------------------------------------------------------------------
 local CfgBind = {}
--- Assigned once SaveConfigFile exists (Config tab, later in the file). Every
--- mkToggle/mkSlider closure below captures this local as an upvalue, so the
--- forward reference resolves fine by the time a real click can happen.
+
 local RequestAutoSave
 
 openAppearance = (function()
@@ -1765,7 +1579,7 @@ openAppearance = (function()
 	panel.Parent = SG
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
-	-- Mobile: a scale-sized sheet, capped so it stays a panel on tablets.
+
 	panel.Size = MOBILE and UDim2.fromScale(0.9, 0.78) or UDim2.fromOffset(320, 456)
 	if MOBILE then
 		local limit = Instance.new("UISizeConstraint")
@@ -1799,9 +1613,6 @@ openAppearance = (function()
 	close.Font = FM; close.TextSize = MOBILE and 22 or 18; close.TextColor3 = T.Tx2; close.Text = "×"; close.ZIndex = 1502
 	Corner(close, MOBILE and 10 or 7); Stroke(close, T.Bd2, 1, 0.4)
 
-	-- ScrollingFrame, not Frame: the settings stack is taller than the panel on
-	-- a short phone screen (and on a small desktop window), and a clipped panel
-	-- silently hides the theme grid.
 	local body = Instance.new("ScrollingFrame")
 	body.Parent = panel; body.BackgroundTransparency = 1; body.BorderSizePixel = 0
 	body.Position = UDim2.fromOffset(14, 62); body.Size = UDim2.new(1, -28, 1, -76)
@@ -1926,9 +1737,6 @@ openAppearance = (function()
 	return function() setOpen(not opened) end
 end)()
 
--- One bind registry for every actionable control.  Keep the implementation in
--- a nested function: this hub is already large enough to hit Luau's 200-local
--- register limit if its private UI variables leak into the main chunk scope.
 do
 local function setupKeybinds()
 local BindRegistry = {}
@@ -1996,8 +1804,7 @@ S._markKeybindHUDDirty = markKeybindHUDDirty
 local function refreshBindChips(id)
 	local entry = BindRegistry[id]
 	if not entry then return end
-	-- On mobile the chip in that slot is the floating-button control, not a key
-	-- label — writing a bind name into it would relabel every "BTN" chip.
+
 	if MOBILE then return end
 	local text = bindTokenTitle(S.Keybinds[id])
 	for _, chip in ipairs(entry.chips) do
@@ -2010,8 +1817,7 @@ local function setKeybind(id, token)
 	if not BindRegistry[id] then return end
 	S.Keybinds = type(S.Keybinds) == "table" and S.Keybinds or {}
 	if token then
-		-- A physical key has one owner.  Reassigning it removes the old action
-		-- rather than toggling two unrelated gameplay features at once.
+
 		for otherId, otherToken in pairs(S.Keybinds) do
 			if otherId ~= id and otherToken == token then
 				S.Keybinds[otherId] = nil
@@ -2049,8 +1855,7 @@ local function startBindCapture(id)
 	local entry = BindRegistry[id]
 	if not entry then return end
 	BindCapture.target = id
-	-- Ignore the RMB that opened the capture, but accept a deliberate M2 bind
-	-- on the next click.
+
 	BindCapture.readyAt = os.clock() + 0.12
 	BindPromptTitle.Text = "BIND // " .. string.upper(entry.label)
 	BindPrompt.Visible = true
@@ -2104,11 +1909,6 @@ local function bindTargetAt(position)
 	return nil
 end
 
--- The chip that sits at the right edge of every control row.
---   Desktop -> the keybind chip (click to rebind, shows the bound key).
---   Mobile  -> the "BTN" chip that spawns/removes this function's floating
---              on-screen button.  Same slot, same registry entry: binds are a
---              keyboard feature and never appear on a touch build.
 local function addBindChip(parent, id, rightOffset)
 	local chip = Instance.new("TextButton")
 	chip.Name = (MOBILE and "Float_" or "Bind_") .. id
@@ -2136,7 +1936,7 @@ local function addBindChip(parent, id, rightOffset)
 			if S._floatToggle then S._floatToggle(id) end
 			paint()
 		end))
-		-- The Buttons tab can remove a button too, so repaint from there as well.
+
 		local entry = BindRegistry[id]
 		if entry then
 			entry.paintChips = entry.paintChips or {}
@@ -2153,9 +1953,6 @@ local function addBindChip(parent, id, rightOffset)
 end
 S._addBindChip = addBindChip
 
--- Keybinds are a DESKTOP-only system (requirement: no key control on mobile).
--- Skipping the listener entirely on a touch build means no capture prompt can
--- appear and no stray gamepad/keyboard input can fire a hub action.
 if MOBILE then return end
 tc(UIS.InputBegan:Connect(function(input, gameProcessed)
 	if BindCapture.target then
@@ -2184,25 +1981,13 @@ end
 setupKeybinds()
 end
 
---------------------------------------------------------------------------------
--- FLOATING BUTTONS (mobile build only)
---------------------------------------------------------------------------------
--- One draggable on-screen button per function, spawned from the "BTN" chip on
--- the function's row or from the Buttons tab.  Tap = fire the same trigger the
--- desktop keybind fires; drag = move it; the position is saved as SCALE, so a
--- layout survives a re-inject, a rotation and a different phone.
---
--- Everything hangs off the existing bind registry (S._bindRegistry): a control
--- is "bindable" and "floatable" through the same entry, so nothing has to be
--- registered twice and the two builds can never drift apart.
 do
 	local FloatHost = Instance.new("Frame")
 	FloatHost.Name = "FloatingButtons"
 	FloatHost.Parent = SG
 	FloatHost.BackgroundTransparency = 1
 	FloatHost.Size = UDim2.fromScale(1, 1)
-	-- ZIndex 0 puts the whole subtree UNDER the menu (Main is 1): an open menu
-	-- must never be covered by the buttons it spawned.
+
 	FloatHost.ZIndex = 0
 	FloatHost.Visible = MOBILE
 	S._floatHost = FloatHost
@@ -2210,10 +1995,6 @@ do
 	local Buttons = {}
 	local spawnIndex = 0
 
-	-- Binds are registered freely by each feature, so there is no icon per bind.
-	-- Keyword-map onto the embedded nav set instead: a glyph reads far better than
-	-- wrapped shouty text inside a 48px circle.  First match wins, so the more
-	-- specific words are listed first.
 	local FLOAT_ICON_RULES = {
 		{ "menu", "settings-2" },
 		{ "esp", "eye" },
@@ -2306,8 +2087,7 @@ do
 
 		local saved = S.FloatButtons[id]
 		if type(saved) ~= "table" or type(saved.x) ~= "number" or type(saved.y) ~= "number" then
-			-- Fresh buttons stack down the left edge instead of landing on top of
-			-- each other, then the user drags them wherever they want.
+
 			spawnIndex += 1
 			saved = { x = 0.08, y = math.min(0.22 + (spawnIndex - 1) * 0.12, 0.9) }
 			S.FloatButtons[id] = saved
@@ -2339,9 +2119,6 @@ do
 		dot.BorderSizePixel = 0
 		Corner(dot, 99)
 
-		-- Glyph between the state dot and the caption.  Nil when the executor has no
-		-- getcustomasset, in which case the caption keeps the old full-height layout
-		-- instead of leaving a hole where the icon would have been.
 		local glyph = S._MakeNavIcon and S._MakeNavIcon(frame, floatIconKind(id, entry.label))
 		if glyph then
 			glyph.slot.AnchorPoint = Vector2.new(0.5, 0)
@@ -2373,9 +2150,6 @@ do
 		local record = { frame = frame, stroke = stroke, dot = dot, label = label, scale = scale, glyph = glyph }
 		Buttons[id] = record
 
-		-- Drag vs tap: anything under 8px of travel is a tap.  Without the
-		-- threshold every tap that wobbles a pixel would move the button and
-		-- never fire, which is the usual "my button does nothing" bug on touch.
 		local pressPos, dragging, moveConn, endConn
 		local function finish(fired)
 			if moveConn then moveConn:Disconnect(); moveConn = nil end
@@ -2402,8 +2176,7 @@ do
 		tc(frame.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.Touch
 				and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-			-- A second finger landing on the same button would otherwise orphan
-			-- the first press's connections, leaking one per multi-touch.
+
 			if moveConn then moveConn:Disconnect(); moveConn = nil end
 			if endConn then endConn:Disconnect(); endConn = nil end
 			pressPos, dragging = input.Position, false
@@ -2443,8 +2216,7 @@ do
 
 	S._floatSet = function(id, on)
 		if not MOBILE then return end
-		-- The menu button is permanent: on a device with no keyboard, removing it
-		-- would leave no way to reopen the hub.
+
 		if id == "ui:menu" and not on then return end
 		if on then
 			createButton(id)
@@ -2462,11 +2234,9 @@ do
 		SFX.Click()
 	end
 
-	-- Restoring a saved layout: config load hands us the whole map at once.
 	S._floatApplyMap = function(map)
 		if not MOBILE then return end
-		-- Tear everything down first, including the menu button: a saved layout
-		-- carries its position too, and re-creating is how that gets applied.
+
 		local keepMenu = S.FloatButtons["ui:menu"]
 		for id in pairs(Buttons) do destroyButton(id) end
 		S.FloatButtons = {}
@@ -2478,8 +2248,7 @@ do
 				end
 			end
 		end
-		-- A config saved before the menu button existed (or one where it was
-		-- somehow dropped) must not strand the user without a way in.
+
 		createButton("ui:menu")
 		for id in pairs(S._bindRegistry or {}) do repaintChips(id) end
 		if S._refreshFloatTab then pcall(S._refreshFloatTab) end
@@ -2489,8 +2258,6 @@ do
 		for id in pairs(Buttons) do S._floatSet(id, false) end
 	end
 
-	-- Active-state dots: a cheap 0.35s poll over the handful of live buttons,
-	-- rather than a per-frame loop over the whole registry.
 	if MOBILE then
 		task.spawn(function()
 			while not S.Destroyed and FloatHost.Parent do
@@ -2498,26 +2265,18 @@ do
 				task.wait(0.35)
 			end
 		end)
-		-- Re-fit on rotation: sizes are pixels, positions are scale, so only the
-		-- size has to be recomputed.
+
 		tc(cam():GetPropertyChangedSignal("ViewportSize"):Connect(function()
 			local size = buttonSize()
 			for _, button in pairs(Buttons) do
 				button.frame.Size = UDim2.fromOffset(size, size)
-				-- Keep the caption in step with the glyph layout chosen in createButton.
+
 				button.label.TextSize = button.glyph and (size <= 60 and 9 or 10) or (size <= 60 and 11 or 12)
 			end
 		end))
 	end
 end
 
---------------------------------------------------------------------------------
--- RESPONSIVE LAYOUT
---------------------------------------------------------------------------------
--- Runs on every viewport change (resize, rotation, split view).  Nothing in the
--- UI is allowed to assume a screen size: the desktop window shrinks to fit a
--- small monitor, the mobile sheet re-proportions between portrait and landscape,
--- and the toast/alert widths follow the screen instead of a fixed 330/404.
 do
 	local function relayout()
 		local vp = cam() and cam().ViewportSize
@@ -2525,9 +2284,7 @@ do
 		local portrait = vp.Y >= vp.X
 
 		if MOBILE then
-			-- Compact floating panel, capped by the UISizeConstraint above.  Landscape
-			-- (how most phones are held in Roblox) stays deliberately narrow so the
-			-- play area beside it is usable; portrait can afford more width.
+
 			Main.Size = portrait and UDim2.fromScale(0.86, 0.56) or UDim2.fromScale(0.54, 0.78)
 		else
 			WW = math.min(920, math.floor(vp.X - 40))
@@ -2541,8 +2298,7 @@ do
 	end
 	relayout()
 	tc(cam():GetPropertyChangedSignal("ViewportSize"):Connect(relayout))
-	-- CurrentCamera is swapped on respawn in some games; rebind so rotation
-	-- handling doesn't silently die after the first death.
+
 	tc(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 		if cam() then
 			relayout()
@@ -2550,10 +2306,6 @@ do
 		end
 	end))
 end
-
--- (Removed three unused refactor leftovers — mkSubTabBtn, disconnectAll,
--- styleSubTabActive — which had no callers in this hub and pushed the main
--- chunk past Luau's 200-register ceiling. Pressure has no sub-tabs.)
 
 do
 local COLLAPSED_PAGE = UDim2.new(1, 0, 0, 0)
@@ -2578,8 +2330,6 @@ local function relayoutPage(page)
         top = top + subBarHeight + gap
     end
 
-    -- Section cards: mm2 tags them with an "Inner" frame; pressure's mkSection
-    -- puts the UIListLayout directly on the card, so accept either marker.
     local cards = {}
     for _, child in ipairs(page:GetChildren()) do
         if child:IsA("Frame") and child.Visible and child ~= subBar and (child:FindFirstChild("Inner") or child:FindFirstChildOfClass("UIListLayout")) then
@@ -2618,15 +2368,9 @@ local function relayoutPage(page)
     page.Size = UDim2.new(1, 0, 0, requiredHeight)
 end
 local function refreshPageLayouts()
-    -- Stay "queued" for the whole pass: relayoutPage writes Position/Size to every card,
-    -- which re-fires each card's AbsoluteSize watcher. Clearing the flag only after we're
-    -- done makes those self-triggered signals no-ops instead of re-entrant task.defer calls
-    -- stacking inside the same Deferred-signal drain.
+
     ContentArea.ScrollingEnabled = true
-    -- Only the page(s) actually on screen need laying out.  Sorting and
-    -- repositioning every card on every page each pass — re-queued by any live
-    -- label that changes size — is the bulk of the "menu is laggy" cost.  Hidden
-    -- pages collapse to zero height so they cannot inflate the scroll canvas.
+
     for _, page in pairs(Pages) do
         if page.Visible then
             relayoutPage(page)
@@ -2668,7 +2412,6 @@ end
 queuePageLayout()
 end
 
-
 local function mkSection(parent, title, order)
 	local card = Instance.new("Frame")
 	card.Name = title
@@ -2688,8 +2431,7 @@ local function mkSection(parent, title, order)
 	local hdrRow = Instance.new("Frame")
 	hdrRow.Parent = card; hdrRow.LayoutOrder = 0; hdrRow.BackgroundTransparency = 1
 	hdrRow.Size = UDim2.new(1, 0, 0, 24)
-	-- Fixed-offset tick, not a list sibling elsewhere — safe since hdrRow
-	-- itself isn't inside a UIListLayout that also owns Scale-height peers.
+
 	local tick = Instance.new("Frame")
 	tick.Parent = hdrRow; tick.BackgroundColor3 = T.Accent; tick.BorderSizePixel = 0
 	tick.Position = UDim2.new(0, 0, 0.5, -6); tick.Size = UDim2.new(0, 3, 0, 13)
@@ -2712,7 +2454,7 @@ local function mkToggle(parent, label, key, order, callback)
 	local lbl = Instance.new("TextLabel")
 	lbl.Parent = row; lbl.BackgroundTransparency = 1
 	lbl.Position = UDim2.new(0, 4, 0, 0)
-	-- Reserve the switch + the chip beside it, whichever build we're on.
+
 	lbl.Size = UDim2.new(1, -(M.trackW + (MOBILE and 70 or 78)), 1, 0)
 	lbl.Font = F; lbl.TextSize = M.rowFont; lbl.TextColor3 = T.Tx2
 	lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.TextTruncate = Enum.TextTruncate.AtEnd; lbl.Text = label
@@ -2833,15 +2575,12 @@ local function mkSlider(parent, label, minVal, maxVal, key, order, callback)
 		setVal(minVal + (maxVal - minVal) * pos)
 		if RequestAutoSave then RequestAutoSave() end
 	end
-	-- Touch counts as a drag here.  Matching only MouseButton1/MouseMovement (as
-	-- this did) makes every slider in the hub dead on a phone — you could see
-	-- the bar but never move it.
+
 	tc(bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
-			-- A touch drag inside a ScrollingFrame scrolls the page as well as
-			-- moving the slider; freeze the scroll for the duration of the drag.
+
 			ContentArea.ScrollingEnabled = false
 			updateFromInput(input)
 		end
@@ -2887,9 +2626,6 @@ local function mkButton(parent, label, callback, order)
 	return btn
 end
 
---------------------------------------------------------------------------------
--- WORLD HELPERS
---------------------------------------------------------------------------------
 local function getGF() return Workspace:FindFirstChild("GameplayFolder") end
 local function getHRP() local c = LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
 local function getHum() local c = LP.Character; return c and c:FindFirstChildOfClass("Humanoid") end
@@ -2904,8 +2640,6 @@ local function objPos(obj)
 	return nil
 end
 
--- Names confirmed either via live decompile this session or the public
--- Pressure wiki (bloxinformer.com / pressuregame.wiki / pressure.fandom.com).
 local MONSTER_NAMES = {
 	"angler", "blitz", "pinkie", "froger", "pandemonium", "chainsmoker",
 	"a60", "bottomfeeder", "bouncer", "candlebearer", "eyefestation", "squiddle",
@@ -2924,10 +2658,6 @@ local function monsterKind(nameLower)
 	return nil
 end
 
--- Names and InteractionType values below were read from the live Pressure
--- client (Hadal Blacksite v12926).  Use the type contract first: cosmetic
--- item names change often, but InteractionType is how Pressure instantiates
--- the correct module for a tagged world object.
 local ITEM_MODELS = {
 	DropBattery = true, Flashlight = true, Lantern = true, FlashBeacon = true,
 	Glider = true, HealthCrate = true, OxygenTank = true, Medkit = true,
@@ -2964,20 +2694,9 @@ local OBJECTIVE_LABELS = {
 	TurretControls = "TURRET CONTROL",
 }
 local PromptCache = {}
--- Doors persist in the world after you walk through them (unlike loot, which
--- the game removes on pickup), so they're the one ESP category that needs
--- explicit "stop showing it" tracking — once you're within 7 studs of a door
--- you've clearly already gone through it.
--- Declared HERE, not next to doorPassed further down: "Teleport to Nearest
--- Door" reads this table hundreds of lines before that declaration, so it was
--- compiling as a nil global and the button silently did nothing (the pcall
--- around the click handler swallowed the index error).
+
 local PassedDoors = {}
 
--- The prompt is often nested under ProxyPart/Highlight, while the contract
--- lives on a Model or Folder above it.  Walk upward instead of relying on a
--- single model name so Valve/RepairSystem and future room variants classify
--- correctly too.
 local function getInteractionType(prompt)
 	local node = prompt.Parent
 	while node and node ~= Workspace do
@@ -3029,8 +2748,6 @@ local function classifyPrompt(prompt)
 	}
 end
 
--- Fake dead-end models are decoration only. Filter them before building the
--- ESP registry, so Door ESP never fills a room with misleading markers.
 local DEAD_END_DOOR_NAMES = {
 	NoEntry = true, BentDoor = true, DeadEndDoor = true, BrokenDoor = true,
 }
@@ -3049,8 +2766,6 @@ local function textMentionsKeycard(value)
 		or text:find("card reader", 1, true) ~= nil
 end
 
--- Pressure has several card-reader model variants. Prefer explicit attributes,
--- then use model/prompt text as a safe fallback for older room variants.
 local function isKeycardDoor(e)
 	if not (e and e.kind == "door" and e.model) then return false end
 	local model = e.model
@@ -3132,21 +2847,12 @@ local function isRepairComplete(e)
 	return fixed ~= nil and tonumber(fixed.Value) ~= nil and fixed.Value >= 100
 end
 
---------------------------------------------------------------------------------
--- forward decls used by the UI
---------------------------------------------------------------------------------
 local hideInLockerNow, attemptRespawn
 local SaveConfigFile, LoadConfigFile
 local refreshVisionEffects
 
--- Client-owned colour grading. These effects are kept separate from the
--- game's Lighting effects, so every setting can be removed cleanly on toggle
--- off or script unload without leaving the level in a modified state.
 local suppressedPostEffects = {}
--- Pressure hides remote character parts by setting Transparency=1.  A normal
--- Highlight can then have nothing left to render, so teammate chams use a
--- lightweight, client-only proxy that mirrors the real rig without changing
--- anyone else's replicated character.
+
 local TeammateChamReg = {}
 local function getVisionGrade()
 	local grade = Lighting:FindFirstChild("PressureHubVisionGrade")
@@ -3174,7 +2880,7 @@ refreshVisionEffects = function()
 		grade.Brightness = S.LowLightVision and 0.13 or 0
 		grade.Contrast = math.clamp((S.VisualContrast or 0) / 220, 0, 0.45)
 		grade.Saturation = math.clamp(((S.VisualSaturation or 100) - 100) / 100, -1, 1)
-		-- Slightly cool-neutral, not a green "night-vision goggles" filter.
+
 		grade.TintColor = S.LowLightVision and Color3.fromRGB(225, 245, 238) or Color3.new(1, 1, 1)
 	end
 
@@ -3213,9 +2919,6 @@ S._cleanupVisuals = function()
 	end
 end
 
---------------------------------------------------------------------------------
--- TAB: VISUALS
---------------------------------------------------------------------------------
 local secEntities = mkSection(Pages.Visuals, "Entity ESP", 1)
 mkToggle(secEntities, "Monster ESP (Angler/Blitz/...)", "EntityESP", 1)
 mkToggle(secEntities, "Wall Dweller ESP", "WallDwellerESP", 2)
@@ -3243,16 +2946,7 @@ local secPlayers = mkSection(Pages.Visuals, "Player ESP", 4)
 	mkToggle(secPlayers, "Teammate Chams", "PlayerChams", 5)
 
 local secEnv = mkSection(Pages.Visuals, "Environment & Lighting", 5)
--- No snapshot/restore here on purpose: Pressure dims Ambient/Brightness per
--- room on its own (confirmed live — a dark encounter room sat at Ambient
--- (0,0,0)/Brightness 0 with these toggles never touched). A one-time
--- "restore the value from whenever you turned this on" is exactly the wrong
--- pattern against a value the game keeps changing on its own — turn the
--- toggle off in a normal room, walk into a dark one, and it would force you
--- back to the stale bright snapshot, or vice versa. Instead: force every
--- frame while ON (see the slow loop), do nothing on OFF, and let the game's
--- own per-room lighting reassert itself the moment we stop overriding it —
--- same fix pattern as the mouse-unlock/camera fights.
+
 	mkToggle(secEnv, "Fullbright", "FullBright", 1)
 	mkToggle(secEnv, "No Fog", "NoFog", 2)
 	mkToggle(secEnv, "Low-Light Vision", "LowLightVision", 3, refreshVisionEffects)
@@ -3261,23 +2955,18 @@ local secEnv = mkSection(Pages.Visuals, "Environment & Lighting", 5)
 	mkSlider(secEnv, "World Contrast", 0, 100, "VisualContrast", 6, refreshVisionEffects)
 	mkSlider(secEnv, "World Saturation", 0, 200, "VisualSaturation", 7, refreshVisionEffects)
 	mkToggle(secEnv, "Custom FOV", "CamFOVEnabled", 8, function(v) if not v and cam() then pcall(function() cam().FieldOfView = 70 end) end end)
--- Pressure's first-person viewmodel starts clipping/disappearing above ~85.
--- Keep the useful range, but never let a saved 99/120 FOV hide the arms.
+
 mkSlider(secEnv, "FOV", 55, 85, "CamFOV", 9)
 
 local secVisualHUD = mkSection(Pages.Visuals, "Visual HUD & Range", 6)
 	mkToggle(secVisualHUD, "Off-Screen Threat Radar", "ThreatRadar", 1)
 	mkToggle(secVisualHUD, "Status HUD (room / oxygen / health)", "StatusHUD", 2)
-	-- Keybind HUD is a desktop-only readout; the toggle would do nothing on a
-	-- touch build, so it isn't offered there.
+
 	if not MOBILE then mkToggle(secVisualHUD, "Keybind HUD (active features)", "KeybindHUD", 3) end
 	mkToggle(secVisualHUD, "Dynamic Island (O2 / ping / fps / time)", "DynamicIsland", 4)
 	mkToggle(secVisualHUD, "Next Door Waypoint", "NextDoorTracer", 5)
 	mkSlider(secVisualHUD, "ESP Max Distance", 250, 2500, "ESPMaxDist", 5)
 
---------------------------------------------------------------------------------
--- TAB: COMBAT
---------------------------------------------------------------------------------
 local secDef = mkSection(Pages.Combat, "Alerts & Defense", 1)
 mkToggle(secDef, "Entity Warning Banner", "EntityWarning", 1)
 mkToggle(secDef, "Audio Siren Warning", "WarningSound", 2)
@@ -3291,9 +2980,6 @@ mkToggle(secCounters, "Auto Dozer Stealth (crouch ping)", "AutoDozerStealth", 2)
 mkToggle(secCounters, "Auto Shake Off Parasites", "AutoShakeParasite", 3)
 mkToggle(secCounters, "Remove Blitz Jumpscare", "RemoveJumpscares", 4)
 
---------------------------------------------------------------------------------
--- TAB: MOTION
---------------------------------------------------------------------------------
 local secMovement = mkSection(Pages.Motion, "Speed & Flight", 1)
 mkToggle(secMovement, "Custom WalkSpeed", "SpeedEnabled", 1, function() refreshGameSpeed() end)
 mkSlider(secMovement, "WalkSpeed", 8, 120, "CustomWalkSpeed", 2, function() refreshGameSpeed() end)
@@ -3334,7 +3020,7 @@ mkToggle(secPhysics, "Fast Swim", "FastSwim", 1, function(v)
 		saveSwimDefaults(sw)
 		sw.SwimmingSpeed = math.clamp(tonumber(S.SwimSpeed) or 32, 18, 65)
 	else
-		-- Glider Speed is its own setting; disabling Fast Swim must not erase it.
+
 		restoreSwimDefaults(sw, false)
 	end
 end)
@@ -3351,18 +3037,10 @@ mkSlider(secPhysics, "Glider Speed", 60, 140, "GliderSpeed", 3, function(v)
 end)
 mkToggle(secPhysics, "Infinite Oxygen", "InfiniteOxygen", 4)
 
---------------------------------------------------------------------------------
--- TAB: PLAYER
---------------------------------------------------------------------------------
 local secChar = mkSection(Pages.Player, "Character", 1)
 mkButton(secChar, "Attempt Respawn", function() attemptRespawn() end, 1)
 mkToggle(secChar, "Anti-AFK Disconnect", "AntiAFK", 2)
 
--- No 3rd-person toggle: Pressure's own CameraModule forces the camera back
--- to LockFirstPerson/near-zero zoom every frame regardless of CameraMode or
--- CameraMaxZoomDistance — confirmed live (set Classic + 25-stud zoom, held
--- it, camera distance stayed ~2 studs). The game genuinely doesn't support
--- third person; a toggle that visibly does nothing is worse than no toggle.
 local secMouse = mkSection(Pages.Player, "Mouse", 2)
 do
 	local note = Instance.new("TextLabel")
@@ -3372,9 +3050,6 @@ do
 	note.Text = "Mouse unlocks automatically while this menu is open, and locks back the moment you close it."
 end
 
---------------------------------------------------------------------------------
--- TAB: AUTO
---------------------------------------------------------------------------------
 local secAuto = mkSection(Pages.Auto, "Automation", 1)
 mkToggle(secAuto, "Auto Open Doors", "AutoOpenDoors", 1)
 mkToggle(secAuto, "Auto Collect Kroner & Items", "AutoCollectItems", 2)
@@ -3390,9 +3065,6 @@ local secInteract = mkSection(Pages.Auto, "Interaction Tweaks", 2)
 mkToggle(secInteract, "Instant Interact (no hold)", "InstantInteract", 1)
 mkToggle(secInteract, "Extended Prompt Reach (x3)", "PromptReach", 2)
 
---------------------------------------------------------------------------------
--- TAB: MISC (Teleports + Server actions — both were too thin to earn a tab)
---------------------------------------------------------------------------------
 local secTP = mkSection(Pages.Misc, "Teleports", 1)
 mkButton(secTP, "Teleport to Nearest Door", function()
 	local hrp = getHRP(); if not hrp then return end
@@ -3419,14 +3091,8 @@ mkButton(secTP, "Teleport to Nearest Locker", function()
 	else Notify("Teleport", "No locker found", 2, "warn") end
 end, 2)
 
---------------------------------------------------------------------------------
--- TAB: CONFIG
---------------------------------------------------------------------------------
 local secCfg = mkSection(Pages.Config, "Configuration", 1)
 
--- Some executors implement readfile/writefile but not isfile.  The previous
--- loader treated that as "config missing", so autoload silently never ran.
--- Read directly, validate JSON, and keep a tiny recovery copy during writes.
 S._readConfigData = function(name)
 	if not readfile then return false, nil, "readfile unavailable" end
 	local base = "Pressure_Configs/" .. name .. ".json"
@@ -3453,9 +3119,7 @@ S._applyConfigData = function(data)
 		if data._ui.HUDScale then pcall(function() UIStyle:ApplyHUDScale(data._ui.HUDScale) end) end
 		if data._ui.NotificationPosition then pcall(function() UIStyle:PlaceNotifications(data._ui.NotificationPosition) end) end
 	end
-	-- Apply sliders and other scalar values first, then toggles.  A toggle such
-	-- as Fast Swim therefore starts with its saved speed rather than a default
-	-- for one frame, regardless of unordered table iteration.
+
 	for key, value in pairs(data) do
 		if CfgBind[key] and type(S[key]) ~= "boolean" then pcall(CfgBind[key], value) end
 	end
@@ -3463,8 +3127,7 @@ S._applyConfigData = function(data)
 		if CfgBind[key] and type(S[key]) == "boolean" then pcall(CfgBind[key], value) end
 	end
 	S._applyKeybindMap(type(data._keybinds) == "table" and data._keybinds or {})
-	-- Floating-button layout: restoring it is what makes a phone layout survive
-	-- a re-inject, which is the whole point of saving positions as scale.
+
 	if MOBILE and S._floatApplyMap then
 		pcall(S._floatApplyMap, type(data._floats) == "table" and data._floats or {})
 	end
@@ -3481,8 +3144,7 @@ SaveConfigFile = function(name)
 	if not writefile then Notify("Config", "Executor has no writefile", 2, "warn") return end
 	local ok, err = pcall(function()
 		if makefolder and (not isfolder or not isfolder("Pressure_Configs")) then
-			-- Executors without isfolder may report "already exists" here; that
-			-- is harmless, while treating it as a save failure is not.
+
 			pcall(makefolder, "Pressure_Configs")
 		end
 		local data = {}
@@ -3493,8 +3155,7 @@ SaveConfigFile = function(name)
 		data._schema = 3
 		local path = "Pressure_Configs/" .. name .. ".json"
 		local encoded = HttpService:JSONEncode(data)
-		-- The .tmp file gives the loader a valid fallback if an executor aborts
-		-- in the middle of replacing the main file.
+
 		writefile(path .. ".tmp", encoded)
 		writefile(path, encoded)
 		if readfile then
@@ -3522,8 +3183,7 @@ LoadConfigFile = function(name, silent)
 end
 mkButton(secCfg, "Save Default Config", function() SaveConfigFile("_autoload") end, 1)
 mkButton(secCfg, "Load Default Config", function() LoadConfigFile("_autoload") end, 2)
--- Keybinds exist only on the desktop build, so the button that clears them
--- does too; mobile gets the equivalent action for its own control surface.
+
 if MOBILE then
 	mkButton(secCfg, "Remove All Floating Buttons", function()
 		if S._floatClearAll then S._floatClearAll() end
@@ -3533,10 +3193,6 @@ else
 	mkButton(secCfg, "Clear All Keybinds", function() S._clearAllKeybinds() end, 3)
 end
 
--- Auto-save: every toggle click / slider drag reschedules a single debounced
--- write 1s out, so flipping five settings in a row writes the file once, not
--- five times. LoadConfigFile itself never triggers this (it calls CfgBind
--- directly), so loading a config on startup can't immediately re-save it.
 do
 	local scheduled = false
 	RequestAutoSave = function()
@@ -3556,17 +3212,8 @@ do
 		or "ПКМ по функции — назначить бинд. Все изменения сохраняются автоматически."
 end
 
---------------------------------------------------------------------------------
--- TAB: BUTTONS (mobile) — the Floating Buttons manager
---------------------------------------------------------------------------------
--- Built LAST on purpose: it lists every registered bindable, and the registry
--- is only complete once every other tab has finished building its controls.
 if MOBILE and Pages.Buttons then
-	-- The menu button drives the window itself rather than a game feature, so it
-	-- is registered here instead of by a control builder.  It is also the one
-	-- button that cannot be removed — deleting it on a device with no keyboard
-	-- would leave no way to reopen the menu at all.
-	
+
 	local function mkPill(parent, text, x)
 		local pill = Instance.new("TextButton")
 		pill.Parent = parent
@@ -3632,13 +3279,9 @@ if MOBILE and Pages.Buttons then
 		for _, paint in pairs(rows) do pcall(paint) end
 	end
 
-	-- The menu button exists from the first frame, before any config has loaded.
 	S._floatSet("ui:menu", true)
 end
 
---------------------------------------------------------------------------------
--- HELPERS BEHIND FORWARD DECLS
---------------------------------------------------------------------------------
 attemptRespawn = function()
 	task.spawn(function()
 		local r = findRemote("Respawn")
@@ -3664,8 +3307,7 @@ hideInLockerNow = function(manual)
 		end
 		local hrp = getHRP(); if not hrp then return end
 		local best, bestD, bestPrompt = nil, math.huge, nil
-		-- Void lockers are excluded here at the source, not filtered later —
-		-- auto-hide and this button can physically never pick one.
+
 		for _, e in ipairs(PromptCache) do
 			if e.kind == "locker" and e.part.Parent then
 				local d = (e.part.Position - hrp.Position).Magnitude
@@ -3683,7 +3325,6 @@ hideInLockerNow = function(manual)
 	end)
 end
 
--- Anti-AFK
 tc(LP.Idled:Connect(function()
 	if S.AntiAFK then
 		local VirtualUser = game:GetService("VirtualUser")
@@ -3693,7 +3334,6 @@ tc(LP.Idled:Connect(function()
 	end
 end))
 
--- Infinite Jump
 tc(UIS.JumpRequest:Connect(function()
 	if S.InfiniteJump then
 		local hum = getHum()
@@ -3701,9 +3341,6 @@ tc(UIS.JumpRequest:Connect(function()
 	end
 end))
 
---------------------------------------------------------------------------------
--- PER-FRAME LOOP
---------------------------------------------------------------------------------
 tc(RunService.Heartbeat:Connect(function(dt)
 	local c = LP.Character
 	local hrp = c and c:FindFirstChild("HumanoidRootPart")
@@ -3776,9 +3413,6 @@ tc(RunService.Stepped:Connect(function()
 	end
 end))
 
---------------------------------------------------------------------------------
--- SLOW LOOPS
---------------------------------------------------------------------------------
 task.spawn(function()
 	while not S.Destroyed do
 		if S.SpeedEnabled then installSpeedHook(); refreshGameSpeed() end
@@ -3801,7 +3435,7 @@ task.spawn(function()
 				local m = getMain(); local sw = m and m.Swimming
 				if type(sw) == "table" then
 					saveSwimDefaults(sw)
-					-- Do not write CurrentSwimSpeed here: it is a live acceleration value.
+
 					sw.SwimmingSpeed = math.clamp(tonumber(S.SwimSpeed) or 32, 18, 65)
 				end
 			end)
@@ -3822,7 +3456,7 @@ end)
 task.spawn(function()
 	while not S.Destroyed do
 		if S.AutoDozerStealth then
-			-- Same ping the game's own LocalFish sends while crouched near the Dozer.
+
 			local r = findRemote("DozerCrouchingCheck")
 			if r and r.FireServer then pcall(function() r:FireServer() end) end
 		end
@@ -3830,9 +3464,6 @@ task.spawn(function()
 	end
 end)
 
--- Instant Interact / Extended Reach: patch prompt HoldDuration and
--- MaxActivationDistance with original-value bookkeeping so toggling off
--- restores the game's own values exactly.
 S._promptOrig = {}
 task.spawn(function()
 	while not S.Destroyed do
@@ -3862,8 +3493,6 @@ task.spawn(function()
 	end
 end)
 
--- Keypad code watcher: the game hands the real code to the client as a
--- Player attribute the moment it's set.
 do
 	local function announceCode()
 		local code = LP:GetAttribute("Code")
@@ -3876,9 +3505,6 @@ do
 	task.spawn(announceCode)
 end
 
---------------------------------------------------------------------------------
--- ENTITY SCANNER
---------------------------------------------------------------------------------
 local EntityCache = {}
 task.spawn(function()
 	while not S.Destroyed do
@@ -3907,9 +3533,6 @@ task.spawn(function()
 	end
 end)
 
--- Anti-Eyefestation: never fight Pressure's scripted locker camera.  The
--- character is normally anchored while entering/hiding, and the server's
--- CheckLockerStatus lets us hold the pause for the short exit transition too.
 local antiEyePauseUntil, antiEyeLockerCheckAt = 0, 0
 local function shouldPauseAntiEyeCamera()
 	local now = os.clock()
@@ -3974,9 +3597,6 @@ task.spawn(function()
 	end
 end)
 
---------------------------------------------------------------------------------
--- ESP: demonology-style billboard tags + outline highlights
---------------------------------------------------------------------------------
 local ESP_COLORS = {
 	monster = Color3.fromRGB(255, 60, 60), dweller = Color3.fromRGB(255, 150, 0),
 	eyefest = Color3.fromRGB(170, 70, 255), squiddle = Color3.fromRGB(255, 220, 40),
@@ -4059,8 +3679,6 @@ local function mkEspTag(adornee, title, color, strong, style)
 	hl.FillTransparency = strong and 0.55 or 0.9; hl.OutlineTransparency = strong and 0 or 0.15
 	hl.Parent = adornee
 
-	-- Priority objects pulse gently; keycards and card-reader doors use the
-	-- same restrained motion so they are visible without flooding the screen.
 	if strong then
 		task.spawn(function()
 			while hl.Parent do
@@ -4109,15 +3727,12 @@ task.spawn(function()
 				item = S.ItemESP, currency = S.KronerESP, hazard = S.HazardESP,
 				keycard = S.KeycardESP, refill = S.ObjectiveESP, valve = S.ObjectiveESP,
 				repair = S.ObjectiveESP, objective = S.ObjectiveESP, other = S.ItemESP,
-				-- Always on, no toggle: a void locker kills you if you hide
-				-- in it. This warning shouldn't be optional.
+
 				voidlocker = true,
 			}
 			local perKind = {}
 			for _, e in ipairs(PromptCache) do
-				-- A completed RepairSystem keeps its model around after the prompt
-				-- disappears. It is no longer an objective, so never leave ESP/chams
-				-- on it once Fixed reaches 100.
+
 				local completedRepair = e.kind == "repair" and isRepairComplete(e)
 				if e.part.Parent and promptKindOn[e.kind] and not completedRepair and not (e.kind == "door" and isDeadEndDoor(e.model)) then
 					local displayKind = e.kind
@@ -4140,7 +3755,7 @@ task.spawn(function()
 					local c = list[i]
 					if not wants[c.e.model] then
 						if c.e.kind == "door" and doorPassed(c.e.model, objPos(c.e.model) or c.e.part.Position, myPos) then
-							-- already walked through it, don't re-clutter the screen
+
 						else
 							local displayKind = c.displayKind
 							if c.e.kind == "door" and c.e.model:GetAttribute("ProgressDoor") then displayKind = "nextdoor" end
@@ -4156,8 +3771,6 @@ task.spawn(function()
 				end
 			end
 
-			-- Some real next-room doors have no prompt in the early loading frame.
-			-- Scan those only; fake/dead-end door models are intentionally never added.
 			if S.DoorESP then
 				local gf2 = getGF()
 				local rooms = gf2 and gf2:FindFirstChild("Rooms")
@@ -4181,8 +3794,6 @@ task.spawn(function()
 				end
 			end
 
-			-- Roblox renders ~31 Highlights at once — keep the nearest 26,
-			-- entities (strong) always win the budget.
 			local ordered = {}
 			for obj, w in pairs(wants) do ordered[#ordered + 1] = { obj = obj, w = w } end
 			table.sort(ordered, function(a, b)
@@ -4227,7 +3838,6 @@ task.spawn(function()
 	end
 end)
 
--- AUTOMATION LOOP (only interaction contracts verified in the live client)
 task.spawn(function()
 	while not S.Destroyed do
 		if (S.AutoOpenDoors or S.AutoCollectItems or S.AutoSearchDrawers or S.AutoCollectKeys
@@ -4246,8 +3856,7 @@ task.spawn(function()
 						elseif S.AutoTurnValves and e.kind == "valve" and d <= 5 then pcall(fireproximityprompt, e.prompt)
 						elseif S.AutoDisarmLandmines and e.interactionType == "Landmine" and d <= 5.5 then pcall(fireproximityprompt, e.prompt)
 						end
-						-- NEVER auto-fire: locker (traps you), voidlocker, other hazards,
-						-- repair and generic objectives/minigames.
+
 					end
 				end
 			end)
@@ -4256,12 +3865,6 @@ task.spawn(function()
 	end
 end)
 
--- RepairSystem is not a ProximityPrompt-only interaction: Pressure first
--- grants the player the generator through RemoteFunction, then accepts a
--- successful repair tick through its local RemoteEvent.  The server rejects
--- ticks faster than 0.3s, so stay above that limit and never teleport to a
--- machine.  Turning the feature off sends the documented clean exit branch
--- (false, true), avoiding the damage branch and releasing the generator.
 local autoRepair = { root = nil, event = nil, lastStart = 0, lastTick = 0 }
 S._stopAutoRepair = function()
 	if autoRepair.event and autoRepair.event.Parent then
@@ -4314,18 +3917,12 @@ task.spawn(function()
 	end
 end)
 
---------------------------------------------------------------------------------
--- PLAYER ESP
---------------------------------------------------------------------------------
 local ESPGui = Instance.new("ScreenGui")
 ESPGui.Name = "PressureESP"; ESPGui.ResetOnSpawn = false; ESPGui.IgnoreGuiInset = true; ESPGui.DisplayOrder = 950
 pcall(function() ESPGui.Parent = uiP end)
 table.insert(UIStyle.Roots, ESPGui)
 SG.Destroying:Connect(function() pcall(function() ESPGui:Destroy() end) end)
 
--- One waypoint tracer to the nearest keycard/code breacher — a straight
--- line from screen-bottom-center is a lot easier to follow at a glance than
--- hunting for a small tag in a dark room.
 local KeycardTracer = Instance.new("Frame")
 KeycardTracer.BorderSizePixel = 0
 KeycardTracer.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -4363,9 +3960,6 @@ NextDoorTracer.Visible = false
 NextDoorTracer.Parent = ESPGui
 Corner(NextDoorTracer, 1)
 
--- Compact in-game status card.  It lives in the ESP GUI (not the click GUI),
--- so it remains readable while the menu is closed and costs only a handful of
--- UI instances.
 local StatusHUD = Instance.new("Frame")
 StatusHUD.Name = "PressureStatusHUD"
 StatusHUD:SetAttribute("ScalableHUD", true)
@@ -4426,9 +4020,6 @@ end
 local oxygenText, oxygenFill = mkVitalRow(StatusHUD, "", 49)
 local healthText, healthFill = mkVitalRow(StatusHUD, "", 73)
 
--- Bound controls get a separate, compact HUD.  Toggle rows appear only while
--- they are active; action buttons remain visible so their hotkeys are never a
--- mystery.  It automatically sits above the vitals card when both are enabled.
 local KeybindHUD = Instance.new("Frame")
 KeybindHUD.Name = "PressureKeybindHUD"
 KeybindHUD:SetAttribute("ScalableHUD", true)
@@ -4492,8 +4083,7 @@ end
 
 S._refreshKeybindHUD = function()
 	S._bindHUDDirty = false
-	-- No keyboard, no keybind HUD.  The mobile build shows the Dynamic Island
-	-- instead, and its floating buttons carry their own on/off state.
+
 	if MOBILE then KeybindHUD.Visible = false; return end
 	local entries = {}
 	for id, entry in pairs(S._bindRegistry or {}) do
@@ -4528,10 +4118,6 @@ end
 UIStyle:ApplyHUDScale(S.HUDScale)
 S._markKeybindHUDDirty()
 
--- Dynamic Island: floating top-center status bar matched to mm2's look (brand dot + label,
--- divider, then O2 / PING / FPS / TIME).  Lives in ESPGui so it stays visible with the menu
--- closed; the DynamicIslandGradient name already has a theme handler, and ScalableHUD ties it to
--- the HUD-scale slider like the vitals / keybind cards.
 do
 	local island = Instance.new("Frame")
 	island.Name = "PressureDynamicIsland"
@@ -4607,10 +4193,6 @@ do
 	local iFps = islandMetric(250, 44, "FPS")
 	local iTime = islandMetric(302, 60, "TIME")
 
-	-- The mobile menu animates in and out of this bar like a droplet, so the
-	-- island publishes its own centre (in Scale, from the live AbsolutePosition
-	-- so HUD scale and screen size are already accounted for) and a squash it
-	-- plays when the window is swallowed or spat back out.
 	S._islandPoint = function()
 		local vp = cam() and cam().ViewportSize
 		if not vp or vp.X <= 0 or vp.Y <= 0 or not island.Parent then
@@ -4619,7 +4201,7 @@ do
 		local centre = island.AbsolutePosition + island.AbsoluteSize / 2
 		return UDim2.fromScale(math.clamp(centre.X / vp.X, 0, 1), math.clamp(centre.Y / vp.Y, 0, 1))
 	end
-	-- Keep the island inside a narrow (portrait) phone screen.
+
 	if MOBILE then
 		local function fitIsland()
 			local vp = cam() and cam().ViewportSize
@@ -4633,10 +4215,9 @@ do
 
 	S._islandGulp = function(outward)
 		if not island.Visible then return end
-		-- Read the target from S.HUDScale, not from the live UIScale: a gulp that
-		-- lands mid-tween would otherwise bake in a transient value.
+
 		local base = S.HUDScale * (tonumber(island:GetAttribute("MobileFit")) or 1)
-		-- Swallowing squashes inward first, spitting out bulges outward first.
+
 		Tween(islandScale, 0.12, { Scale = base * (outward and 1.1 or 0.9) }, Enum.EasingStyle.Quad):Play()
 		task.delay(0.12, function()
 			if island.Parent then Tween(islandScale, 0.22, { Scale = base }, Enum.EasingStyle.Back):Play() end
@@ -4644,9 +4225,7 @@ do
 	end
 
 	local islandStart = os.time()
-	-- One table instead of three locals: this chunk runs right at Luau's 200
-	-- register ceiling, and three counters here cost three registers for the
-	-- whole enclosing block.
+
 	local fpsMeter = { frames = 0, elapsed = 0, value = 0 }
 	tc(RunService.RenderStepped:Connect(function(dt)
 		fpsMeter.frames += 1
@@ -4682,8 +4261,6 @@ do
 	end)
 end
 
--- Up to four nearest off-screen threats.  The arrow itself rotates; the name
--- stays level, which makes it readable during fast turns and chase scenes.
 local ThreatArrowPool = {}
 local function getThreatArrow(index)
 	local entry = ThreatArrowPool[index]
@@ -4731,8 +4308,7 @@ local function createTeammateCham(plr, ch)
 		if source:IsA("BasePart") and source.Name ~= "HumanoidRootPart" then
 			local ok, copy = pcall(function() return source:Clone() end)
 			if ok and copy and copy:IsA("BasePart") then
-				-- Keep geometry/decals for MeshParts and heads, but remove joints,
-				-- emitters and scripts so the proxy stays visual-only and inert.
+
 				for _, child in ipairs(copy:GetChildren()) do
 					if not (child:IsA("SpecialMesh") or child:IsA("Decal") or child:IsA("Texture")) then
 						child:Destroy()
@@ -4900,9 +4476,6 @@ local function removeESP(plr)
 	end
 end
 
--- World-space tags and player ESP do not share a parent with the menu.  A
--- real teardown has to remove both explicitly, otherwise each re-injection
--- accumulates orphaned highlights and billboard labels.
 S._cleanupESP = function()
 	for obj in pairs(TagReg) do destroyTag(obj) end
 	for plr in pairs(ESPObjects) do removeESP(plr) end
@@ -5013,8 +4586,7 @@ tc(RunService.RenderStepped:Connect(function()
 		for _, e in ipairs(PromptCache) do
 			if e.kind == "door" and e.part.Parent and not isDeadEndDoor(e.model) and e.model:GetAttribute("ProgressDoor") and hrp then
 				local d = (e.part.Position - hrp.Position).Magnitude
-				-- Once close enough to interact, it is no longer a waypoint; this
-				-- also prevents the line pointing backwards at a door just passed.
+
 				if d > 8 and d <= (S.ESPMaxDist or 1500) and (not bestD or d < bestD) then best, bestD = e.part, d end
 			end
 		end
@@ -5039,10 +4611,6 @@ tc(RunService.RenderStepped:Connect(function()
 	end
 end))
 
---------------------------------------------------------------------------------
--- REMOTE HOOKS — URSpecialEffects is an UnreliableRemoteEvent, which an
--- IsA("RemoteEvent") check would silently skip.
---------------------------------------------------------------------------------
 task.spawn(function()
 	local ev = getEvents()
 	if not ev then return end
@@ -5097,9 +4665,6 @@ task.spawn(function()
 	end
 end)
 
---------------------------------------------------------------------------------
--- STARTUP
---------------------------------------------------------------------------------
 task.spawn(function()
 	local loaded, reason = false, "missing"
 	for attempt = 1, 3 do
