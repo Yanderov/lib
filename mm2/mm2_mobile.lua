@@ -115,7 +115,7 @@ local S = {
     SheriffSilentAimFOVEnabled = true,
     SheriffSilentAimPiercing = false,
     SheriffAntiDesync = false,
-    ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
+    ForceShoot = false, ForceShootDelay = 60,
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -6980,7 +6980,7 @@ do
     local secGunFire = mkSection(Pages.Combat, "Gun Fire", 2)
     secGunFire.Parent:SetAttribute("ConfigSection", "Silent Aim")
     mkToggle(secGunFire, "Force Shoot", false, function(v) S.ForceShoot = v end, 1)
-    mkToggle(secGunFire, "Hold Mouse to Fire", true, function(v) S.ForceShootHold = v end, 2)
+    
     mkSlider(secGunFire, "Fire Delay (ms)", 0, 500, 60, function(v) S.ForceShootDelay = v end, 3)
     do
         local function heldGun()
