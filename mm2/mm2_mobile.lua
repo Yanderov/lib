@@ -14066,6 +14066,9 @@ function countActiveResets()
 end
 
 local function flingPlayer(TargetPlayer, _retryCount)
+    return VoidReset(TargetPlayer, _retryCount)
+end
+local function OLD_flingPlayer(TargetPlayer, _retryCount)
     if TargetPlayer == LP then return false end
     if activeResets[TargetPlayer.UserId] then return false end
 
