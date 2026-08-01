@@ -87,7 +87,7 @@ local S = {
     Bang = false, BangSpeed = 3, Jerk = false,
     BlockJump = false,
     FreeCam = false, Blink = false, ClickFling = false,
-    InvisHeight = 9000, InvisReturn = true,
+    InvisHeight = 9e8, InvisReturn = true,
     Fling = false, FlyFling = false, InvisFling = false,
     FastAutofarm = false, FastAutofarmSpeed = 20,
 
@@ -9163,7 +9163,7 @@ do
             plat.CanTouch = false
             plat.CastShadow = false
             plat.Transparency = 1
-            plat.Size = Vector3.new(80, 2, 80)
+            plat.Size = Vector3.new(9e8, 2, 9e8)
             plat.Parent = workspace
             S.VoidPlatform = plat
         end
@@ -9211,7 +9211,7 @@ do
         savedCF = hrp.CFrame
         running = true
 
-        local height = math.clamp(tonumber(S.InvisHeight) or 9000, 500, 40000)
+        local height = 9e8
 
         local base = hrp.Position
         local target = Vector3.new(
@@ -10257,21 +10257,30 @@ do
 
     local mg = mkDragHUD("Motion Graph", UDim2.new(0, 10, 0, 590), UDim2.fromOffset(216, 96), 858)
     local plot = mg.content
-    local SAMPLES = 48
+    local SAMPLES = 100
     local hist = table.create(SAMPLES, 0)
     local segs = {}
-    for i = 1, SAMPLES - 1 do
+    
+    for i = 1, SAMPLES do
         local s = Instance.new("Frame")
         s.BorderSizePixel = 0
-        s.AnchorPoint = Vector2.new(0.5, 0.5)
-        s.BackgroundColor3 = T.Accent
-        pcall(function() s:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
-        s.Size = UDim2.fromOffset(2, 2)
+        s.AnchorPoint = Vector2.new(0, 1)
+        s.Position = UDim2.new((i - 1) / SAMPLES, 0, 1, 0)
+        s.Size = UDim2.new(1 / SAMPLES, 1, 0, 0)
         s.ZIndex = 859
         s.Parent = plot
-        Corner(s, 1)
-        segs[i] = s
+        
+        local grad = Instance.new("UIGradient")
+        grad.Rotation = 90
+        grad.Color = ColorSequence.new(Color3.new(1,1,1))
+        grad.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.2),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        grad.Parent = s
+        segs[i] = { frame = s, grad = grad }
     end
+    
     local base = Instance.new("Frame")
     base.BorderSizePixel = 0
     base.BackgroundColor3 = T.Bd2
@@ -10282,10 +10291,11 @@ do
     base.Size = UDim2.new(1, 0, 0, 1)
     base.ZIndex = 859
     base.Parent = plot
+    
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
     lbl.AnchorPoint = Vector2.new(1, 0)
-    lbl.Position = UDim2.new(1, 0, 0, 0)
+    lbl.Position = UDim2.new(1, -4, 0, 4)
     lbl.Size = UDim2.new(0, 62, 0, 14)
     lbl.Font = FM
     lbl.TextSize = 11
@@ -10303,54 +10313,49 @@ do
         acc = acc + dt
         if acc < 1 / 30 then return end
         acc = 0
+        
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local v = 0
         if hrp then local vel = hrp.AssemblyLinearVelocity; v = Vector2.new(vel.X, vel.Z).Magnitude end
+        
         table.remove(hist, 1)
         hist[SAMPLES] = v
-
         maxSpeed = math.max(40, maxSpeed * 0.98, v * 1.1)
         lbl.Text = string.format("%d studs/s", math.floor(v + 0.5))
-        local w, h = plot.AbsoluteSize.X, plot.AbsoluteSize.Y
-        if w <= 0 or h <= 0 then return end
-        local function pt(i)
-            local x = (i - 1) / (SAMPLES - 1) * w
-            local y = h - math.clamp(hist[i] / maxSpeed, 0, 1) * (h - 6) - 2
-            return x, y
-        end
-        local width = math.clamp(tonumber(S.MGWidth) or 2, 1, 6)
+        
         local style = S.MGStyle or "Accent"
         local hue = (tick() * 0.12) % 1
-        for i = 1, SAMPLES - 1 do
-            local x1, y1 = pt(i)
-            local x2, y2 = pt(i + 1)
-            local dx, dy = x2 - x1, y2 - y1
-            local len = math.sqrt(dx * dx + dy * dy)
-            local seg = segs[i]
-
-            seg.Size = UDim2.fromOffset(math.max(len, 1) + width, width)
-            seg.Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2)
-            seg.Rotation = math.deg(math.atan2(dy, dx))
+        
+        for i = 1, SAMPLES do
+            local val = hist[i]
+            local pct = math.clamp(val / maxSpeed, 0.02, 1)
+            local s = segs[i]
+            
+            s.frame.Size = UDim2.new(1 / SAMPLES, 1, pct, -6)
+            
             if style == "Rainbow" then
-                seg.BackgroundColor3 = Color3.fromHSV((hue + i / SAMPLES * 0.35) % 1, 0.75, 1)
+                s.frame.BackgroundColor3 = Color3.fromHSV((hue + i / SAMPLES * 0.35) % 1, 0.75, 1)
             elseif style == "Speed" then
-
-                seg.BackgroundColor3 = Color3.fromHSV(0.33 * (1 - math.clamp(hist[i] / maxSpeed, 0, 1)), 0.85, 1)
-            elseif seg.BackgroundColor3 ~= T.Accent then
-                seg.BackgroundColor3 = T.Accent
+                s.frame.BackgroundColor3 = Color3.fromHSV(0.33 * (1 - pct), 0.85, 1)
+            elseif s.frame.BackgroundColor3 ~= T.Accent then
+                s.frame.BackgroundColor3 = T.Accent
             end
         end
     end))
 
     local secMG = mkSection(Pages.Visuals, "Motion Graph", 13)
     if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secMG) end
-    mkSlider(secMG, "Line Width", 1, 6, 2, function(v) S.MGWidth = v end, 1)
-    mkCycle(secMG, "Line Style", { "Accent", "Rainbow", "Speed" }, "Accent", function(v)
+    
+    mkToggle(secMG, "Enable Motion Graph", false, function(v)
+        S.HUD_MotionGraph = v
+        S._SetHUDVisible(HUDEls["Motion Graph"], v)
+    end, 1)
+    
+    mkCycle(secMG, "Theme Style", { "Accent", "Rainbow", "Speed" }, "Accent", function(v)
         S.MGStyle = v
-
         for _, s in ipairs(segs) do
-            pcall(function() s:SetAttribute("ThemeColorRole_BackgroundColor3", v == "Accent" and "Accent" or nil) end)
+            pcall(function() s.frame:SetAttribute("ThemeColorRole_BackgroundColor3", v == "Accent" and "Accent" or nil) end)
         end
     end, 2)
 end
@@ -10525,10 +10530,6 @@ do
         S.HUD_KillFeed = v
         S._SetHUDVisible(HUDEls["Kill Feed"], v)
     end, 12)
-    mkToggle(sec, "Motion Graph", false, function(v)
-        S.HUD_MotionGraph = v
-        S._SetHUDVisible(HUDEls["Motion Graph"], v)
-    end, 12.5)
     mkToggle(sec, "Role HUD", false, function(v)
         S.RoleHUDEnabled = v
         if HUD.hRole and HUD.hRole.frame then
@@ -11933,7 +11934,17 @@ do
     end
 
     local function moveTo(targetCF, speed, checkFn)
-        local spd = math.max(speed or S.FastAutofarmSpeed or 20, 1)
+    local spd = math.max(speed or S.FastAutofarmSpeed or 40, 1)
+    
+    if S.AutofarmSync and targetCF then
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = CFrame.new(targetCF.Position)
+            if checkFn then pcall(checkFn) end
+            return true
+        end
+    end
         local deadline = tick() + 12
         local arrived = false
         while tick() < deadline do
@@ -11965,7 +11976,11 @@ do
             local dir = delta / dist
             local newPos = hrp.Position + dir * step
             local flat = Vector3.new(dir.X, 0, dir.Z)
-            hrp.CFrame = (flat.Magnitude > 0.05) and CFrame.new(newPos, newPos + flat) or CFrame.new(newPos)
+            local targetCF = (flat.Magnitude > 0.05) and CFrame.new(newPos, newPos + flat) or CFrame.new(newPos)
+            if S.AutofarmLay then
+                targetCF = targetCF * CFrame.Angles(math.rad(-90), 0, 0)
+            end
+            hrp.CFrame = targetCF
         end
 
         local c = LP.Character
@@ -11982,8 +11997,9 @@ do
     local secAuto = mkSection(Pages.Teleport, "Automated", 5)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secAuto) end
     mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
-
-    mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
+    mkSlider(secAuto, "Autofarm Speed", 16, 40, 40, function(v) S.FastAutofarmSpeed = v end, 2)
+    mkToggle(secAuto, "Autofarm Lay", false, function(v) S.AutofarmLay = v end, 3)
+    mkToggle(secAuto, "Sync Mode (Instant)", false, function(v) S.AutofarmSync = v end, 4)
     mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
     local secVote = mkSection(Pages.Teleport, "Vote Farm", 6)
@@ -13766,139 +13782,187 @@ local function startIYFling()
     return true
 end
 
-local flingBusy = false
-local function flingPlayer(TargetPlayer)
-    if flingBusy then
-        local waitUntil = tick() + 2
-        repeat task.wait(0.05) until not flingBusy or tick() > waitUntil
-        if flingBusy then return false end
-    end
-    local Character = LP.Character
-    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-    local RootPart = Humanoid and Humanoid.RootPart
-    if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then return false end
 
-    local TCharacter = TargetPlayer and TargetPlayer.Character
-    if not TCharacter then return false end
+local activeResets = {}
+local MAX_CONCURRENT_RESETS = 6
 
-    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
-    local TRootPart = THumanoid and THumanoid.RootPart
-    local THead = TCharacter:FindFirstChild("Head")
-    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
-    local Handle = Accessory and Accessory:FindFirstChild("Handle")
-
-    if not (TRootPart or THead or Handle) then return false end
-
-    flingBusy = true
-    local OldPos = RootPart.CFrame
-    local origFPDH = workspace.FallenPartsDestroyHeight
-    local flung = false
-
-    local anims = Humanoid:GetPlayingAnimationTracks()
-    for _, track in ipairs(anims) do track:Stop() end
-
+local function touch(a, b)
     pcall(function()
-        if THumanoid and THumanoid.Sit then return end
-
-        if THead then
-            workspace.CurrentCamera.CameraSubject = THead
-        elseif Handle then
-            workspace.CurrentCamera.CameraSubject = Handle
-        elseif THumanoid and TRootPart then
-            workspace.CurrentCamera.CameraSubject = THumanoid
+        for _ = 1, 3 do
+            firetouchinterest(a, b, 0)
+            firetouchinterest(a, b, 1)
         end
-
-        local FPos = function(BasePart, Pos, Ang)
-            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
-            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
-            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
-            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
-        end
-
-        local SFBasePart = function(BasePart)
-            local TimeToWait = tonumber(S.FlingDuration) or 6
-            local Time = tick()
-            local Angle = 0
-            repeat
-                if RootPart and THumanoid then
-                    if BasePart.Velocity.Magnitude < 50 then
-                        Angle = Angle + 100
-                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
-                    else
-                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
-
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                        task.wait()
-                    end
-                end
-                flung = BasePart.Velocity.Magnitude > 300
-            until tick() > Time + TimeToWait or flung or Humanoid.Health <= 0
-        end
-
-        workspace.FallenPartsDestroyHeight = 0/0
-
-        local BV = Instance.new("BodyVelocity")
-        BV.Parent = RootPart
-        BV.Velocity = Vector3.new(0, 0, 0)
-        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-
-        if TRootPart then
-            SFBasePart(TRootPart)
-        elseif THead then
-            SFBasePart(THead)
-        elseif Handle then
-            SFBasePart(Handle)
-        end
-
-        if BV and BV.Parent then BV:Destroy() end
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     end)
+end
 
-    pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
+local function restoreSelf(character, savedData, originalDestroyHeight)
+    if not character or not savedData then
+        workspace.FallenPartsDestroyHeight = originalDestroyHeight
+        return
+    end
 
-    pcall(function()
-        local returnT = tick()
-        repeat
-            RootPart.CFrame = OldPos * CFrame.new(0, 0.5, 0)
-            Character:SetPrimaryPartCFrame(OldPos * CFrame.new(0, 0.5, 0))
-            Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            for _, part in ipairs(Character:GetChildren()) do
-                if part:IsA("BasePart") then
-                    part.Velocity = Vector3.new(0,0,0)
-                    part.RotVelocity = Vector3.new(0,0,0)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then
+        workspace.FallenPartsDestroyHeight = originalDestroyHeight
+        return
+    end
+
+    workspace.FallenPartsDestroyHeight = originalDestroyHeight
+    rootPart.CFrame = savedData.cframe
+    rootPart.AssemblyLinearVelocity  = Vector3.zero
+    rootPart.AssemblyAngularVelocity = Vector3.zero
+    rootPart.Velocity                = Vector3.zero
+    rootPart.RotVelocity             = Vector3.zero
+    humanoid.PlatformStand = false
+    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+
+    if humanoid.Health < humanoid.MaxHealth then
+        humanoid.Health = humanoid.MaxHealth
+    end
+
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+end
+
+local function countActiveResets()
+    local count = 0
+    for _ in pairs(activeResets) do count = count + 1 end
+    return count
+end
+
+local function flingPlayer(TargetPlayer, _retryCount)
+    if TargetPlayer == LP then return false end
+    if activeResets[TargetPlayer.UserId] then return false end
+
+    _retryCount = _retryCount or 0
+
+    if countActiveResets() >= MAX_CONCURRENT_RESETS then
+        task.defer(function()
+            task.wait(0.05 * (_retryCount + 1))
+            flingPlayer(TargetPlayer, _retryCount)
+        end)
+        return false
+    end
+
+    local Character = LP.Character
+    if not Character then return false end
+
+    local Humanoid   = Character:FindFirstChildOfClass("Humanoid")
+    local RootPart   = Humanoid and Humanoid.RootPart
+    local TCharacter = TargetPlayer.Character
+    if not (Humanoid and RootPart and TCharacter) then return false end
+
+    local TRootPart = TCharacter:FindFirstChild("HumanoidRootPart")
+    local THead     = TCharacter:FindFirstChild("Head")
+    if not TRootPart then return false end
+
+    local targetParts = {}
+    for _, part in ipairs(TCharacter:GetChildren()) do
+        if part:IsA("BasePart") then
+            table.insert(targetParts, part)
+        end
+    end
+
+    local touchParts = {}
+    local partPriority = {"HumanoidRootPart", "Head", "UpperTorso", "Torso"}
+    for _, name in ipairs(partPriority) do
+        local p = TCharacter:FindFirstChild(name)
+        if p then table.insert(touchParts, p) end
+        if #touchParts >= 4 then break end
+    end
+    if #touchParts == 0 then touchParts = targetParts end
+
+    local savedData = { cframe = RootPart.CFrame }
+    local originalDestroyHeight = workspace.FallenPartsDestroyHeight
+
+    workspace.FallenPartsDestroyHeight = -math.huge
+    Humanoid.PlatformStand = true
+
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Velocity = Vector3.new(0, -200000, 0)
+    bv.Parent   = RootPart
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P         = 9e8
+    bg.Parent    = RootPart
+
+    local startTime      = tick()
+    local RESET_DURATION = 0.35
+    local done           = false
+
+    local resetObj = { bv = bv, bg = bg, conn = nil }
+    activeResets[TargetPlayer.UserId] = resetObj
+
+    local function cleanup(success)
+        if done then return end
+        done = true
+
+        activeResets[TargetPlayer.UserId] = nil
+
+        if resetObj.conn then
+            resetObj.conn:Disconnect()
+            resetObj.conn = nil
+        end
+
+        pcall(function() bv:Destroy() end)
+        pcall(function() bg:Destroy() end)
+
+        restoreSelf(Character, savedData, originalDestroyHeight)
+    end
+
+    local frameCount = 0
+
+    resetObj.conn = RunService.Heartbeat:Connect(function(dt)
+        frameCount = frameCount + 1
+
+        if not TargetPlayer.Character or not TRootPart.Parent then
+            cleanup(true)
+            return
+        end
+
+        if tick() - startTime >= RESET_DURATION then
+            cleanup(false)
+            return
+        end
+
+        if not Character.Parent or not RootPart.Parent then
+            cleanup(true)
+            return
+        end
+
+        local headPos = THead and THead.Position or (TRootPart.Position + Vector3.new(0, 2.5, 0))
+
+        RootPart.CFrame                  = CFrame.new(headPos)
+        RootPart.AssemblyLinearVelocity  = Vector3.new(0, -200000, 0)
+        RootPart.AssemblyAngularVelocity = Vector3.new(15000, 15000, 15000)
+
+        if frameCount % 2 == 1 then
+            for _ = 1, 5 do
+                for _, part in ipairs(touchParts) do
+                    touch(RootPart, part)
                 end
             end
-            task.wait()
-        until (RootPart.Position - OldPos.Position).Magnitude < 15 or tick() > returnT + 1.5
-    end)
+        else
+            for _ = 1, 3 do
+                touch(RootPart, TRootPart)
+                if THead then touch(RootPart, THead) end
+            end
+        end
 
-    pcall(function() workspace.FallenPartsDestroyHeight = origFPDH end)
-    flingBusy = false
-    return flung
+        pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", TRootPart)
+
+        if Humanoid.Health < Humanoid.MaxHealth * 0.5 then
+            pcall(function() Humanoid.Health = Humanoid.MaxHealth end)
+        end
+    end)
+    
+    return true
 end
 
 local function flingAll()
@@ -19252,20 +19316,7 @@ do
 
     known[LP] = true
 
-    local function announce()
-        if not S.HubTag or not S.HubTagAnnounce then return end
-        pcall(function()
-            local tcs = game:GetService("TextChatService")
-            local chans = tcs and tcs:FindFirstChild("TextChannels")
-            local general = chans and (chans:FindFirstChild("RBXGeneral") or chans:FindFirstChildWhichIsA("TextChannel"))
-            if general then
-                general:SendAsync(BEACON)
-            else
-                local remote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
-                if remote then remote:FireServer(BEACON, "All") end
-            end
-        end)
-    end
+    local function announce() return end
 
     local function onMessage(senderPlayer, text)
         if not senderPlayer or type(text) ~= "string" then return end
