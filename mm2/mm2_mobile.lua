@@ -2030,6 +2030,7 @@ mScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 mScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 mScroll.ZIndex = 1000
 
+Pad(mScroll, 2, 2, 3, 3)
 local mList = Instance.new("UIListLayout")
 mList.Parent = mScroll
 mList.SortOrder = Enum.SortOrder.LayoutOrder
@@ -2623,6 +2624,8 @@ S._BuildThemeWindow = function()
         roleList.AutomaticCanvasSize = Enum.AutomaticSize.Y
         roleList.CanvasSize = UDim2.new()
         roleList.ZIndex = 4002
+
+        Pad(roleList, 2, 2, 3, 3)
         local rl = Instance.new("UIListLayout")
         rl.Parent = roleList
         rl.Padding = UDim.new(0, 4)
@@ -2753,7 +2756,7 @@ S._BuildThemeWindow = function()
                 local b = Instance.new("TextButton")
                 b.Parent = roleList
                 b.LayoutOrder = i
-                b.Size = UDim2.new(1, -6, 0, 26)
+                b.Size = UDim2.new(1, -4, 0, 28)
                 b.BackgroundColor3 = T.Elev
                 pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
                 b.BorderSizePixel = 0
@@ -2762,23 +2765,26 @@ S._BuildThemeWindow = function()
                 b.TextSize = 12
                 b.Text = ""
                 b.ZIndex = 4003
-                Corner(b, 6)
-                local st = Stroke(b, T.Accent, 2, 1)
+                Corner(b, 7)
+
+                local st = Stroke(b, T.Accent, 1.5, 1)
 
                 local chip = Instance.new("Frame")
                 chip.Parent = b
-                chip.Position = UDim2.new(0, 5, 0.5, -8)
-                chip.Size = UDim2.fromOffset(16, 16)
+                chip.Position = UDim2.new(0, 6, 0.5, -9)
+                chip.Size = UDim2.fromOffset(18, 18)
                 chip.BorderSizePixel = 0
                 chip.BackgroundColor3 = colOf(role)
                 chip.ZIndex = 4004
-                Corner(chip, 4)
+                Corner(chip, 5)
+
+                Stroke(chip, T.Bd2, 1, 0.35)
 
                 local nm = Instance.new("TextLabel")
                 nm.Parent = b
                 nm.BackgroundTransparency = 1
-                nm.Position = UDim2.new(0, 28, 0, 0)
-                nm.Size = UDim2.new(1, -34, 1, 0)
+                nm.Position = UDim2.new(0, 32, 0, 0)
+                nm.Size = UDim2.new(1, -96, 1, 0)
                 nm.Font = FM
                 nm.TextSize = 12
                 nm.TextXAlignment = Enum.TextXAlignment.Left
@@ -2787,7 +2793,20 @@ S._BuildThemeWindow = function()
                 nm.ZIndex = 4004
                 pcall(function() nm:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
 
-                swatchRows[#swatchRows + 1] = { role = role, chip = chip, stroke = st }
+                local hex = Instance.new("TextLabel")
+                hex.Parent = b
+                hex.BackgroundTransparency = 1
+                hex.AnchorPoint = Vector2.new(1, 0)
+                hex.Position = UDim2.new(1, -8, 0, 0)
+                hex.Size = UDim2.new(0, 58, 1, 0)
+                hex.Font = FM
+                hex.TextSize = 11
+                hex.TextXAlignment = Enum.TextXAlignment.Right
+                hex.TextColor3 = T.Tx4
+                hex.ZIndex = 4004
+                pcall(function() hex:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
+
+                swatchRows[#swatchRows + 1] = { role = role, chip = chip, stroke = st, btn = b, hex = hex, name = nm }
                 b.MouseButton1Click:Connect(function()
                     SFX.Click()
                     selected = role
@@ -2799,8 +2818,17 @@ S._BuildThemeWindow = function()
 
         refreshSwatches = function()
             for _, r in ipairs(swatchRows) do
-                r.chip.BackgroundColor3 = colOf(r.role)
-                r.stroke.Transparency = (r.role == selected) and 0 or 1
+                local c = colOf(r.role)
+                r.chip.BackgroundColor3 = c
+                r.hex.Text = string.format("%02X%02X%02X",
+                    math.round(c.R * 255), math.round(c.G * 255), math.round(c.B * 255))
+                local on = r.role == selected
+                r.stroke.Transparency = on and 0 or 1
+
+                r.btn.BackgroundColor3 = on and T.ActiveBg or T.Elev
+                pcall(function() r.btn:SetAttribute("ThemeColorRole_BackgroundColor3", on and "ActiveBg" or "Elev") end)
+                r.name.TextColor3 = on and T.Tx or T.Tx2
+                pcall(function() r.name:SetAttribute("ThemeColorRole_TextColor3", on and "Tx" or "Tx2") end)
             end
             if swatchTxt then swatchTxt.Text = selected or "Accent" end
             if swatchBig then
@@ -3127,6 +3155,8 @@ ContentArea.ScrollBarThickness = 0
 
 ContentArea.ScrollingEnabled = MOBILE
 ContentArea.ElasticBehavior = Enum.ElasticBehavior.Never
+
+Pad(ContentArea, 2, 2, 2, 2)
 local caLayout = Instance.new("UIListLayout")
 caLayout.Parent = ContentArea
 caLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -12403,7 +12433,8 @@ local function loadConfig(name)
                 pcall(function()
                     if el.frame:GetAttribute("ContentDrivenVisibility") == true then
                         el.frame.Visible = false
-                    else
+
+                    elseif el.frame:GetAttribute("HUDTargetVisible") == nil then
                         el.frame.Visible = dat.hud[name].v
                     end
                     local p = dat.hud[name].p
