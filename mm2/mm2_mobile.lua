@@ -19651,5 +19651,104 @@ do
         stopSound(aSound)
     end)
 
+    
+    local secLight = mkSection(Pages.Visuals, "World Lighting", 10)
+    mkToggle(secLight, "Override Lighting", false, function(v) S.LightOverride = v end, 1)
+    mkSlider(secLight, "ClockTime", 0, 240, 140, function(v) S.LightClock = v / 10 end, 2)
+    mkSlider(secLight, "Brightness", 0, 100, 20, function(v) S.LightBright = v / 10 end, 3)
+    mkSlider(secLight, "Exposure Comp", -50, 50, 0, function(v) S.LightExposure = v / 10 end, 4)
+    mkSlider(secLight, "Fog End", 10, 5000, 1500, function(v) S.LightFogEnd = v end, 5)
+    mkToggle(secLight, "Global Shadows", true, function(v) S.LightShadows = v end, 6)
+
+    local secPost = mkSection(Pages.Visuals, "Post Processing", 11)
+    mkToggle(secPost, "Color Correction", false, function(v) S.PostColor = v end, 1)
+    mkSlider(secPost, "Saturation", -20, 20, 5, function(v) S.PostSat = v / 10 end, 2)
+    mkSlider(secPost, "Contrast", -10, 10, 2, function(v) S.PostCont = v / 10 end, 3)
+
+    mkToggle(secPost, "Bloom", false, function(v) S.PostBloom = v end, 4)
+    mkSlider(secPost, "Bloom Intensity", 0, 20, 5, function(v) S.PostBloomInt = v / 10 end, 5)
+    mkSlider(secPost, "Bloom Size", 0, 50, 24, function(v) S.PostBloomSize = v end, 6)
+
+    mkToggle(secPost, "Sun Rays", false, function(v) S.PostSun = v end, 7)
+    mkSlider(secPost, "Sun Rays Intensity", 0, 10, 2, function(v) S.PostSunInt = v / 10 end, 8)
+
+    mkToggle(secPost, "Blur", false, function(v) S.PostBlur = v end, 9)
+    mkSlider(secPost, "Blur Size", 0, 50, 10, function(v) S.PostBlurSize = v end, 10)
+
+    local secSky = mkSection(Pages.Visuals, "Skybox", 12)
+    local SKYBOXES = {
+        ["Vaporwave"] = {Bk="rbxassetid://141746995", Dn="rbxassetid://141746995", Ft="rbxassetid://141746995", Lf="rbxassetid://141746995", Rt="rbxassetid://141746995", Up="rbxassetid://141746995"},
+        ["Galaxy"] = {Bk="rbxassetid://159454286", Dn="rbxassetid://159454286", Ft="rbxassetid://159454286", Lf="rbxassetid://159454286", Rt="rbxassetid://159454286", Up="rbxassetid://159454299"},
+        ["Night Sky"] = {Bk="rbxassetid://146312151", Dn="rbxassetid://146312151", Ft="rbxassetid://146312151", Lf="rbxassetid://146312151", Rt="rbxassetid://146312151", Up="rbxassetid://146312151"},
+    }
+    local SKY_NAMES = {"Off", "Vaporwave", "Galaxy", "Night Sky"}
+    mkCycle(secSky, "Selected", SKY_NAMES, "Off", function(v) S.SkyOverride = v end, 1)
+
+    local _effects = {}
+    local function getEffect(className, name)
+        local LightingService = game:GetService("Lighting")
+        local e = _effects[name]
+        if e and e.Parent == LightingService then return e end
+        for _, c in ipairs(LightingService:GetChildren()) do
+            if c:IsA(className) and c.Name == name then _effects[name] = c return c end
+        end
+        e = Instance.new(className)
+        e.Name = name
+        e.Parent = LightingService
+        _effects[name] = e
+        return e
+    end
+
+    RunService.Heartbeat:Connect(function()
+        local LightingService = game:GetService("Lighting")
+        if S.LightOverride then
+            LightingService.ClockTime = S.LightClock or 14
+            LightingService.Brightness = S.LightBright or 2
+            LightingService.ExposureCompensation = S.LightExposure or 0
+            LightingService.FogEnd = S.LightFogEnd or 1500
+            if S.LightShadows ~= nil then LightingService.GlobalShadows = S.LightShadows end
+        end
+
+        local cc = getEffect("ColorCorrectionEffect", "InertiaCC")
+        cc.Enabled = S.PostColor == true
+        if cc.Enabled then
+            cc.Saturation = S.PostSat or 0.5
+            cc.Contrast = S.PostCont or 0.2
+        end
+
+        local blm = getEffect("BloomEffect", "InertiaBloom")
+        blm.Enabled = S.PostBloom == true
+        if blm.Enabled then
+            blm.Intensity = S.PostBloomInt or 0.5
+            blm.Size = S.PostBloomSize or 24
+        end
+
+        local sun = getEffect("SunRaysEffect", "InertiaSun")
+        sun.Enabled = S.PostSun == true
+        if sun.Enabled then
+            sun.Intensity = S.PostSunInt or 0.2
+        end
+
+        local blr = getEffect("BlurEffect", "InertiaBlur")
+        blr.Enabled = S.PostBlur == true
+        if blr.Enabled then
+            blr.Size = S.PostBlurSize or 10
+        end
+
+        if S.SkyOverride and S.SkyOverride ~= "Off" and SKYBOXES[S.SkyOverride] then
+            local skyObj = getEffect("Sky", "InertiaSky")
+            local t = SKYBOXES[S.SkyOverride]
+            skyObj.SkyboxBk = t.Bk
+            skyObj.SkyboxDn = t.Dn
+            skyObj.SkyboxFt = t.Ft
+            skyObj.SkyboxLf = t.Lf
+            skyObj.SkyboxRt = t.Rt
+            skyObj.SkyboxUp = t.Up
+        else
+            local skyObj = _effects["InertiaSky"]
+            if skyObj then skyObj.Parent = nil end
+        end
+    end)
+    
     task.delay(3, function() pcall(refreshAll) end)
 end
