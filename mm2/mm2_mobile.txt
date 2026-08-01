@@ -65,6 +65,12 @@ local S = {
     SkyEnabled = false, SkyPreset = "Day", SkyTint = "Preset", SkyRainbow = false,
     FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
     FogMode = "Atmosphere", FogDensity = 40,
+    FogR = 150, FogG = 150, FogB = 158, FogRainbowSpeed = 100, FogRainbowSat = 55,
+    FogAuto = true, FogOffset = 20, FogGlare = 24, FogHaze = 40, FogDepth = 35,
+    Weather = "Off", WeatherIntensity = 60, WeatherWind = 30,
+    WeatherSound = false, WeatherSoundName = "Rain", WeatherSoundVolume = 40,
+    AmbientSound = false, AmbientSoundName = "Forest", AmbientSoundVolume = 30,
+    WeatherThunder = false,
     ShaderBrightness = 200, ShaderExposure = 4, ShaderBloom = 40, ShaderContrast = 12,
     ShaderSaturation = 18, ShaderCCBright = 0, ShaderTime = 14, ShaderBloomSize = 24,
     ShaderSunRays = 8, ShaderDOF = 0, ShaderBlur = 0, ShaderAtmo = 22,
@@ -7794,25 +7800,72 @@ do
     -- position silent aim would send -- is garbage most frames, and the shot misses. This holds the
     -- last SANE position (in normal map bounds, near the shooter) and reuses it while the live one is
     -- an obvious desync spike, so the aim keeps pointing at where the target actually is between spikes.
-    -- ponytail: heuristic, best-effort. A target doing continuous full +/-7777 desync rarely leaks a
-    -- sane frame, so this cannot beat that perfectly -- the real position never replicates. It does
-    -- fix velocity-desync and intermittent position desync, which is the common case.
+    -- Three filters, cheapest first, then a forward projection:
+    --
+    --  1. Absolute bounds. Nothing legitimate sits 600+ studs away or 400 studs above you in an MM2
+    --     map, so a frame like that is a spike whatever else is true.
+    --  2. Step plausibility -- the filter the old version did not have and the one that actually
+    --     matters. A player's speed is capped by their WalkSpeed; even sprinting plus a fling is
+    --     nowhere near 200 studs/s. So a jump of more than MAX_STEP * dt from the last accepted
+    --     position is a spike even when it lands INSIDE the map, which is exactly the case bounds
+    --     checking alone waves through and the case that made shots miss by a few studs.
+    --  3. Recovery. If nothing passes for a while the target genuinely moved (teleport, respawn,
+    --     a lift), so the cache is dropped and the next raw frame is trusted rather than aiming at
+    --     a stale ghost forever.
+    --
+    -- Then: rather than returning the stale point, the last good position is advanced by the last
+    -- good velocity for the time since it was seen. During a desync burst the target keeps walking,
+    -- and a frozen aim point trails further behind the longer the burst lasts.
+    --
+    -- ponytail: heuristic, best-effort. A target desyncing every single frame never leaks a sane
+    -- one, so the projection is all there is -- it holds for a second or two, not forever. The real
+    -- position simply never replicates.
     local antiDesyncLast = setmetatable({}, { __mode = "k" })
+    local MAX_STEP = 200        -- studs/second a real player can cover, generously over-allowed
+    local STALE_AFTER = 2.5     -- seconds of nothing sane before we give up and trust the raw frame
     local function resolveTargetPos(targetChar, hrp)
         local raw = hrp.Position
         if not S.SheriffAntiDesync then return raw end
         local myChar = LP.Character
         local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
         local origin = myHrp and myHrp.Position or raw
-        local dist = (raw - origin).Magnitude
-        -- Sane = within a generous combat radius and not flung to the fog ceiling. 600 studs comfortably
-        -- covers any MM2 map; a desync spike is thousands of studs out.
-        local sane = dist <= 600 and math.abs(raw.Y - origin.Y) <= 400
-        if sane then
-            antiDesyncLast[targetChar] = raw
+        local now = os.clock()
+        local prev = antiDesyncLast[targetChar]
+
+        local inBounds = (raw - origin).Magnitude <= 600 and math.abs(raw.Y - origin.Y) <= 400
+        local plausible = true
+        if inBounds and prev then
+            local dt = math.max(now - prev.t, 1 / 60)
+            plausible = (raw - prev.p).Magnitude <= MAX_STEP * dt
+        end
+
+        if inBounds and plausible then
+            local vel = hrp.AssemblyLinearVelocity
+            -- The target's own velocity is a desync vector too, so it is only cached when it could
+            -- belong to a real character. Otherwise derive it from the last two accepted positions.
+            if vel.Magnitude > MAX_STEP then
+                if prev then
+                    local dt = math.max(now - prev.t, 1 / 60)
+                    vel = (raw - prev.p) / dt
+                else
+                    vel = Vector3.zero
+                end
+            end
+            antiDesyncLast[targetChar] = { p = raw, v = vel, t = now }
             return raw
         end
-        return antiDesyncLast[targetChar] or raw
+
+        if not prev then return raw end
+        local age = now - prev.t
+        if age > STALE_AFTER then
+            antiDesyncLast[targetChar] = nil
+            return raw
+        end
+        -- Project forward, capped so a bad velocity sample cannot throw the aim further than the
+        -- target could possibly have walked.
+        local step = prev.v * age
+        if step.Magnitude > MAX_STEP * age then step = step.Unit * (MAX_STEP * age) end
+        return prev.p + step
     end
     S._ResolveAntiDesyncPos = resolveTargetPos
 
@@ -11772,7 +11825,7 @@ do
     applyAtmo = function()
         pcall(function()
             skyHue = (skyHue + 0.006) % 1
-            fogHue = (fogHue + 0.004) % 1
+            fogHue = (fogHue + 0.004 * math.clamp((tonumber(S.FogRainbowSpeed) or 100) / 100, 0.05, 5)) % 1
             local shaderBase = SHADER_ATMO[S.ActiveShader]
             -- The custom pack owns its haze: copy the template and let the Atmosphere slider drive
             -- density, otherwise every user-built pack would be stuck on one fixed fog level.
@@ -11789,8 +11842,22 @@ do
             -- and Atmosphere (density-based soft haze -- needs OUR Atmosphere present).
             local classicFog = S.FogEnabled and S.FogMode ~= "Atmosphere"
             local atmoFog    = S.FogEnabled and S.FogMode == "Atmosphere"
-            local fogColor = FOG_COLORS[S.FogColorName] or FOG_COLORS.Gray
-            if S.FogRainbow and S.FogEnabled then fogColor = Color3.fromHSV(fogHue, 0.55, 0.85) end
+            -- "Custom" reads the three RGB sliders. The named presets stay because picking a decent
+            -- fog colour by eye off three raw sliders is work, and most of the time you want one of
+            -- these; Custom is there for when you do not.
+            local fogColor
+            if S.FogColorName == "Custom" then
+                fogColor = Color3.fromRGB(
+                    math.clamp(tonumber(S.FogR) or 150, 0, 255),
+                    math.clamp(tonumber(S.FogG) or 150, 0, 255),
+                    math.clamp(tonumber(S.FogB) or 158, 0, 255))
+            else
+                fogColor = FOG_COLORS[S.FogColorName] or FOG_COLORS.Gray
+            end
+            if S.FogRainbow and S.FogEnabled then
+                fogColor = Color3.fromHSV(fogHue,
+                    math.clamp((tonumber(S.FogRainbowSat) or 55) / 100, 0, 1), 0.85)
+            end
 
             -- We own an Atmosphere for atmo-fog, sky colour or shader haze -- never for classic fog.
             local needOwnAtmo = atmoFog or ((not classicFog) and (S.SkyEnabled or shaderBase ~= nil))
@@ -11829,14 +11896,25 @@ do
                     -- Offset pulls haze toward the camera for a foreground layer; Decay is a darker,
                     -- desaturated shade of the fog colour so distance fades into depth instead of a
                     -- flat colour; Glare and Haze scale with density so thicker fog scatters more light.
+                    -- Auto keeps the calibrated relationship between density and the rest, which is
+                    -- what makes it look like depth rather than a grey sheet. Turning it off hands
+                    -- Offset / Glare / Haze / Decay over to the sliders for full manual control.
                     local d = math.clamp((S.FogDensity or 40) / 100, 0.02, 0.95)
                     local h, sat, val = fogColor:ToHSV()
                     a.Density = d
-                    a.Offset  = 0.2
                     a.Color   = fogColor
-                    a.Decay   = Color3.fromHSV(h, math.max(0, sat - 0.15), math.max(0, val - 0.35))
-                    a.Glare   = d * 0.6
-                    a.Haze    = 1.2 + d * 2.0
+                    if S.FogAuto == false then
+                        a.Offset = math.clamp((tonumber(S.FogOffset) or 20) / 100, 0, 1)
+                        a.Glare  = math.clamp((tonumber(S.FogGlare) or 24) / 100, 0, 1) * 10
+                        a.Haze   = math.clamp((tonumber(S.FogHaze) or 40) / 100, 0, 1) * 10
+                        local depth = math.clamp((tonumber(S.FogDepth) or 35) / 100, 0, 1)
+                        a.Decay = Color3.fromHSV(h, math.max(0, sat - depth * 0.5), math.max(0, val - depth))
+                    else
+                        a.Offset = 0.2
+                        a.Glare  = d * 0.6
+                        a.Haze   = 1.2 + d * 2.0
+                        a.Decay  = Color3.fromHSV(h, math.max(0, sat - 0.15), math.max(0, val - 0.35))
+                    end
                 elseif S.SkyEnabled then
                     local p = SKY_PRESETS[S.SkyPreset] or SKY_PRESETS.Day
                     a.Density = p.density
@@ -13175,13 +13253,16 @@ local function loadConfig(name)
         if dat.TextSizeScale then S.TextSizeScale = dat.TextSizeScale end
         if dat.ActiveVisualEffect then S.ActiveVisualEffect = dat.ActiveVisualEffect end
     end
-    for _, key in ipairs({
-        "FOVEnabled", "ShowFOV", "RainbowFOV", "AutoSprint", "InfiniteJump", "Freeze",
-        "InstantRespawn", "AutoRespawn", "MoonGravity", "SkyEnabled", "SkyRainbow",
-        "FogEnabled", "FogRainbow", "FlyAnim", "FxAura", "FxAuraRainbow",
-        "ThrowAura", "WalkFling",
-    }) do
-        S[key] = false
+    -- This list used to force fourteen keys off on every load, including SkyEnabled, FogEnabled,
+    -- SkyRainbow and FogRainbow. That is why the environment never came back: the config saved
+    -- FogEnabled = true correctly and then this stomped it to false three lines later, while the
+    -- toggle's own ConfigControl restored the switch to ON -- a lit switch driving a disabled
+    -- feature. Only two things stay forced off now:
+    --   Freeze  -- resuming it at boot locks the character before you can reach the menu.
+    --   the dead keys (FxAura / ThrowAura / WalkFling and friends) whose features were deleted.
+    S.Freeze = false
+    for _, key in ipairs({ "FlyAnim", "FxAura", "FxAuraRainbow", "ThrowAura", "WalkFling" }) do
+        S[key] = nil
     end
     -- Walk Fling was removed; discard the legacy key instead of recreating it from old configs.
     S.WalkFling = nil
@@ -20506,10 +20587,21 @@ do
     mkToggle(secFog, "Fog", false, function(v) S.FogEnabled = v; repaintFog() end, 1)
     mkCycle(secFog, "Fog Mode", { "Atmosphere", "Classic" }, "Atmosphere", function(v) S.FogMode = v; repaintFog() end, 2)
     mkCycle(secFog, "Fog Color",
-        { "Gray", "White", "Black", "Blue", "Purple", "Pink", "Cyan", "Orange", "Green", "Red" },
+        { "Gray", "White", "Black", "Blue", "Purple", "Pink", "Cyan", "Orange", "Green", "Red", "Custom" },
         "Gray", function(v) S.FogColorName = v; repaintFog() end, 3)
+    mkSlider(secFog, "Custom Red", 0, 255, 150, function(v) S.FogR = v; repaintFog() end, 3.1)
+    mkSlider(secFog, "Custom Green", 0, 255, 150, function(v) S.FogG = v; repaintFog() end, 3.2)
+    mkSlider(secFog, "Custom Blue", 0, 255, 158, function(v) S.FogB = v; repaintFog() end, 3.3)
     mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; repaintFog() end, 4)
+    mkSlider(secFog, "Rainbow Speed (%)", 5, 500, 100, function(v) S.FogRainbowSpeed = v; repaintFog() end, 4.1)
+    mkSlider(secFog, "Rainbow Saturation (%)", 0, 100, 55, function(v) S.FogRainbowSat = v; repaintFog() end, 4.2)
     mkSlider(secFog, "Fog Density (%)", 2, 95, 40, function(v) S.FogDensity = v; repaintFog() end, 5)
+    -- Auto is the calibrated look; the four sliders below only do anything once it is off.
+    mkToggle(secFog, "Auto Tuning", true, function(v) S.FogAuto = v; repaintFog() end, 5.1)
+    mkSlider(secFog, "Offset", 0, 100, 20, function(v) S.FogOffset = v; repaintFog() end, 5.2)
+    mkSlider(secFog, "Glare", 0, 100, 24, function(v) S.FogGlare = v; repaintFog() end, 5.3)
+    mkSlider(secFog, "Haze", 0, 100, 40, function(v) S.FogHaze = v; repaintFog() end, 5.4)
+    mkSlider(secFog, "Depth Falloff", 0, 100, 35, function(v) S.FogDepth = v; repaintFog() end, 5.5)
     mkSlider(secFog, "Fog Start (Classic)", 0, 1000, 0, function(v) S.FogStart = v; repaintFog() end, 6)
     mkSlider(secFog, "Fog End (Classic)", 50, 2000, 500, function(v) S.FogEnd = v; repaintFog() end, 7)
 
@@ -20716,4 +20808,287 @@ do
     end, 4)
 
     task.delay(2, refreshAll)
+end
+
+
+-- ============ ENVIRONMENT: WEATHER + AMBIENCE ============
+-- Weather is one ParticleEmitter on an invisible slab held above the camera, so it follows you
+-- without touching the map. Only ONE Heartbeat connection exists and it is created on enable and
+-- disconnected on disable -- an always-on per-frame loop for a feature that is off is exactly the
+-- kind of thing that made the hub feel laggy before.
+--
+-- Textures are rbxasset:// engine-bundled paths, not marketplace decals: they ship with the client,
+-- so they cannot fail to load, cannot 404 and need no preloading.
+--
+-- Sound is deliberately a SEPARATE switch from the particles, per request -- you can have rain you
+-- can only see, rain you can only hear, or neither. Ambience is a third, independent track: it does
+-- not care what the weather is set to. Every sound id below was play-tested on a live client
+-- (IsLoaded + TimeLength > 0); the ones that came back dead were dropped rather than shipped.
+do
+    local Lighting2 = game:GetService("Lighting")
+    local SPARK = "rbxasset://textures/particles/sparkles_main.dds"
+    local SMOKE = "rbxasset://textures/particles/smoke_main.dds"
+
+    local function ns2(...)
+        local pts, a = {}, { ... }
+        for i = 1, #a, 2 do pts[#pts + 1] = NumberSequenceKeypoint.new(a[i], a[i + 1]) end
+        return NumberSequence.new(pts)
+    end
+
+    -- rate is per 100% intensity; the slider scales it.
+    local WEATHER = {
+        Rain = {
+            tex = SPARK, color = Color3.fromRGB(170, 195, 225), rate = 700,
+            size = ns2(0, 0.09, 1, 0.09), tr = ns2(0, 0.35, 0.9, 0.4, 1, 1),
+            life = { 0.85, 1.05 }, speed = { 95, 115 }, accel = Vector3.new(0, -190, 0),
+            spread = 3, squash = ns2(0, -9, 1, -9), le = 0.15, drag = 0, slab = 140, height = 60,
+        },
+        Snow = {
+            tex = SPARK, color = Color3.fromRGB(248, 250, 255), rate = 260,
+            size = ns2(0, 0.3, 1, 0.28), tr = ns2(0, 0.15, 0.85, 0.2, 1, 1),
+            life = { 5.5, 7 }, speed = { 7, 13 }, accel = Vector3.new(0, -11, 0),
+            spread = 24, rotsp = { -45, 45 }, le = 0.4, drag = 1.6, slab = 130, height = 50,
+        },
+        Storm = {
+            tex = SPARK, color = Color3.fromRGB(150, 172, 205), rate = 1200,
+            size = ns2(0, 0.11, 1, 0.11), tr = ns2(0, 0.28, 0.9, 0.35, 1, 1),
+            life = { 0.7, 0.9 }, speed = { 130, 160 }, accel = Vector3.new(0, -240, 0),
+            spread = 5, squash = ns2(0, -12, 1, -12), le = 0.1, drag = 0, slab = 150, height = 65,
+            thunder = true,
+        },
+        Ash = {
+            tex = SMOKE, color = Color3.fromRGB(96, 92, 90), rate = 150,
+            size = ns2(0, 0.45, 1, 0.2), tr = ns2(0, 0.5, 0.7, 0.6, 1, 1),
+            life = { 6, 9 }, speed = { 3, 7 }, accel = Vector3.new(0, -3.5, 0),
+            spread = 40, rotsp = { -25, 25 }, le = 0, drag = 1.2, slab = 120, height = 45,
+        },
+        Embers = {
+            tex = SPARK, color = Color3.fromRGB(255, 150, 60), rate = 90,
+            size = ns2(0, 0.16, 1, 0.04), tr = ns2(0, 0.1, 0.6, 0.35, 1, 1),
+            life = { 4, 7 }, speed = { 2, 6 }, accel = Vector3.new(0, 3.5, 0),
+            spread = 55, rotsp = { -80, 80 }, le = 1, drag = 1.4, slab = 100, height = 12,
+        },
+        Blossom = {
+            tex = SPARK, color = Color3.fromRGB(255, 178, 210), rate = 120,
+            size = ns2(0, 0.34, 1, 0.3), tr = ns2(0, 0.12, 0.85, 0.25, 1, 1),
+            life = { 6, 9 }, speed = { 4, 9 }, accel = Vector3.new(0, -7, 0),
+            spread = 32, rotsp = { -110, 110 }, le = 0.25, drag = 1.8, slab = 130, height = 50,
+        },
+        Fireflies = {
+            tex = SPARK, color = Color3.fromRGB(190, 255, 120), rate = 55,
+            size = ns2(0, 0.14, 0.5, 0.2, 1, 0.14), tr = ns2(0, 1, 0.25, 0.15, 0.75, 0.15, 1, 1),
+            life = { 5, 8 }, speed = { 1, 3 }, accel = Vector3.new(0, 0.4, 0),
+            spread = 180, rotsp = { -30, 30 }, le = 1, drag = 2.2, slab = 90, height = 14,
+        },
+        Sandstorm = {
+            tex = SMOKE, color = Color3.fromRGB(214, 184, 128), rate = 400,
+            size = ns2(0, 1.6, 1, 3.2), tr = ns2(0, 0.72, 0.6, 0.78, 1, 1),
+            life = { 2.2, 3.4 }, speed = { 55, 85 }, accel = Vector3.new(0, -6, 0),
+            spread = 22, rotsp = { -40, 40 }, le = 0, drag = 0.6, slab = 150, height = 26,
+            sideways = true,
+        },
+    }
+    local WEATHER_NAMES = { "Off", "Rain", "Snow", "Storm", "Ash", "Embers", "Blossom", "Fireflies", "Sandstorm" }
+
+    -- Every id here was verified on a live client: created as a Sound, PreloadAsync'd, then checked
+    -- for IsLoaded and TimeLength > 0. Roughly half of the ids tried came back dead and are not
+    -- listed. Do not add one without running the same check -- a dead id is a silent no-op.
+    local SOUNDS = {
+        Rain      = 9112854440,   -- 55.9 s
+        Downpour  = 5410086218,   -- 161.3 s
+        Storm     = 1848354536,   -- 97.0 s
+        Wind      = 1836160504,   -- 170.3 s
+        Gale      = 1837879082,   -- 162.0 s
+        Forest    = 9046863579,   -- 120.2 s
+    }
+    local SOUND_NAMES = { "Rain", "Downpour", "Storm", "Wind", "Gale", "Forest" }
+    local THUNDER_ID = 5801257793 -- 1.9 s one-shot
+
+    local rig, emitter, conn, thunderTask
+    local wSound, aSound
+
+    local function teardownParticles()
+        if conn then pcall(function() conn:Disconnect() end) conn = nil end
+        if rig then pcall(function() rig:Destroy() end) rig = nil end
+        emitter = nil
+    end
+
+    local function buildParticles()
+        teardownParticles()
+        local def = WEATHER[S.Weather]
+        if not def then return end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        rig = Instance.new("Part")
+        rig.Name = "InertiaWeather"
+        rig.Anchored = true
+        rig.CanCollide = false
+        rig.CanQuery = false
+        rig.CanTouch = false
+        rig.CastShadow = false
+        rig.Transparency = 1
+        rig.Size = Vector3.new(def.slab, 1, def.slab)
+        rig.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, def.height, 0))
+        rig.Parent = workspace
+
+        local intensity = math.clamp(tonumber(S.WeatherIntensity) or 60, 1, 100) / 100
+        emitter = Instance.new("ParticleEmitter")
+        emitter.Name = "InertiaWeather"
+        emitter.Texture = def.tex
+        emitter.Color = ColorSequence.new(def.color)
+        emitter.Size = def.size
+        emitter.Transparency = def.tr
+        emitter.Lifetime = NumberRange.new(def.life[1], def.life[2])
+        emitter.Speed = NumberRange.new(def.speed[1], def.speed[2])
+        emitter.SpreadAngle = Vector2.new(def.spread, def.spread)
+        emitter.Rate = math.max(1, def.rate * intensity)
+        emitter.Drag = def.drag or 0
+        emitter.LightEmission = def.le or 0
+        emitter.LightInfluence = 0
+        emitter.LockedToPart = false
+        emitter.EmissionDirection = def.sideways and Enum.NormalId.Front or Enum.NormalId.Bottom
+        if def.rotsp then emitter.RotSpeed = NumberRange.new(def.rotsp[1], def.rotsp[2]) end
+        -- Squash is what turns a round sparkle into a rain streak. Negative stretches along travel.
+        if def.squash then pcall(function() emitter.Squash = def.squash end) end
+        if def.squash then emitter.Orientation = Enum.ParticleOrientation.VelocityParallel end
+        emitter.Parent = rig
+
+        -- Wind is applied as horizontal acceleration, aimed along the camera's right vector so it
+        -- always reads as a cross-wind on screen rather than blowing directly at or away from you.
+        local wind = math.clamp(tonumber(S.WeatherWind) or 30, 0, 100) / 100
+        conn = RunService.Heartbeat:Connect(function()
+            if not rig or not rig.Parent then return end
+            local c = workspace.CurrentCamera
+            if not c then return end
+            local pos = c.CFrame.Position + Vector3.new(0, def.height, 0)
+            rig.CFrame = CFrame.new(pos)
+            if wind > 0.01 and emitter then
+                local right = c.CFrame.RightVector
+                emitter.Acceleration = def.accel + right * (wind * 55)
+            elseif emitter then
+                emitter.Acceleration = def.accel
+            end
+        end)
+    end
+
+    -- ---- sound: three independent tracks ----
+    local function stopSound(s)
+        if s then pcall(function() s:Stop() s:Destroy() end) end
+        return nil
+    end
+
+    local function makeLoop(id, volume)
+        local s = Instance.new("Sound")
+        s.Name = "InertiaEnvSound"
+        s.SoundId = "rbxassetid://" .. id
+        s.Looped = true
+        s.Volume = math.clamp(volume / 100, 0, 1)
+        -- SoundService, not the character: it must survive a respawn and never be positional.
+        s.Parent = game:GetService("SoundService")
+        -- InertiaOwned is the attribute the Sound Mutes pass checks to skip the hub's own audio.
+        -- Spelling it anything else means a rain loop can be silenced by the mute keyword lists.
+        pcall(function() s:SetAttribute("InertiaOwned", true) end)
+        s:Play()
+        return s
+    end
+
+    local function refreshWeatherSound()
+        wSound = stopSound(wSound)
+        if not S.WeatherSound then return end
+        local id = SOUNDS[S.WeatherSoundName] or SOUNDS.Rain
+        wSound = makeLoop(id, tonumber(S.WeatherSoundVolume) or 40)
+    end
+
+    local function refreshAmbientSound()
+        aSound = stopSound(aSound)
+        if not S.AmbientSound then return end
+        local id = SOUNDS[S.AmbientSoundName] or SOUNDS.Forest
+        aSound = makeLoop(id, tonumber(S.AmbientSoundVolume) or 30)
+    end
+
+    local function refreshAll()
+        buildParticles()
+        refreshWeatherSound()
+        refreshAmbientSound()
+    end
+    S._RefreshWeather = refreshAll
+
+    -- Thunder: one-shots at a random interval, gated on its own toggle so a silent storm is still
+    -- possible. Also flashes the ambient light briefly, which is most of what sells it.
+    task.spawn(function()
+        while S.Gui and S.Gui.Parent do
+            if S.WeatherThunder and (S.Weather == "Storm" or S.Weather == "Rain") then
+                task.wait(math.random(70, 220) / 10)
+                if S.WeatherThunder then
+                    pcall(function()
+                        local s = Instance.new("Sound")
+                        s.Name = "InertiaEnvSound"
+                        s.SoundId = "rbxassetid://" .. THUNDER_ID
+                        s.Volume = math.clamp((tonumber(S.WeatherSoundVolume) or 40) / 100, 0, 1)
+                        s.Parent = game:GetService("SoundService")
+                        pcall(function() s:SetAttribute("InertiaOwned", true) end)
+                        s:Play()
+                        game:GetService("Debris"):AddItem(s, 6)
+                        local before = Lighting2.Brightness
+                        Lighting2.Brightness = before + 3
+                        task.wait(0.08)
+                        Lighting2.Brightness = before
+                        task.wait(0.06)
+                        Lighting2.Brightness = before + 1.6
+                        task.wait(0.07)
+                        Lighting2.Brightness = before
+                    end)
+                end
+            else
+                task.wait(1)
+            end
+        end
+    end)
+
+    local secWeather = mkSection(Pages.Visuals, "Environment", 5.35)
+    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secWeather) end
+    mkCycle(secWeather, "Weather", WEATHER_NAMES, "Off", function(v)
+        S.Weather = v
+        buildParticles()
+    end, 1)
+    mkSlider(secWeather, "Intensity (%)", 1, 100, 60, function(v)
+        S.WeatherIntensity = v
+        buildParticles()
+    end, 2)
+    mkSlider(secWeather, "Wind (%)", 0, 100, 30, function(v)
+        S.WeatherWind = v
+        buildParticles()
+    end, 3)
+
+    -- Separate from the particles on purpose: "звуки тоже но отдельно можно вырубить и врубить".
+    mkToggle(secWeather, "Weather Sound", false, function(v) S.WeatherSound = v; refreshWeatherSound() end, 4)
+    mkCycle(secWeather, "Weather Sound Track", SOUND_NAMES, "Rain", function(v)
+        S.WeatherSoundName = v
+        refreshWeatherSound()
+    end, 5)
+    mkSlider(secWeather, "Weather Volume (%)", 0, 100, 40, function(v)
+        S.WeatherSoundVolume = v
+        if wSound then wSound.Volume = math.clamp(v / 100, 0, 1) end
+    end, 6)
+    mkToggle(secWeather, "Thunder", false, function(v) S.WeatherThunder = v end, 7)
+
+    -- A third, fully independent track. Runs whatever the weather is doing, including Off.
+    mkToggle(secWeather, "Ambient Sound", false, function(v) S.AmbientSound = v; refreshAmbientSound() end, 8)
+    mkCycle(secWeather, "Ambient Track", SOUND_NAMES, "Forest", function(v)
+        S.AmbientSoundName = v
+        refreshAmbientSound()
+    end, 9)
+    mkSlider(secWeather, "Ambient Volume (%)", 0, 100, 30, function(v)
+        S.AmbientSoundVolume = v
+        if aSound then aSound.Volume = math.clamp(v / 100, 0, 1) end
+    end, 10)
+
+    SG.Destroying:Connect(function()
+        teardownParticles()
+        stopSound(wSound)
+        stopSound(aSound)
+    end)
+    -- Config restore sets the S keys directly; this is what turns them into live effects.
+    task.delay(3, function() pcall(refreshAll) end)
 end
