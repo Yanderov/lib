@@ -7318,52 +7318,91 @@ do
     end
     S._GetMurdererChar = getMurdererChar
 
-    local antiDesyncLast = setmetatable({}, { __mode = "k" })
-    local MAX_STEP = 200
-    local STALE_AFTER = 2.5
-    local function resolveTargetPos(targetChar, hrp)
-        local raw = hrp.Position
-        if not S.SheriffAntiDesync then return raw end
-        local myChar = LP.Character
-        local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local origin = myHrp and myHrp.Position or raw
-        local now = os.clock()
-        local prev = antiDesyncLast[targetChar]
+    local resolverData = {}
 
-        local inBounds = (raw - origin).Magnitude <= 600 and math.abs(raw.Y - origin.Y) <= 400
-        local plausible = true
-        if inBounds and prev then
-            local dt = math.max(now - prev.t, 1 / 60)
-            plausible = (raw - prev.p).Magnitude <= MAX_STEP * dt
-        end
-
-        if inBounds and plausible then
-            local vel = hrp.AssemblyLinearVelocity
-
-            if vel.Magnitude > MAX_STEP then
-                if prev then
-                    local dt = math.max(now - prev.t, 1 / 60)
-                    vel = (raw - prev.p) / dt
+RunService.Heartbeat:Connect(function()
+    if not S.SheriffAntiDesync then return end
+    
+    local chars = {}
+    if S._GetMurdererChar then
+        local murd = S._GetMurdererChar()
+        if murd then table.insert(chars, murd) end
+    end
+    
+    local now = os.clock()
+    for _, char in ipairs(chars) do
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local rawPos = hrp.Position
+            local d = resolverData[char]
+            if not d then
+                resolverData[char] = { lastPos = rawPos, lastValidTime = now, smoothVel = Vector3.zero, history = {}, desyncStart = 0 }
+                d = resolverData[char]
+            end
+            
+            local dt = now - d.lastValidTime
+            if dt > 0 then
+                local step = rawPos - d.lastPos
+                local instVel = step / dt
+                
+                -- Detect desync: If they move more than 150 studs/sec physically in 1 frame, they are teleporting.
+                if instVel.Magnitude > 150 then
+                    if d.desyncStart == 0 then d.desyncStart = now end
+                    if now - d.desyncStart > 0.5 then
+                        -- Continuous desync for 0.5s -> likely a real teleport (e.g. map change or void). Reset.
+                        d.lastPos = rawPos
+                        d.lastValidTime = now
+                        d.desyncStart = 0
+                        d.history = {}
+                        d.smoothVel = Vector3.zero
+                    end
                 else
-                    vel = Vector3.zero
+                    -- Valid physical movement
+                    d.desyncStart = 0
+                    table.insert(d.history, instVel)
+                    if #d.history > 5 then table.remove(d.history, 1) end
+                    
+                    local sumVel = Vector3.zero
+                    for _, v in ipairs(d.history) do sumVel = sumVel + v end
+                    d.smoothVel = sumVel / #d.history
+                    
+                    d.lastPos = rawPos
+                    d.lastValidTime = now
                 end
             end
-            antiDesyncLast[targetChar] = { p = raw, v = vel, t = now }
-            return raw
         end
-
-        if not prev then return raw end
-        local age = now - prev.t
-        if age > STALE_AFTER then
-            antiDesyncLast[targetChar] = nil
-            return raw
-        end
-
-        local step = prev.v * age
-        if step.Magnitude > MAX_STEP * age then step = step.Unit * (MAX_STEP * age) end
-        return prev.p + step
     end
-    S._ResolveAntiDesyncPos = resolveTargetPos
+end)
+
+local function resolveTargetPos(targetChar, hrp)
+    local raw = hrp.Position
+    if not S.SheriffAntiDesync then return raw end
+    
+    local d = resolverData[targetChar]
+    if not d then return raw end
+    
+    if d.desyncStart > 0 then
+        -- Target is currently flagged as desyncing (teleporting erratically)
+        local age = os.clock() - d.lastValidTime
+        if age > 1.0 then return raw end -- fallback if they've been desyncing too long
+        
+        -- Fallback to alternative body parts. Desync scripts usually only break HumanoidRootPart.
+        local altPart = targetChar:FindFirstChild("UpperTorso") or targetChar:FindFirstChild("Torso") or targetChar:FindFirstChild("Head")
+        if altPart then
+            local altPos = altPart.Position
+            -- If the alternative part is within reasonable bounds of the last valid position, trust it.
+            if (altPos - d.lastPos).Magnitude < 80 then
+                return altPos
+            end
+        end
+        
+        -- Extreme fallback: Extrapolate from the last valid position using smoothed velocity
+        return d.lastPos + (d.smoothVel * age)
+    end
+    
+    return raw
+end
+S._ResolveAntiDesyncPos = resolveTargetPos
 
     local function piercingOrigin(hitPos, targetChar)
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
