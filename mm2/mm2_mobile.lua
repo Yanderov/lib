@@ -19410,11 +19410,11 @@ do
 
     local WEATHER = {
         Rain = {
-            tex = SPARK, color = Color3.fromRGB(170, 195, 225), rate = 700,
-            size = ns2(0, 0.09, 1, 0.09), tr = ns2(0, 0.35, 0.9, 0.4, 1, 1),
-            life = { 0.85, 1.05 }, speed = { 95, 115 }, accel = Vector3.new(0, -190, 0),
-            spread = 3, squash = ns2(0, -9, 1, -9), le = 0.15, drag = 0, slab = 140, height = 60,
-        },
+        tex = SPARK, color = Color3.fromRGB(180, 205, 235), rate = 1200,
+        size = ns2(0, 0.35, 1, 0.35), tr = ns2(0, 0.1, 0.9, 0.2, 1, 1),
+        life = { 0.85, 1.05 }, speed = { 100, 120 }, accel = Vector3.new(0, -150, 0),
+        spread = 2, squash = ns2(0, -2, 1, -2), le = 0.2, drag = 0.5, slab = 160, height = 60,
+    },
         Snow = {
             tex = SPARK, color = Color3.fromRGB(248, 250, 255), rate = 260,
             size = ns2(0, 0.3, 1, 0.28), tr = ns2(0, 0.15, 0.85, 0.2, 1, 1),
@@ -19422,12 +19422,12 @@ do
             spread = 24, rotsp = { -45, 45 }, le = 0.4, drag = 1.6, slab = 130, height = 50,
         },
         Storm = {
-            tex = SPARK, color = Color3.fromRGB(150, 172, 205), rate = 1200,
-            size = ns2(0, 0.11, 1, 0.11), tr = ns2(0, 0.28, 0.9, 0.35, 1, 1),
-            life = { 0.7, 0.9 }, speed = { 130, 160 }, accel = Vector3.new(0, -240, 0),
-            spread = 5, squash = ns2(0, -12, 1, -12), le = 0.1, drag = 0, slab = 150, height = 65,
-            thunder = true,
-        },
+        tex = SPARK, color = Color3.fromRGB(150, 172, 205), rate = 1800,
+        size = ns2(0, 0.4, 1, 0.4), tr = ns2(0, 0.05, 0.9, 0.1, 1, 1),
+        life = { 0.7, 0.9 }, speed = { 130, 160 }, accel = Vector3.new(0, -200, 0),
+        spread = 4, squash = ns2(0, -3, 1, -3), le = 0.3, drag = 0, slab = 160, height = 65,
+        thunder = true,
+    },
         Ash = {
             tex = SMOKE, color = Color3.fromRGB(96, 92, 90), rate = 150,
             size = ns2(0, 0.45, 1, 0.2), tr = ns2(0, 0.5, 0.7, 0.6, 1, 1),
