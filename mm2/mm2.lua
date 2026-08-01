@@ -132,6 +132,68 @@ local S = {
     AIChatResponseChance = 100, AIChatMaxTokens = 220, AIChatHistoryLimit = 18,
     AIChatMaxHumanizer = false,
 }
+
+-- >>> INERTIA AUTO SAVE SYSTEM >>>
+do
+_G.S_DIRTY = false
+_G.InertiaLoadedConfig = {}
+local CONFIG_FOLDER = "InertiaConfigs"
+local CONFIG_FILE = CONFIG_FOLDER .. "/MM2_Config.json"
+
+local HttpService = game:GetService("HttpService")
+
+pcall(function()
+    if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+    if isfile(CONFIG_FILE) then
+        local raw = readfile(CONFIG_FILE)
+        local decoded = HttpService:JSONDecode(raw)
+        if type(decoded) == "table" then
+            _G.InertiaLoadedConfig = decoded
+        end
+    end
+end)
+
+-- Helper to safely serialize tables containing Color3, Enum, etc.
+local function serializeConfig(cfg)
+    local out = {}
+    for k, v in pairs(cfg) do
+        local vt = typeof(v)
+        if vt == "string" or vt == "number" or vt == "boolean" then
+            out[k] = v
+        elseif vt == "Color3" then
+            out[k] = {__type = "Color3", R = v.R, G = v.G, B = v.B}
+        elseif vt == "EnumItem" then
+            out[k] = {__type = "EnumItem", Name = v.Name, EnumType = tostring(v.EnumType)}
+        end
+    end
+    return out
+end
+
+-- Hook the loaded config values back into the UI properly if they were custom serialized
+for k, v in pairs(_G.InertiaLoadedConfig) do
+    if type(v) == "table" and v.__type == "Color3" then
+        _G.InertiaLoadedConfig[k] = Color3.new(v.R, v.G, v.B)
+    elseif type(v) == "table" and v.__type == "EnumItem" then
+        -- KeyCodes are the only enums saved currently
+        pcall(function() _G.InertiaLoadedConfig[k] = Enum.KeyCode[v.Name] end)
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if _G.S_DIRTY then
+            _G.S_DIRTY = false
+            pcall(function()
+                local serialized = serializeConfig(_G.InertiaLoadedConfig)
+                writefile(CONFIG_FILE, HttpService:JSONEncode(serialized))
+            end)
+        end
+    end
+end)
+end
+-- <<< INERTIA AUTO SAVE SYSTEM <<<
+
 _G.MM2_Visuals_Script = S
 local createHighlight, getRole, rebuildCrosshair, moveTo, isRoundActive, silentAimTargetChar, getPredictedPosition, skidFling, mkSlider
 
@@ -4246,6 +4308,17 @@ local function mkSection(parent, title, order)
 end
 local function mkToggle(parent, label, default, callback, order, configLabel)
     callback = type(callback) == "function" and callback or function() end
+
+    local cfgKey = (parent and parent.Name or "") .. "_" .. (configLabel or label)
+    if _G.InertiaLoadedConfig and _G.InertiaLoadedConfig[cfgKey] ~= nil then default = _G.InertiaLoadedConfig[cfgKey] end
+    local old_cb = callback
+    callback = function(v)
+        if _G.InertiaLoadedConfig and _G.InertiaLoadedConfig[cfgKey] ~= v then
+            _G.InertiaLoadedConfig[cfgKey] = v
+            _G.S_DIRTY = true
+        end
+        if old_cb then old_cb(v) end
+    end
     local row = Instance.new("Frame")
     row.Name = label
     row.Parent = parent
@@ -4570,6 +4643,17 @@ end
 
 S._mkAction = mkAction
 mkSlider = function(parent, label, min, max, def, callback, order, skipSearchRegistry)
+
+    local cfgKey = (parent and parent.Name or "") .. "_" .. label
+    if _G.InertiaLoadedConfig and _G.InertiaLoadedConfig[cfgKey] ~= nil then def = _G.InertiaLoadedConfig[cfgKey] end
+    local old_cb = callback
+    callback = function(v)
+        if _G.InertiaLoadedConfig and _G.InertiaLoadedConfig[cfgKey] ~= v then
+            _G.InertiaLoadedConfig[cfgKey] = v
+            _G.S_DIRTY = true
+        end
+        if old_cb then old_cb(v) end
+    end
     callback = type(callback) == "function" and callback or function() end
     local frame = Instance.new("Frame")
     frame.Name = label
@@ -4963,6 +5047,17 @@ end
 end
 
 local function mkCycle(parent, label, options, default, callback, order)
+
+    local cfgKey = (parent and parent.Name or "") .. "_" .. label
+    if _G.InertiaLoadedConfig and _G.InertiaLoadedConfig[cfgKey] ~= nil then default = _G.InertiaLoadedConfig[cfgKey] end
+    local old_cb = callback
+    callback = function(v)
+        if _G.InertiaLoadedConfig and _G.InertiaLoadedConfig[cfgKey] ~= v then
+            _G.InertiaLoadedConfig[cfgKey] = v
+            _G.S_DIRTY = true
+        end
+        if old_cb then old_cb(v) end
+    end
     callback = type(callback) == "function" and callback or function() end
     local row = Instance.new("Frame")
     row.Name = label
