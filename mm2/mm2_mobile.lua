@@ -12060,6 +12060,22 @@ do
     mkSlider(secAuto, "Autofarm Speed", 16, 40, 40, function(v) S.FastAutofarmSpeed = v end, 2)
     mkToggle(secAuto, "Autofarm Lay", false, function(v) S.AutofarmLay = v end, 3)
     mkToggle(secAuto, "Sync Mode (Instant)", false, function(v) S.AutofarmSync = v end, 4)
+
+    local syncDesc = Instance.new("TextLabel")
+    syncDesc.Name = "SyncDesc"
+    syncDesc.Parent = secAuto
+    syncDesc.LayoutOrder = 5
+    syncDesc.BackgroundTransparency = 1
+    syncDesc.Size = UDim2.new(1, -10, 0, 45)
+    syncDesc.Position = UDim2.new(0, 5, 0, 0)
+    syncDesc.TextWrapped = true
+    syncDesc.Text = "Эта функция исправляет автофарм, если он застревает на монете. Включайте её только если уверены, что ваш исполнитель (executor) полностью совместим со скриптом, иначе игра может вылететь."
+    syncDesc.TextColor3 = Color3.fromRGB(180, 180, 180)
+    syncDesc.Font = Enum.Font.Gotham
+    syncDesc.TextSize = 11
+    syncDesc.TextXAlignment = Enum.TextXAlignment.Left
+    syncDesc.TextYAlignment = Enum.TextYAlignment.Top
+
     
 
     
@@ -20197,3 +20213,77 @@ end
 task.delay(3, function() pcall(refreshAll) end)
 
 end
+
+
+-- >>> INERTIA AUTO ROLES LOGIC >>>
+do
+    local function isCoinBagFull()
+        local pg = LP and LP:FindFirstChild("PlayerGui")
+        if not pg then return false end
+        local main = pg:FindFirstChild("MainGUI")
+        local gameUI = main and main:FindFirstChild("Game")
+        local coinCont = gameUI and gameUI:FindFirstChild("CoinContainer")
+        local cc = coinCont and coinCont:FindFirstChild("CoinContainer")
+        if cc and cc:FindFirstChild("CoinText") then
+            local text = cc.CoinText.Text
+            if text:match("40") or text == "Max" or text == "50" or text:match("Max") then return true end
+            local t = tonumber(text)
+            if t and (t >= 40) then return true end
+        end
+        return false
+    end
+
+    local secAutoRoles = mkSection(Pages.Combat, "Auto Roles", 14)
+    mkToggle(secAutoRoles, "Auto Reset As Murderer", false, function(v) S.AutoResetMurderer = v end, 1)
+    mkToggle(secAutoRoles, "Auto Reset As Sheriff", false, function(v) S.AutoResetSheriff = v end, 2)
+    mkToggle(secAutoRoles, "Auto Reset As Innocent", false, function(v) S.AutoResetInnocent = v end, 3)
+    mkToggle(secAutoRoles, "Auto Kill Everyone As Murderer", false, function(v) S.AutoKillAllMurderer = v end, 4)
+    mkToggle(secAutoRoles, "Auto Shoot Murderer As Sheriff", false, function(v) S.AutoShootMurderer = v end, 5)
+    mkToggle(secAutoRoles, "Auto Fling Murderer", false, function(v) S.AutoFlingMurderer = v end, 6)
+
+    task.spawn(function()
+        while task.wait(0.5) do
+            if isCoinBagFull() then
+                local murd = S._GetMurdererChar and S._GetMurdererChar()
+                local c = LP.Character
+                if not c then continue end
+                
+                local myRole = "Innocent"
+                if murd == c then myRole = "Murderer"
+                elseif c:FindFirstChild("Gun") or LP.Backpack:FindFirstChild("Gun") then myRole = "Sheriff" end
+                
+                if S.AutoResetMurderer and myRole == "Murderer" then
+                    c:BreakJoints()
+                elseif S.AutoResetSheriff and myRole == "Sheriff" then
+                    c:BreakJoints()
+                elseif S.AutoResetInnocent and myRole == "Innocent" then
+                    c:BreakJoints()
+                elseif S.AutoKillAllMurderer and myRole == "Murderer" then
+                    if S._MurdererKillAll then S._MurdererKillAll() end
+                elseif S.AutoShootMurderer and myRole == "Sheriff" then
+                    local gun = c:FindFirstChild("Gun")
+                    if not gun then 
+                        local stowed = LP.Backpack:FindFirstChild("Gun")
+                        if stowed then 
+                            local hum = c:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:EquipTool(stowed) end
+                        end
+                    else
+                        local att = c:FindFirstChild("HumanoidRootPart") and c.HumanoidRootPart:FindFirstChild("GunRaycastAttachment")
+                        if att and murd and murd:FindFirstChild("HumanoidRootPart") then
+                            local shootRemote = gun:FindFirstChild("Shoot")
+                            if shootRemote then
+                                shootRemote:FireServer(att.WorldCFrame, murd.HumanoidRootPart.Position)
+                            end
+                        end
+                    end
+                elseif S.AutoFlingMurderer then
+                    if murd then
+                        if queueVoidReset then queueVoidReset(murd) end
+                    end
+                end
+            end
+        end
+    end)
+end
+-- <<< INERTIA AUTO ROLES LOGIC <<<
