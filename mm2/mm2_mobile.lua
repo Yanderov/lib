@@ -20326,3 +20326,96 @@ do
     end)
 end
 -- <<< INERTIA AUTO ROLES LOGIC <<<
+
+
+-- >>> INERTIA NETWORK LOGIC >>>
+do
+    local LP = game:GetService("Players").LocalPlayer
+    local inertiaUsers = {}
+    
+    local function createTag(char)
+        if not char then return end
+        local head = char:WaitForChild("Head", 5)
+        if not head then return end
+        if head:FindFirstChild("InertiaTag") then return end
+        
+        local bg = Instance.new("BillboardGui")
+        bg.Name = "InertiaTag"
+        bg.Size = UDim2.new(0, 100, 0, 30)
+        bg.StudsOffset = Vector3.new(0, 2.5, 0)
+        bg.AlwaysOnTop = true
+        
+        local text = Instance.new("TextLabel")
+        text.Size = UDim2.new(1, 0, 1, 0)
+        text.BackgroundTransparency = 1
+        text.Text = "Inertia User"
+        text.Font = Enum.Font.GothamBold
+        text.TextSize = 14
+        text.TextColor3 = Color3.fromRGB(255, 60, 100)
+        text.TextStrokeTransparency = 0
+        text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        text.Parent = bg
+        
+        bg.Parent = head
+    end
+
+    local rep = game:GetService("ReplicatedStorage")
+    local chatEvents = rep:WaitForChild("DefaultChatSystemChatEvents", 5)
+    local sayRequest = chatEvents and chatEvents:FindFirstChild("SayMessageRequest")
+    
+    if chatEvents then
+        local onMessage = chatEvents:WaitForChild("OnMessageDoneFiltering", 5)
+        if onMessage then
+            onMessage.OnClientEvent:Connect(function(msgData)
+                if msgData and msgData.Message and msgData.FromSpeaker then
+                    local msg = string.lower(msgData.Message)
+                    if string.find(msg, "!inertia") then
+                        local speakerName = msgData.FromSpeaker
+                        local p = game:GetService("Players"):FindFirstChild(speakerName)
+                        if p then
+                            if not inertiaUsers[p.UserId] then
+                                inertiaUsers[p.UserId] = true
+                                if p.Character then createTag(p.Character) end
+                            end
+                            
+                            -- Acknowledge back so they know we exist
+                            if not string.find(msg, "ack") and p ~= LP then
+                                if sayRequest then
+                                    task.wait(math.random(1, 2))
+                                    sayRequest:FireServer("!inertia_ack", "All")
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+    
+    local function setupPlayer(p)
+        p.CharacterAdded:Connect(function(char)
+            task.wait(0.5)
+            if inertiaUsers[p.UserId] then
+                createTag(char)
+            end
+        end)
+    end
+    
+    for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+        setupPlayer(p)
+    end
+    game:GetService("Players").PlayerAdded:Connect(setupPlayer)
+    
+    -- Tag ourselves immediately
+    inertiaUsers[LP.UserId] = true
+    if LP.Character then createTag(LP.Character) end
+    
+    -- Broadcast our presence
+    if sayRequest then
+        task.spawn(function()
+            task.wait(2)
+            sayRequest:FireServer("!inertia", "All")
+        end)
+    end
+end
+-- <<< INERTIA NETWORK LOGIC <<<
