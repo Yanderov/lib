@@ -12000,9 +12000,26 @@ do
     mkSlider(secAuto, "Autofarm Speed", 16, 40, 40, function(v) S.FastAutofarmSpeed = v end, 2)
     mkToggle(secAuto, "Autofarm Lay", false, function(v) S.AutofarmLay = v end, 3)
     mkToggle(secAuto, "Sync Mode (Instant)", false, function(v) S.AutofarmSync = v end, 4)
-    mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
+    
 
+    
+    RunService.Heartbeat:Connect(function()
+        if S.FastAutofarm and S.AutofarmLay then
+            local c = LP.Character
+            local hum = c and c:FindFirstChildOfClass("Humanoid")
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            if hrp and hum then
+                hum.PlatformStand = true
+                for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                    track:Stop()
+                end
+                local currentPos = hrp.Position
+                hrp.CFrame = CFrame.new(currentPos) * CFrame.Angles(math.rad(-90), 0, 0)
+            end
+        end
+    end)
     local secVote = mkSection(Pages.Teleport, "Vote Farm", 6)
+
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secVote) end
     mkCycle(secVote, "Map Slot", {"1", "2", "3"}, "1", function(v) S.VoteFarmSlot = v end, 1)
     mkSlider(secVote, "Reset Count", 1, 20, 5, function(v) S.VoteFarmCount = v end, 2)
@@ -12125,22 +12142,11 @@ do
                         local myPos = hrp.Position
                         local coins = {}
                         local murderPos = murdererPosition()
-                        local avoidR = math.max(tonumber(S.AutofarmAvoidRadius) or 60, 0)
                         eachCoin(function(coin)
-                            if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
-                                local isSafe = true
-                                if murderPos and avoidR > 0 then
-
-                                    if (coin.Position - murderPos).Magnitude < avoidR
-                                        or distToSegment(murderPos, myPos, coin.Position) < avoidR then
-                                        isSafe = false
-                                    end
-                                end
-                                if isSafe then
-                                    table.insert(coins, coin)
-                                end
-                            end
-                        end)
+            if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
+                table.insert(coins, coin)
+            end
+        end)
                         if #coins > 0 then
                             table.sort(coins, function(a, b)
                                 return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
@@ -12163,11 +12169,7 @@ do
                             local reached = moveTo(targetCoin.CFrame, S.FastAutofarmSpeed or 20, function()
                                 vacuum()
 
-                                if avoidR > 0 then
-                                    local mp = murdererPosition()
-                                    local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                                    if mp and h and (h.Position - mp).Magnitude < avoidR then return false end
-                                end
+                                
                                 return targetCoin and targetCoin.Parent and targetCoin.Transparency < 1 and c and c.Parent and hum and hum.Health > 0
                             end)
                             vacuum()
@@ -13739,6 +13741,231 @@ local function stopIYFling()
     iyPartState = {}
 end
 
+
+-- ============================
+-- EXTERNAL FLING (VoidReset) & SERVER FUNCTIONS
+-- ============================
+activeResets = {}
+
+function countActiveResets()
+    local count = 0
+    for _ in pairs(activeResets) do count += 1 end
+    return count
+end
+
+function touch_vr(a, b)
+    pcall(function()
+        for _ = 1, 3 do
+            firetouchinterest(a, b, 0)
+            firetouchinterest(a, b, 1)
+        end
+    end)
+end
+
+function restoreSelf_vr(character, savedData, originalDestroyHeight)
+    if not character or not savedData then
+        Workspace.FallenPartsDestroyHeight = originalDestroyHeight
+        return
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then
+        Workspace.FallenPartsDestroyHeight = originalDestroyHeight
+        return
+    end
+
+    Workspace.FallenPartsDestroyHeight = originalDestroyHeight
+    rootPart.CFrame = savedData.cframe
+    rootPart.AssemblyLinearVelocity  = Vector3.zero
+    rootPart.AssemblyAngularVelocity = Vector3.zero
+    rootPart.Velocity                = Vector3.zero
+    rootPart.RotVelocity             = Vector3.zero
+    humanoid.PlatformStand = false
+    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+
+    if humanoid.Health < humanoid.MaxHealth then
+        humanoid.Health = humanoid.MaxHealth
+    end
+
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = true end
+    end
+end
+
+function VoidReset(TargetPlayer, _retryCount)
+    if TargetPlayer == LP then return end
+    if isWhitelisted(TargetPlayer) then return end
+    if activeResets[TargetPlayer.UserId] then return end
+
+    local MAX_CONCURRENT_RESETS = 6
+    local maxRetries = S.FlingMaxRetries or 3
+    local RESET_DURATION = tonumber(S.FlingMaxSeconds) or 0.35
+    local retryDelay = 0.1
+
+    _retryCount = _retryCount or 0
+
+    if countActiveResets() >= MAX_CONCURRENT_RESETS then
+        task.defer(function()
+            task.wait(0.05 * (_retryCount + 1))
+            VoidReset(TargetPlayer, _retryCount)
+        end)
+        return
+    end
+
+    local Character = LP.Character
+    if not Character then return end
+
+    local Humanoid   = Character:FindFirstChildOfClass("Humanoid")
+    local RootPart   = Humanoid and Humanoid.RootPart
+    local TCharacter = TargetPlayer.Character
+    if not (Humanoid and RootPart and TCharacter) then return end
+
+    local TRootPart = TCharacter:FindFirstChild("HumanoidRootPart")
+    local THead     = TCharacter:FindFirstChild("Head")
+    if not TRootPart then return end
+
+    local targetParts = {}
+    for _, part in ipairs(TCharacter:GetChildren()) do
+        if part:IsA("BasePart") then table.insert(targetParts, part) end
+    end
+
+    local touchParts = {}
+    local partPriority = {"HumanoidRootPart", "Head", "UpperTorso", "Torso"}
+    for _, name in ipairs(partPriority) do
+        local p = TCharacter:FindFirstChild(name)
+        if p then table.insert(touchParts, p) end
+        if #touchParts >= 4 then break end
+    end
+    if #touchParts == 0 then touchParts = targetParts end
+
+    local savedData = { cframe = RootPart.CFrame }
+    local originalDestroyHeight = Workspace.FallenPartsDestroyHeight
+
+    Workspace.FallenPartsDestroyHeight = -math.huge
+    Humanoid.PlatformStand = true
+
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Velocity = Vector3.new(0, -200000, 0)
+    bv.Parent   = RootPart
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P         = 9e8
+    bg.Parent    = RootPart
+
+    local startTime      = tick()
+    local done           = false
+
+    local resetObj = { bv = bv, bg = bg, conn = nil }
+    activeResets[TargetPlayer.UserId] = resetObj
+
+    local function cleanup(success)
+        if done then return end
+        done = true
+        activeResets[TargetPlayer.UserId] = nil
+        if resetObj.conn then resetObj.conn:Disconnect(); resetObj.conn = nil end
+        pcall(function() bv:Destroy() end)
+        pcall(function() bg:Destroy() end)
+        restoreSelf_vr(Character, savedData, originalDestroyHeight)
+
+        if not success and _retryCount < maxRetries then
+            task.delay(retryDelay, function()
+                if TargetPlayer.Parent and not isWhitelisted(TargetPlayer) then
+                    VoidReset(TargetPlayer, _retryCount + 1)
+                end
+            end)
+        end
+    end
+
+    local frameCount = 0
+    resetObj.conn = RunService.Heartbeat:Connect(function(dt)
+        frameCount += 1
+        if not TargetPlayer.Character or not TRootPart.Parent then cleanup(true) return end
+        if tick() - startTime >= RESET_DURATION then cleanup(false) return end
+        if not Character.Parent or not RootPart.Parent then cleanup(true) return end
+
+        local headPos = THead and THead.Position or (TRootPart.Position + Vector3.new(0, 2.5, 0))
+        RootPart.CFrame = CFrame.new(headPos)
+        RootPart.AssemblyLinearVelocity  = Vector3.new(0, -200000, 0)
+        RootPart.AssemblyAngularVelocity = Vector3.new(15000, 15000, 15000)
+
+        if frameCount % 2 == 1 then
+            for _ = 1, 5 do
+                for _, part in ipairs(touchParts) do touch_vr(RootPart, part) end
+            end
+        else
+            for _ = 1, 3 do
+                touch_vr(RootPart, TRootPart)
+                if THead then touch_vr(RootPart, THead) end
+            end
+        end
+
+        pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", TRootPart)
+        if Humanoid.Health < Humanoid.MaxHealth * 0.5 then
+            pcall(function() Humanoid.Health = Humanoid.MaxHealth end)
+        end
+    end)
+end
+
+CoinAuraEnabled = false
+AuraRankSwitch = false
+FEHeadlessEnabled = false
+
+function EnableFEHeadless()
+    FEHeadlessEnabled = true
+    task.spawn(function()
+        while FEHeadlessEnabled do
+            local c = LP.Character
+            if c then
+                local head = c:FindFirstChild("Head")
+                if head then
+                    local mesh = head:FindFirstChildOfClass("SpecialMesh")
+                    if mesh then mesh:Destroy() end
+                    if head:IsA("MeshPart") then head.Transparency = 1 end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+function DisableFEHeadless() FEHeadlessEnabled = false end
+
+function EnableCoinAura()
+    CoinAuraEnabled = true
+    task.spawn(function()
+        while CoinAuraEnabled do
+            local c = LP.Character
+            if c and c:FindFirstChild("HumanoidRootPart") then
+                local pos = c.HumanoidRootPart.Position
+                for _, map in ipairs(Workspace:GetChildren()) do
+                    local container = map:FindFirstChild("CoinContainer")
+                    if container then
+                        for _, coin in ipairs(container:GetChildren()) do
+                            if coin:IsA("BasePart") and coin.Name == "Coin_Server" and (coin.Position - pos).Magnitude <= 12 then
+                                pcall(function()
+                                    firetouchinterest(c.HumanoidRootPart, coin, 0)
+                                    firetouchinterest(c.HumanoidRootPart, coin, 1)
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+function DisableCoinAura() CoinAuraEnabled = false end
+
+function queueVoidReset(tgt)
+    if tgt and tgt ~= LP and not isWhitelisted(tgt) then VoidReset(tgt) end
+end
+-- ============================
+local function doFling(tgt)
+
 local function startIYFling()
     if iyFlinging then return true end
     local c = LP.Character
@@ -13783,7 +14010,7 @@ local function startIYFling()
 end
 
 
-local activeResets = {}
+activeResets = {}
 local MAX_CONCURRENT_RESETS = 6
 
 local function touch(a, b)
@@ -13828,7 +14055,7 @@ local function restoreSelf(character, savedData, originalDestroyHeight)
     end
 end
 
-local function countActiveResets()
+function countActiveResets()
     local count = 0
     for _ in pairs(activeResets) do count = count + 1 end
     return count
@@ -14002,7 +14229,7 @@ local function flingRole(role)
     end)
 end
 
-skidFling = function(target) return flingPlayer(target) end
+skidFling = function(target) return VoidReset(target) end
 S._TouchSpinFling = skidFling
 S._FlingPlayer = flingPlayer
 S._FlingAll = flingAll
@@ -19746,5 +19973,164 @@ do
         end
     end)
     
-    task.delay(3, function() pcall(refreshAll) end)
+    do
+    local secDesync = mkSection(Pages.Combat, "Desync", 13)
+    mkToggle(secDesync, "Desync (Fake Position)", false, function(v) S.DesyncFakePos = v end, 1)
+    mkToggle(secDesync, "Velocity Desync", false, function(v) S.DesyncVelocity = v end, 2)
+
+end
+do
+    local secAutoRoles = mkSection(Pages.Combat, "Auto Roles", 14)
+    mkToggle(secAutoRoles, "Auto Reset As Murderer", false, function(v) S.AutoResetMurderer = v end, 1)
+    mkToggle(secAutoRoles, "Auto Reset As Sheriff", false, function(v) S.AutoResetSheriff = v end, 2)
+    mkToggle(secAutoRoles, "Auto Reset As Innocent", false, function(v) S.AutoResetInnocent = v end, 3)
+    mkToggle(secAutoRoles, "Auto Kill Everyone As Murderer", false, function(v) S.AutoKillAllMurderer = v end, 4)
+    mkToggle(secAutoRoles, "Auto Shoot Murderer As Sheriff", false, function(v) S.AutoShootMurderer = v end, 5)
+
+end
+do
+    local secViewmodel = mkSection(Pages.Visuals, "Viewmodel", 15)
+    mkToggle(secViewmodel, "Show Cosmetics Changer", false, function(v) S.ShowCosmetics = v end, 1)
+    mkCycle(secViewmodel, "Disable", {"...", "Arms", "Weapon"}, "...", function(v) S.ViewModelDisable = v end, 2)
+    mkToggle(secViewmodel, "Override FPS", false, function(v) S.OverrideFPS = v end, 3)
+    mkSlider(secViewmodel, "Recoil Percent (%)", 0, 100, 100, function(v) S.RecoilPercent = v end, 4)
+    mkToggle(secViewmodel, "Chams", false, function(v) S.ViewmodelChams = v end, 5)
+    mkToggle(secViewmodel, "Offset", false, function(v) S.ViewmodelOffset = v end, 6)
+
+end
+do
+    local secHit = mkSection(Pages.Visuals, "Hit Effects", 16)
+    mkToggle(secHit, "Enabled", false, function(v) S.HitEffectsEnabled = v end, 1)
+    mkToggle(secHit, "Disable Hit Marker", false, function(v) S.DisableHitMarker = v end, 2)
+    mkToggle(secHit, "Disable Damage Numbers", false, function(v) S.DisableDamageNumbers = v end, 3)
+
+end
+do
+    local secCrosshair = mkSection(Pages.Visuals, "Crosshair", 17)
+    mkToggle(secCrosshair, "Enabled", false, function(v) S.CrosshairEnabled = v end, 1)
+    mkToggle(secCrosshair, "Disable Game Crosshair", false, function(v) S.DisableGameCrosshair = v end, 2)
+
+end
+do
+    local secTracers = mkSection(Pages.Visuals, "Custom Tracers", 18)
+    mkToggle(secTracers, "Enabled", false, function(v) S.CustomTracers = v end, 1)
+
+end
+do
+    local secTargetHUD = mkSection(Pages.Visuals, "Target HUD", 19)
+    mkToggle(secTargetHUD, "Enabled", false, function(v) S.TargetHUDEnabled = v end, 1)
+
+end
+do
+    local secInd = mkSection(Pages.Visuals, "Indicators", 20)
+    mkToggle(secInd, "Manipulated", false, function(v) S.IndManip = v end, 1)
+    mkToggle(secInd, "Ragebot", false, function(v) S.IndRage = v end, 2)
+    mkCycle(secInd, "Ragebot Style", {"Text, Status", "Icon"}, "Text, Status", function(v) S.IndRageStyle = v end, 3)
+    mkToggle(secInd, "Ammo", false, function(v) S.IndAmmo = v end, 4)
+    mkSlider(secInd, "Lerp", 1, 10, 1, function(v) S.IndLerp = v end, 5)
+    mkCycle(secInd, "Font", {"Monocraft", "Roboto", "Gotham"}, "Monocraft", function(v) S.IndFont = v end, 6)
+    mkCycle(secInd, "Text Style", {"Lower", "Upper", "Normal"}, "Lower", function(v) S.IndTextStyle = v end, 7)
+
+end
+do
+    local secServer = mkSection(Pages.Misc, "Server Functions", 21)
+    mkToggle(secServer, "CoinAura", false, function(v) 
+        if v then EnableCoinAura() else DisableCoinAura() end
+    end, 1)
+    mkToggle(secServer, "Aura Rank Switch", false, function(v) AuraRankSwitch = v end, 2)
+    mkToggle(secServer, "FE Headless (Mesh Destroy)", false, function(v)
+        if v then EnableFEHeadless() else DisableFEHeadless() end
+    end, 3)
+
+end
+do
+    local secFlingSettings = mkSection(Pages.Combat, "Fling Settings", 22)
+    mkSlider(secFlingSettings, "Fling Max Retries", 1, 10, 3, function(v) S.FlingMaxRetries = v end, 1)
+    mkSlider(secFlingSettings, "Fling Max Seconds", 1, 10, 3, function(v) S.FlingMaxSeconds = v / 10 end, 2)
+
+end
+do
+    -- MotionGraph
+    local mgScreen = Instance.new("ScreenGui")
+    mgScreen.Name = "InertiaMotionGraph"
+    mgScreen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() S._MarkSurface(mgScreen) end)
+    mgScreen.Parent = game:GetService("CoreGui")
+    local mgFrame = Instance.new("Frame")
+    mgFrame.Size = UDim2.fromOffset(200, 50)
+    mgFrame.Position = UDim2.new(0.5, -100, 0.9, -50)
+    mgFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    mgFrame.BorderSizePixel = 0
+    mgFrame.Visible = false
+    local mgUIStroke = Instance.new("UIStroke", mgFrame)
+    mgUIStroke.Color = Color3.fromRGB(255, 60, 100)
+    mgUIStroke.Thickness = 1
+    mgFrame.Parent = mgScreen
+    
+    local mgCanvas = Instance.new("Frame")
+    mgCanvas.Size = UDim2.fromScale(1, 1)
+    mgCanvas.BackgroundTransparency = 1
+    mgCanvas.Parent = mgFrame
+    
+    local secMotion = mkSection(Pages.Visuals, "Motion", 23)
+    mkToggle(secMotion, "MotionGraph (1 Line)", false, function(v) 
+        S.MotionGraphEnabled = v 
+        mgFrame.Visible = v
+    end, 1)
+
+    local mgHistory = {}
+    local mgLines = {}
+    local MAX_MG_POINTS = 100
+    
+    for i=1, MAX_MG_POINTS do
+        local l = Instance.new("Frame")
+        l.BackgroundColor3 = Color3.fromRGB(255, 60, 100)
+        l.BorderSizePixel = 0
+        l.AnchorPoint = Vector2.new(0.5, 0.5)
+        l.Parent = mgCanvas
+        table.insert(mgLines, l)
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if S.MotionGraphEnabled then
+            local speed = 0
+            local c = LP.Character
+            if c and c:FindFirstChild("HumanoidRootPart") then
+                speed = c.HumanoidRootPart.Velocity.Magnitude
+            end
+            table.insert(mgHistory, speed)
+            if #mgHistory > MAX_MG_POINTS then table.remove(mgHistory, 1) end
+            
+            local maxSpd = 50
+            for _, s in ipairs(mgHistory) do if s > maxSpd then maxSpd = s end end
+            
+            local width = mgFrame.AbsoluteSize.X / MAX_MG_POINTS
+            local height = mgFrame.AbsoluteSize.Y
+            
+            for i = 1, #mgHistory - 1 do
+                local v1 = mgHistory[i]
+                local v2 = mgHistory[i+1]
+                
+                local p1 = Vector2.new((i-1)*width, height - (v1/maxSpd)*height)
+                local p2 = Vector2.new(i*width, height - (v2/maxSpd)*height)
+                
+                local line = mgLines[i]
+                local dist = (p2 - p1).Magnitude
+                local center = (p1 + p2) / 2
+                local angle = math.atan2(p2.Y - p1.Y, p2.X - p1.X)
+                
+                line.Position = UDim2.fromOffset(center.X, center.Y)
+                line.Size = UDim2.fromOffset(dist, 1)
+                line.Rotation = math.deg(angle)
+                line.Visible = true
+            end
+            for i = #mgHistory, MAX_MG_POINTS do
+                mgLines[i].Visible = false
+            end
+        end
+    end)
+end
+end
+task.delay(3, function() pcall(refreshAll) end)
+
 end
