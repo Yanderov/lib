@@ -49,6 +49,7 @@ local S = {
     PixelSurf = false, SurfSpeed = 60, SurfGravity = 80, SurfJumpPower = 50,
     AutoKillSheriff = false, AutoKillNearest = false, ClickKill = false, KillAura = false, KillAuraRange = 18,
     ActiveShader = "None",
+    HubTag = true, HubTagAnnounce = true, HubTagShowSelf = true,
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
     HUD_Ping = false, HUD_Coords = false, NoEmoteStop = false, LoopEmote = false,
     NameESP = false, DistanceESP = false, RoleESP = false,
@@ -64,11 +65,13 @@ local S = {
     FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
     FogMode = "Atmosphere", FogDensity = 40,
     ShaderBrightness = 200, ShaderExposure = 4, ShaderBloom = 40, ShaderContrast = 12,
-    ShaderSaturation = 18, ShaderCCBright = 0, ShaderTime = 14,
+    ShaderSaturation = 18, ShaderCCBright = 0, ShaderTime = 14, ShaderBloomSize = 24,
+    ShaderSunRays = 8, ShaderDOF = 0, ShaderBlur = 0, ShaderAtmo = 22,
+    ShaderTint = "Neutral", ShaderShadows = true,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel",
-    VFXWingScale = 100, VFXFootAura = true,
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel Aura",
+    VFXWingScale = 100, VFXFootAura = true, VFXWingLight = false, VFXDensity = 70, VFXGlow = 35,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
     KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
@@ -275,6 +278,20 @@ local SFX = {
         snd(choice.id, choice.pitch, 0.35)
     end,
     Ready = function() snd("rbxassetid://4590662766", 1.5, 0.45) end,
+}
+-- Custom-shader tint palette. Declared up here, not next to the compositor that consumes it:
+-- the Shader Presets card is built ~4000 lines earlier than S._ApplySimpleShader, so defining it
+-- there left the Tint cycle with a one-entry fallback list. Kept on S rather than as main-chunk
+-- locals -- the main chunk sits within a couple of registers of Luau's 200-register ceiling.
+S._TINTS = { "Neutral", "Warm", "Cool", "Pink", "Golden", "Toxic", "Mono" }
+S._TINT_RGB = {
+    Neutral = Color3.fromRGB(255, 255, 255),
+    Warm    = Color3.fromRGB(255, 244, 226),
+    Cool    = Color3.fromRGB(214, 232, 255),
+    Pink    = Color3.fromRGB(255, 208, 228),
+    Golden  = Color3.fromRGB(255, 216, 165),
+    Toxic   = Color3.fromRGB(214, 255, 186),
+    Mono    = Color3.fromRGB(255, 255, 255),
 }
 local T = {
     BG        = Color3.fromRGB(3, 3, 3),
@@ -676,12 +693,12 @@ S._EachSurface = function(fn)
 end
 
 local function updateGuiTransparency()
-    -- Keep enough opacity for controls and notifications to remain readable even
-    -- when an old or malformed config contains an out-of-range value.
-    local guiTrans = math.clamp(tonumber(S.GuiTransparency) or 0.15, 0, 0.85)
-    local hudTrans = math.clamp(tonumber(S.HudTransparency) or (guiTrans + 0.05), 0, 0.90)
-    S.GuiTransparency = guiTrans
-    S.HudTransparency = hudTrans
+    -- Pinned to fully opaque. The UI/HUD Fade sliders were deleted, so any non-zero value left in
+    -- an old config was permanent -- a see-through window with nothing anywhere to reset it. The
+    -- function stays because everything still calls it; it just always paints solid now.
+    local guiTrans, hudTrans = 0, 0
+    S.GuiTransparency = 0
+    S.HudTransparency = 0
     if SG then
         local main = SG:FindFirstChild("Main", true)
         if main then main.BackgroundTransparency = guiTrans end
@@ -1595,73 +1612,23 @@ Main.Visible = true
 Main.Parent = SG
 Main.Active = true
 Main.BackgroundColor3 = T.BG; pcall(function() Main:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
-Main.BackgroundTransparency = MOBILE and math.clamp(tonumber(S.GuiTransparency) or 0.08, 0, 0.85) or math.clamp(tonumber(S.GuiTransparency) or 0.15, 0, 0.85)
+-- Solid, always: the fade sliders are gone, so there is no legitimate source of a non-zero
+-- value here any more -- only a stale config, which is the bug this closes.
+Main.BackgroundTransparency = 0
 Main.BorderSizePixel = 0
 Main.Position = UDim2.new(0.5, -WW/2, 0.5, -WH/2)
 Main.Size = expandedSize
 Main.ClipsDescendants = true
 Corner(Main, MOBILE and 18 or 12)
 Stroke(Main, T.Bd2, MOBILE and 1.2 or 1, MOBILE and 0.08 or 0.15)
--- Placed here, AFTER Main exists. It used to sit ~900 lines earlier, where `Main` was still an
--- undeclared global: the glass gradient indexed nil inside a pcall and did nothing, and the
--- blur's `Main and Main.Parent` was always nil so the effect was never created. Both features
--- were dead on arrival for that one reason.
--- Glass sheen: one gradient over Main, strength driven by S.UIGlass. Deliberately a gradient on
--- Main itself and not a child frame -- an opaque child would square off the window's rounded
--- corners, because UICorner does not clip descendants.
-S._GlassOn = function(obj, amount)
-    if not obj or not obj.Parent then return end
-    local g = obj:FindFirstChild("GlassSheen")
-    if amount <= 0.01 then
-        if g then g:Destroy() end
-        return
-    end
-    if not g then
-        g = Instance.new("UIGradient")
-        g.Name = "GlassSheen"
-        g.Rotation = 90
-        g.Parent = obj
-    end
-    g.Color = ColorSequence.new(
-        Color3.new(1, 1, 1):Lerp(Color3.new(0, 0, 0), 1 - amount * 0.55),
-        Color3.new(0, 0, 0))
-    g.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1 - amount * 0.8),
-        NumberSequenceKeypoint.new(0.45, 1 - amount * 0.15),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-end
-
-S._ApplyGlass = function()
-    local amount = math.clamp((tonumber(S.UIGlass) or 0) / 100, 0, 1)
-    pcall(S._GlassOn, Main, amount)
-    -- Cards and HUD panels get the same sheen. Without this the glass stopped dead at the window
-    -- edge and every card sitting on top of it stayed flat, which is what "cards do not blur"
-    -- actually looked like.
-    S._EachSurface(function(o) S._GlassOn(o, amount) end)
-end
-
--- Background blur. Deliberately NOT gated on the menu being open: you set it to look at the game
--- through it, and tying it to Main.Visible meant closing the menu removed the very thing you had
--- just turned on.
-do
-    local blurFx
-    tc(RunService.RenderStepped:Connect(function()
-        local want = math.clamp(tonumber(S.UIBlur) or 0, 0, 24)
-        local on = want > 0 and Main and Main.Parent
-        if on then
-            if not blurFx or not blurFx.Parent then
-                blurFx = Instance.new("BlurEffect")
-                blurFx.Name = "InertiaUIBlur"
-                blurFx.Parent = game:GetService("Lighting")
-            end
-            blurFx.Size = want
-        elseif blurFx then
-            blurFx:Destroy()
-            blurFx = nil
-        end
-    end))
-end
+-- UI Glass Sheen and UI Blur are deleted, engine and all. Deleting only their sliders (an earlier
+-- pass) was not enough: S.UIGlass / S.UIBlur are persisted keys, so a config written while they
+-- were still on kept re-applying a frosted, blurred window on every launch with no control left
+-- anywhere to turn it back off. The RenderStepped loop that drove the blur is gone with them --
+-- it ran every single frame purely to read a value that is now always nil.
+S._GlassOn = function() end
+S._ApplyGlass = function() end
+S.UIGlass, S.UIBlur = nil, nil
 -- Mobile shows/hides the window as a droplet that is swallowed by the Dynamic
 -- Island and spat back out of it; desktop keeps the plain instant toggle.
 -- Everything that opens or closes the menu goes through here so the animation
@@ -4017,7 +3984,7 @@ local function mkSection(parent, title, order)
     card.Parent = parent
     card.LayoutOrder = order
     card.BackgroundColor3 = T.Card; pcall(function() card:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-    card.BackgroundTransparency = math.clamp(tonumber(S.GuiTransparency) or 0.015, 0, 0.95)
+    card.BackgroundTransparency = 0
     S._MarkSurface(card)
     card.BorderSizePixel = 0
     card.Size = UDim2.new(1, 0, 0, 0)
@@ -6054,169 +6021,250 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 4)
         S.FakeKorblox = v
         S._UpdateAvatarMods()
 end, 6)
-    -- ============ VFX: procedural back wings + foot aura ============
-    -- The old wings loaded marketplace models via game:GetObjects("rbxassetid://..."), which Roblox
-    -- blocks in-game for most UGC -- so they usually never appeared. This is fully local: the wings
-    -- are drawn from Beams and the foot aura from one ParticleEmitter, so nothing is fetched and
-    -- nothing can be blocked. LightEmission is kept deliberately low -- the ask was "less bloom".
+    -- ============ VFX: back wings + floor aura (rebuilt from the PulseVFX packs) ============
+    -- The old wings were drawn out of Beams because marketplace models cannot be fetched in-game
+    -- (game:GetObjects on UGC is blocked). These four looks are reproduced from the source .rbxm
+    -- packs instead -- Angel Aura, Dracula, Frozen Bloom, Magic Aura -- as sets of ParticleEmitters
+    -- whose textures are plain decal ids, so nothing is fetched and nothing can be blocked.
+    --
+    -- Every pack ships hot: Brightness 10-15 with LightEmission 1, and rates up to 32/s. Both are
+    -- run through the Glow and Density sliders here, so "less bloom, fewer particles" is a knob
+    -- rather than a value baked into the table.
     do
-        local FEATHERS = 6            -- per side; modest on purpose so the effect doesn't spam
-        local WING_COLORS = {
-            Angel   = Color3.fromRGB(245, 248, 255),
-            Demon   = Color3.fromRGB(255, 60, 55),
-            Shadow  = Color3.fromRGB(35, 35, 45),
-            Fire    = Color3.fromRGB(255, 140, 40),
-            Void    = Color3.fromRGB(155, 95, 255),
-            Rainbow = Color3.fromRGB(255, 255, 255),  -- animated in the heartbeat below
+        local function ns(...)
+            local pts, a = {}, { ... }
+            for i = 1, #a, 2 do pts[#pts + 1] = NumberSequenceKeypoint.new(a[i], a[i + 1]) end
+            return NumberSequence.new(pts)
+        end
+        local function cs(...)
+            local pts, a = {}, { ... }
+            for i = 1, #a, 2 do pts[#pts + 1] = ColorSequenceKeypoint.new(a[i], a[i + 1]) end
+            return ColorSequence.new(pts)
+        end
+        local rgb = Color3.fromRGB
+        local PERP = Enum.ParticleOrientation.VelocityPerpendicular
+
+        -- Shared sub-sequences (identical across several emitters in the source packs).
+        local TR_PULSE  = ns(0, 1, 0.502, 0, 1, 1)              -- fade in, hold, fade out
+        local TR_GLOW   = ns(0, 0.294, 0.097, 0.181, 1, 0)      -- bright at birth, gone at death
+        local TR_FEATH  = ns(0, 0, 0.698, 0, 1, 0.725)
+        local TR_SMOKE  = ns(0, 1, 0.115, 0, 0.871, 0, 1, 1)
+        local TR_ICE    = ns(0, 1, 0.169, 0.126, 0.518, 0, 0.89, 0.081, 1, 1)
+        local RED_BLACK = cs(0, rgb(170, 0, 0), 0.493, rgb(0, 0, 0), 1, rgb(170, 0, 0))
+        local ICE_COL   = cs(0, rgb(131, 238, 239), 0.562, rgb(108, 185, 249), 1, rgb(74, 140, 247))
+        local MAGIC_COL = cs(0, rgb(209, 116, 255), 1, rgb(209, 116, 255))
+
+        local STYLES = {
+            ["Angel Aura"] = {
+                tint = rgb(255, 60, 235),
+                light = { c = rgb(246, 114, 255), b = 1.6, r = 9 },
+                wing = {
+                    -- Bright core + a dark rim pass; that pairing is what gives the wing its edge.
+                    { tex = 16503694665, col = cs(0, rgb(255, 32, 255), 1, rgb(255, 32, 255)),
+                      size = ns(0, 0.7, 1, 0.7), tr = TR_GLOW, rate = 14, life = { 0.5, 0.6 },
+                      speed = { 0.05, 0.05 }, spread = 130, rotsp = { 10, 10 }, z = -1, le = 1, br = 10 },
+                    { tex = 16503694665, col = cs(0, rgb(0, 0, 0), 1, rgb(0, 0, 0)),
+                      size = ns(0, 0.7, 1, 0.7), tr = TR_GLOW, rate = 14, life = { 0.5, 0.6 },
+                      speed = { 0.05, 0.05 }, spread = 130, rotsp = { 10, 10 }, z = -1, le = -2, br = 10 },
+                    -- Loose feathers drifting off the wing; not locked, so they trail behind you.
+                    { tex = 115361100558524, col = cs(0, rgb(198, 12, 173), 1, rgb(198, 12, 173)),
+                      size = ns(0, 0.3, 1, 0.3), tr = TR_FEATH, rate = 3, life = { 2, 2 },
+                      speed = { 2, 2 }, spread = 50, rot = { -50, -50 }, rotsp = { 100, 100 },
+                      z = 1, le = 1, br = 10, lock = false },
+                },
+                floor = {
+                    { tex = 82114954422305, col = cs(0, rgb(255, 39, 233), 1, rgb(255, 39, 233)),
+                      size = ns(0, 2, 1, 2), tr = TR_PULSE, rate = 3, life = { 2, 2 },
+                      speed = { 0.01, 0.01 }, ori = PERP, le = 1, br = 10 },
+                    { tex = 10365549270, col = cs(0, rgb(248, 107, 253), 1, rgb(248, 107, 253)),
+                      size = ns(0, 1, 1, 1), tr = ns(0, 0, 0.496, 0.5, 1, 0), rate = 2, life = { 1.5, 1.5 },
+                      speed = { 0.01, 0.01 }, rot = { 10, 10 }, rotsp = { 360, 360 }, ori = PERP, le = 1, br = 10 },
+                    { tex = 16509197144, col = cs(0, rgb(255, 56, 222), 1, rgb(255, 56, 222)),
+                      size = ns(0, 2.5, 1, 2.5), tr = ns(0, 0.005, 0.763, 0.536, 1, 1), rate = 1,
+                      life = { 1, 1 }, speed = { 0.01, 0.01 }, rot = { 50, 50 }, rotsp = { 120, 120 },
+                      ori = PERP, le = 1, br = 10 },
+                },
+            },
+            ["Dracula"] = {
+                tint = rgb(200, 0, 0),
+                light = { c = rgb(255, 0, 0), b = 1.2, r = 8 },
+                wing = {
+                    { tex = 140086278326241, col = RED_BLACK, size = ns(0, 3, 1, 3), tr = TR_PULSE,
+                      rate = 3, life = { 2, 2 }, speed = { 0.01, 0.01 }, ori = PERP, le = 0, br = 10 },
+                },
+                floor = {
+                    { tex = 12758468376, col = RED_BLACK, size = ns(0, 1, 1, 1), tr = TR_SMOKE,
+                      rate = 8, life = { 2, 2 }, speed = { 25, 25 }, spread = 360,
+                      acc = Vector3.new(0, 10, 0), drag = 10, le = 1, br = 4 },
+                    -- The bat swarm: same upward drag, but spun so they read as wings, not smoke.
+                    { tex = 12800352088, col = cs(0, rgb(170, 0, 0), 1, rgb(0, 0, 0)),
+                      size = ns(0, 0.5, 1, 0.7), tr = TR_SMOKE, rate = 10, life = { 1.75, 1.75 },
+                      speed = { 25, 25 }, spread = 360, acc = Vector3.new(0, 10, 0), drag = 10,
+                      rot = { 180, 180 }, rotsp = { 360, 360 }, le = 0, br = 10 },
+                },
+            },
+            ["Frozen Bloom"] = {
+                tint = rgb(108, 185, 249),
+                light = { c = rgb(131, 238, 239), b = 1.4, r = 9 },
+                wing = {
+                    { tex = 16879659749, col = ICE_COL, size = ns(0, 0.45, 1, 0.487), tr = TR_ICE,
+                      rate = 15, life = { 1, 2.4 }, speed = { 5, 10 }, spread = 40, drag = 3,
+                      acc = Vector3.new(0, -5, 0), rot = { -180, 165 }, rotsp = { -130, 140 },
+                      z = -1, le = 0, br = 4.6 },
+                    { tex = 18671876469, col = ICE_COL, size = ns(0, 0.26, 1, 0.282), tr = TR_ICE,
+                      rate = 15, life = { 1, 2.4 }, speed = { 3, 6 }, spread = 40, drag = 3,
+                      acc = Vector3.new(0, -3, 0), rot = { -180, 165 }, rotsp = { -130, 140 },
+                      z = -1, le = 0, br = 4.6 },
+                    { tex = 12872162107, col = ICE_COL, size = ns(0, 0.13, 1, 0.156),
+                      tr = ns(0, 1, 0.04, 0, 0.454, 0.05, 0.771, 0.281, 1, 1), rate = 15,
+                      life = { 0.5, 1.2 }, speed = { 5, 14 }, spread = 180, drag = 6,
+                      acc = Vector3.new(0, 7, 0), rot = { -180, 180 }, rotsp = { -360, 360 },
+                      dir = Enum.NormalId.Top, le = 0, br = 4.6 },
+                },
+                floor = {
+                    { tex = 14919880888, col = cs(0, rgb(108, 185, 249), 1, rgb(108, 185, 249)),
+                      size = ns(0, 0, 0.091, 1.469, 0.235, 2.881, 1, 4.633),
+                      tr = ns(0, 1, 0.064, 0.556, 0.164, 0.456, 0.504, 0.337, 0.827, 0.644, 1, 1),
+                      rate = 4, life = { 0.5, 1 }, speed = { 0.071, 0.071 }, rot = { -180, 180 },
+                      z = -2, le = 1, br = 5 },
+                    { tex = 13992197350, col = ICE_COL, size = ns(0, 1.478, 1, 5.033), tr = ns(0, 0, 1, 1),
+                      rate = 3, life = { 0.5, 1 }, speed = { 0.001, 0.001 }, rot = { -1000, 1000 },
+                      ori = PERP, le = 0, br = 15 },
+                    { tex = 76951334461630, col = ICE_COL, size = ns(0, 1.019, 0.282, 1.948, 1, 3.624),
+                      tr = ns(0, 0, 0.355, 0.087, 0.515, 0.269, 1, 1), rate = 3, life = { 1, 2 },
+                      speed = { 0.005, 0.005 }, rot = { -180, 180 }, ori = PERP, le = 0, br = 15 },
+                },
+            },
+            ["Magic Aura"] = {
+                tint = rgb(209, 116, 255),
+                light = { c = rgb(209, 116, 255), b = 1.5, r = 9 },
+                wing = {
+                    { tex = 12781812529, col = MAGIC_COL, size = ns(0, 2.4, 1, 2.4), tr = ns(0, 0.5, 1, 0.5),
+                      rate = 3, life = { 1.6, 1.6 }, speed = { 0.01, 0.01 }, ori = PERP, le = 1, br = 5 },
+                    { tex = 3029306948, col = MAGIC_COL, size = ns(0, 1.6, 1, 1.6),
+                      tr = ns(0, 0, 0.701, 0, 1, 1), rate = 4, life = { 1.2, 1.2 },
+                      speed = { 0.01, 0.01 }, ori = PERP, le = 1, br = 5 },
+                },
+                floor = {
+                    { tex = 16956569427, col = MAGIC_COL, size = ns(0, 0, 1, 3.155),
+                      tr = ns(0, 1, 0.293, 0, 0.497, 0, 0.701, 0, 1, 1), rate = 1.5, life = { 1, 1 },
+                      speed = { 0.001, 0.001 }, ori = PERP, le = 1, br = 5 },
+                    { tex = 14591895021, col = MAGIC_COL, size = ns(0, 4.2, 1, 4.2), tr = TR_PULSE,
+                      rate = 1.5, life = { 1, 1 }, speed = { 0.001, 0.001 }, ori = PERP, le = 1, br = 5 },
+                    { tex = 16956497860, col = MAGIC_COL, size = ns(0, 3.5, 1, 3.5), tr = TR_PULSE,
+                      rate = 1.5, life = { 1, 1 }, speed = { 0.001, 0.001 }, ori = PERP, le = 1, br = 5 },
+                },
+            },
         }
-        local STYLE_NAMES = { "Angel", "Demon", "Shadow", "Fire", "Void", "Rainbow" }
-        -- Old saved configs stored keys like "White 02 Angel Rig" / "Red 05 Bat" / "Black 01 Classic".
-        -- Map the colour family so an old autoload still lands on a sensible new style.
+        local STYLE_NAMES = { "Angel Aura", "Dracula", "Frozen Bloom", "Magic Aura" }
+
+        -- Old saved configs stored the previous procedural names (Angel / Demon / Shadow / Fire /
+        -- Void / Rainbow) and, before that, marketplace names like "White 02 Angel Rig". Map both
+        -- onto the closest new pack so an autoload never lands on a nil style.
         local function styleOf(name)
             name = tostring(name or "")
-            if WING_COLORS[name] then return name end
-            if name:find("White") or name:find("Angel") then return "Angel" end
-            if name:find("Red") or name:find("Crimson") or name:find("Bat") then return "Demon" end
-            if name:find("Black") or name:find("Dark") then return "Shadow" end
-            return "Angel"
+            if STYLES[name] then return name end
+            if name:find("Demon") or name:find("Fire") or name:find("Red") or name:find("Bat") then return "Dracula" end
+            if name:find("Shadow") or name:find("Void") or name:find("Rainbow") or name:find("Dark") or name:find("Black") then return "Magic Aura" end
+            if name:find("Ice") or name:find("Frozen") or name:find("Blue") then return "Frozen Bloom" end
+            return "Angel Aura"
         end
 
-        local fx = { parts = {}, beams = {}, aura = nil, conn = nil, ticket = 0 }
-        local function rootPart(char)
-            return char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
-        end
+        local fx = { objs = {} }
         local function clean()
-            fx.ticket = fx.ticket + 1
-            if fx.conn then pcall(function() fx.conn:Disconnect() end) fx.conn = nil end
-            for _, o in ipairs(fx.parts) do if o then pcall(function() o:Destroy() end) end end
-            table.clear(fx.parts)
-            table.clear(fx.beams)
-            fx.aura = nil
+            for _, o in ipairs(fx.objs) do if o then pcall(function() o:Destroy() end) end end
+            table.clear(fx.objs)
             local char = LP.Character
             if char then
                 for _, o in ipairs(char:GetDescendants()) do
-                    if o.Name == "InertiaWingFX" or o.Name == "InertiaAuraFX" then
+                    -- Also sweeps InertiaWingFX / InertiaAuraFX, the names the Beam version used.
+                    if o.Name == "InertiaVFX" or o.Name == "InertiaWingFX" or o.Name == "InertiaAuraFX" then
                         pcall(function() o:Destroy() end)
                     end
                 end
             end
         end
-        local function keep(o) table.insert(fx.parts, o) return o end
+        local function keep(o) table.insert(fx.objs, o) return o end
 
-        -- Feather length profile: longest through the middle of the wing, short at the tips.
-        local function featherLen(t) return 1.7 + 1.3 * math.sin(t * math.pi) end
-
-        local function buildWings(root, baseCol)
-            local scale = math.clamp(tonumber(S.VFXWingScale) or 100, 30, 250) / 100
-            for _, sign in ipairs({ -1, 1 }) do
-                local a0 = keep(Instance.new("Attachment"))
-                a0.Name = "InertiaWingFX"
-                -- +Z is behind the character (front is the torso's -Z / LookVector).
-                a0.Position = Vector3.new(sign * 0.3, 0.4, 0.45)
-                a0.Parent = root
-                fx.beams[sign] = {}
-                for i = 0, FEATHERS - 1 do
-                    local t = FEATHERS > 1 and i / (FEATHERS - 1) or 0
-                    local angle = math.rad(12 + t * 66)          -- outer feathers near-flat, inner upright
-                    local length = featherLen(t) * scale
-                    local a1 = keep(Instance.new("Attachment"))
-                    a1.Name = "InertiaWingFX"
-                    a1.Position = a0.Position + Vector3.new(
-                        sign * math.cos(angle) * length,
-                        math.sin(angle) * length,
-                        0.18 * length)
-                    a1.Parent = root
-                    local beam = keep(Instance.new("Beam"))
-                    beam.Name = "InertiaWingFX"
-                    beam.Attachment0 = a0
-                    beam.Attachment1 = a1
-                    beam.Segments = 12
-                    beam.CurveSize0 = sign * 0.6 * length          -- bow each feather into a wing arc
-                    beam.CurveSize1 = -sign * 0.2 * length
-                    beam.Width0 = 0.5 * scale
-                    beam.Width1 = 0.04 * scale
-                    beam.FaceCamera = true
-                    beam.LightEmission = 0.28                       -- low: less bloom
-                    beam.LightInfluence = 0.4
-                    beam.Transparency = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, 0.05),
-                        NumberSequenceKeypoint.new(1, 0.75),
-                    })
-                    beam.Color = ColorSequence.new(baseCol)
-                    beam.Parent = root
-                    fx.beams[sign][i] = beam
-                end
-            end
-        end
-
-        local function buildAura(root, baseCol)
-            local scale = math.clamp(tonumber(S.VFXWingScale) or 100, 30, 250) / 100
-            local a = keep(Instance.new("Attachment"))
-            a.Name = "InertiaAuraFX"
-            a.Position = Vector3.new(0, -2.6, 0)                   -- at the feet
-            a.Parent = root
+        local function mkEmitter(parent, sp, scale, density, glow)
             local em = keep(Instance.new("ParticleEmitter"))
-            em.Name = "InertiaAuraFX"
-            em.Rate = 16                                           -- low so it doesn't spam
-            em.Lifetime = NumberRange.new(0.6, 1.1)
-            em.Speed = NumberRange.new(2.5, 4)
-            em.SpreadAngle = Vector2.new(28, 28)
-            em.Rotation = NumberRange.new(0, 360)
-            em.Acceleration = Vector3.new(0, 6, 0)                 -- drift upward off the ground
-            em.EmissionDirection = Enum.NormalId.Top
-            em.Size = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.55 * scale),
-                NumberSequenceKeypoint.new(1, 0),
-            })
-            em.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.35),
-                NumberSequenceKeypoint.new(0.2, 0.15),
-                NumberSequenceKeypoint.new(1, 1),
-            })
-            em.LightEmission = 0.3
-            em.Color = ColorSequence.new(baseCol)
-            em.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-            em.Parent = root
-            fx.aura = em
+            em.Name = "InertiaVFX"
+            em.Texture = "rbxassetid://" .. sp.tex
+            em.Color = sp.col
+            em.Transparency = sp.tr
+            local pts = {}
+            for _, k in ipairs(sp.size.Keypoints) do
+                pts[#pts + 1] = NumberSequenceKeypoint.new(k.Time, math.max(0, k.Value * scale))
+            end
+            em.Size = NumberSequence.new(pts)
+            em.Rate = math.max(0.2, (sp.rate or 5) * density)
+            em.Lifetime = NumberRange.new(sp.life[1], sp.life[2])
+            em.Speed = NumberRange.new(sp.speed[1], sp.speed[2])
+            em.SpreadAngle = Vector2.new(sp.spread or 0, sp.spread or 0)
+            if sp.rot then em.Rotation = NumberRange.new(sp.rot[1], sp.rot[2]) end
+            if sp.rotsp then em.RotSpeed = NumberRange.new(sp.rotsp[1], sp.rotsp[2]) end
+            em.Acceleration = sp.acc or Vector3.new(0, 0, 0)
+            em.Drag = sp.drag or 0
+            em.ZOffset = sp.z or 0
+            em.LockedToPart = sp.lock ~= false
+            em.LightInfluence = 0
+            em.LightEmission = math.clamp((sp.le or 0) * glow, -2, 1)
+            if sp.ori then em.Orientation = sp.ori end
+            if sp.dir then em.EmissionDirection = sp.dir end
+            -- Brightness only exists on newer engine builds; it is the single biggest bloom lever.
+            pcall(function() em.Brightness = math.max(0.1, (sp.br or 1) * glow) end)
+            em.Parent = parent
+            return em
         end
 
         local function rebuild()
             clean()
             if not S.VFXWings then return end
             local char = LP.Character
-            local root = rootPart(char)
-            if not root then return end
-            local style = styleOf(S.VFXWingStyle)
-            local baseCol = WING_COLORS[style] or WING_COLORS.Angel
-            local ticket = fx.ticket
-            buildWings(root, baseCol)
-            if S.VFXFootAura ~= false then buildAura(root, baseCol) end
+            if not char then return end
+            local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+                or char:FindFirstChild("HumanoidRootPart")
+            local hrp = char:FindFirstChild("HumanoidRootPart") or torso
+            if not torso then return end
 
-            -- Gentle flap + rainbow repaint. Runs only while the effect is on; a fresh rebuild bumps
-            -- the ticket and this loop retires itself on the next frame.
-            fx.conn = RunService.Heartbeat:Connect(function()
-                if ticket ~= fx.ticket then return end
-                local now = tick()
-                local flap = math.sin(now * 3) * 0.12
-                local col = baseCol
-                if style == "Rainbow" then col = Color3.fromHSV((now * 0.15) % 1, 0.85, 1) end
-                for _, sign in ipairs({ -1, 1 }) do
-                    local row = fx.beams[sign]
-                    if row then
-                        for i = 0, FEATHERS - 1 do
-                            local beam = row[i]
-                            if beam and beam.Parent then
-                                local t = FEATHERS > 1 and i / (FEATHERS - 1) or 0
-                                beam.CurveSize0 = sign * (0.6 + flap) * featherLen(t)
-                                if style == "Rainbow" then beam.Color = ColorSequence.new(col) end
-                            end
-                        end
-                    end
-                end
-                if style == "Rainbow" and fx.aura and fx.aura.Parent then
-                    fx.aura.Color = ColorSequence.new(col)
-                end
-            end)
+            local style = STYLES[styleOf(S.VFXWingStyle)]
+            local scale = math.clamp(tonumber(S.VFXWingScale) or 100, 30, 250) / 100
+            local density = math.clamp(tonumber(S.VFXDensity) or 70, 10, 200) / 100
+            local glow = math.clamp(tonumber(S.VFXGlow) or 35, 0, 100) / 100
+
+            -- Wings sit behind the torso, mirrored and splayed outwards so the two sprites read as
+            -- a pair rather than one slab.
+            for _, sign in ipairs({ -1, 1 }) do
+                local a = keep(Instance.new("Attachment"))
+                a.Name = "InertiaVFX"
+                a.CFrame = CFrame.new(sign * 0.85 * scale, 0.55, 0.6)
+                    * CFrame.Angles(0, math.rad(sign * -20), math.rad(sign * 16))
+                a.Parent = torso
+                for _, sp in ipairs(style.wing) do mkEmitter(a, sp, scale, density, glow) end
+            end
+
+            if S.VFXFootAura ~= false and hrp then
+                -- Ground level, not root level: the root sits HipHeight + half a root above the
+                -- floor, so a flat -3 leaves the ring hovering on some rigs and buried on others.
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                local drop = 3
+                if hum then drop = (hum.HipHeight or 2) + hrp.Size.Y / 2 end
+                local a = keep(Instance.new("Attachment"))
+                a.Name = "InertiaVFX"
+                a.CFrame = CFrame.new(0, -drop + 0.05, 0)
+                a.Parent = hrp
+                for _, sp in ipairs(style.floor) do mkEmitter(a, sp, scale, density, glow) end
+            end
+
+            if S.VFXWingLight and torso then
+                local pl = keep(Instance.new("PointLight"))
+                pl.Name = "InertiaVFX"
+                pl.Color = style.light.c
+                pl.Brightness = style.light.b * math.max(0.2, glow)
+                pl.Range = style.light.r
+                pl.Shadows = false
+                pl.Parent = torso
+            end
         end
         S._RefreshVFXWings = rebuild
 
@@ -6227,10 +6275,13 @@ end, 6)
         local secWings = mkSection(Pages.Visuals, "VFX Wings & Aura", 4.7)
         table.insert(S._CustomsSections, secWings)
         mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v rebuild() end, 1)
-        mkCycle(secWings, "VFX Wing Style", STYLE_NAMES, "Angel", function(v) S.VFXWingStyle = v rebuild() end, 2)
+        mkCycle(secWings, "VFX Wing Style", STYLE_NAMES, "Angel Aura", function(v) S.VFXWingStyle = v rebuild() end, 2)
         mkToggle(secWings, "Foot Aura", true, function(v) S.VFXFootAura = v rebuild() end, 3)
-        mkSlider(secWings, "Wing Size (%)", 30, 250, 100, function(v) S.VFXWingScale = v rebuild() end, 4)
-        -- Discard removed tuning keys so an old autoload cannot resurrect the deleted marketplace FX.
+        mkToggle(secWings, "Wing Light", false, function(v) S.VFXWingLight = v rebuild() end, 4)
+        mkSlider(secWings, "Wing Size (%)", 30, 250, 100, function(v) S.VFXWingScale = v rebuild() end, 5)
+        mkSlider(secWings, "Particle Density (%)", 10, 200, 70, function(v) S.VFXDensity = v rebuild() end, 6)
+        mkSlider(secWings, "Glow (%)", 0, 100, 35, function(v) S.VFXGlow = v rebuild() end, 7)
+        -- Discard removed tuning keys so an old autoload cannot resurrect the deleted FX.
         S.VFXAura, S.AuraColor, S.AuraDensity, S.AuraSize = nil, nil, nil, nil
         S.VFXWingHeight, S.VFXWingBack = nil, nil
     end
@@ -6557,10 +6608,11 @@ end, 6)
 
 
     local secShaders = mkSection(Pages.Visuals, "Shader Presets", 11)
+    -- Cinematic / Golden Hour / Arctic / Neon / Noir / Clean HDR / Performance / Vibrant / Retro
+    -- Film are gone -- the ask was the three families worth keeping, tuned properly, instead of
+    -- fifteen half-tuned ones. "Custom" is the pack you build yourself in the card below.
     local SHADER_LIST = {
-        "RTX Low", "RTX Medium", "RTX High", "RTX Ultra", "Night Shaders", "Pink Shaders",
-        "Cinematic", "Golden Hour", "Arctic", "Neon", "Noir",
-        "Clean HDR", "Performance", "Vibrant", "Retro Film", "Custom",
+        "RTX Low", "RTX Medium", "RTX High", "RTX Ultra", "Night Shaders", "Pink Shaders", "Custom",
     }
     local shaderToggles = {}
     local function clearOtherToggles(exceptName)
@@ -6597,16 +6649,112 @@ end, 6)
     mkSlider(secShaderCustom, "Brightness", 50, 400, 200, function(v) S.ShaderBrightness = v; reapplyCustom() end, 1)
     mkSlider(secShaderCustom, "Exposure", -50, 50, 4, function(v) S.ShaderExposure = v; reapplyCustom() end, 2)
     mkSlider(secShaderCustom, "Bloom", 0, 200, 40, function(v) S.ShaderBloom = v; reapplyCustom() end, 3)
-    mkSlider(secShaderCustom, "Contrast", -50, 80, 12, function(v) S.ShaderContrast = v; reapplyCustom() end, 4)
-    mkSlider(secShaderCustom, "Saturation", -100, 150, 18, function(v) S.ShaderSaturation = v; reapplyCustom() end, 5)
-    mkSlider(secShaderCustom, "CC Brightness", -50, 50, 0, function(v) S.ShaderCCBright = v; reapplyCustom() end, 6)
-    mkSlider(secShaderCustom, "Time of Day", 0, 24, 14, function(v) S.ShaderTime = v; reapplyCustom() end, 7)
+    mkSlider(secShaderCustom, "Bloom Size", 1, 56, 24, function(v) S.ShaderBloomSize = v; reapplyCustom() end, 4)
+    mkSlider(secShaderCustom, "Contrast", -50, 80, 12, function(v) S.ShaderContrast = v; reapplyCustom() end, 5)
+    mkSlider(secShaderCustom, "Saturation", -100, 150, 18, function(v) S.ShaderSaturation = v; reapplyCustom() end, 6)
+    mkSlider(secShaderCustom, "CC Brightness", -50, 50, 0, function(v) S.ShaderCCBright = v; reapplyCustom() end, 7)
+    mkSlider(secShaderCustom, "Sun Rays", 0, 100, 8, function(v) S.ShaderSunRays = v; reapplyCustom() end, 8)
+    mkSlider(secShaderCustom, "Depth of Field", 0, 100, 0, function(v) S.ShaderDOF = v; reapplyCustom() end, 9)
+    mkSlider(secShaderCustom, "Blur", 0, 24, 0, function(v) S.ShaderBlur = v; reapplyCustom() end, 10)
+    mkSlider(secShaderCustom, "Atmosphere", 0, 100, 22, function(v) S.ShaderAtmo = v; reapplyCustom() end, 11)
+    mkSlider(secShaderCustom, "Time of Day", 0, 24, 14, function(v) S.ShaderTime = v; reapplyCustom() end, 12)
+    mkCycle(secShaderCustom, "Tint", S._TINTS or { "Neutral" }, "Neutral", function(v) S.ShaderTint = v; reapplyCustom() end, 13)
+    mkToggle(secShaderCustom, "Shadows", true, function(v) S.ShaderShadows = v; reapplyCustom() end, 14)
     mkAction(secShaderCustom, "Apply Custom Shader", function()
         clearOtherToggles("Custom")
         if shaderToggles["Custom"] then shaderToggles["Custom"].state = true; shaderToggles["Custom"].updateVisuals() end
         applyShader("Custom")
         Notify("Shaders", "Custom shader applied", 2)
-    end, 8)
+    end, 15)
+
+    -- ---- Saved packs ----
+    -- Six numbered slots in their own file rather than new config plumbing: the config snapshot
+    -- only persists scalars from S, and a pack is a table. Slots keep the picker a fixed list, so
+    -- no text-entry widget is needed to name one.
+    do
+        local PACK_FILE = "MM2_Configs/_shaderpacks.json"
+        local PACK_KEYS = {
+            "ShaderBrightness", "ShaderExposure", "ShaderBloom", "ShaderBloomSize", "ShaderContrast",
+            "ShaderSaturation", "ShaderCCBright", "ShaderSunRays", "ShaderDOF", "ShaderBlur",
+            "ShaderAtmo", "ShaderTime", "ShaderTint", "ShaderShadows",
+        }
+        local function readPacks()
+            local packs = {}
+            pcall(function()
+                if isfile and readfile and isfile(PACK_FILE) then
+                    local ok, decoded = pcall(function()
+                        return game:GetService("HttpService"):JSONDecode(readfile(PACK_FILE))
+                    end)
+                    if ok and type(decoded) == "table" then packs = decoded end
+                end
+            end)
+            return packs
+        end
+        local function writePacks(packs)
+            pcall(function()
+                if makefolder and isfolder and not isfolder("MM2_Configs") then makefolder("MM2_Configs") end
+                if writefile then
+                    writefile(PACK_FILE, game:GetService("HttpService"):JSONEncode(packs))
+                end
+            end)
+        end
+        -- A slot's label doubles as its description, so the picker shows what is in each one
+        -- without needing a second screen.
+        local function slotLabels(packs)
+            local names = {}
+            for i = 1, 6 do
+                local p = packs[tostring(i)]
+                if type(p) == "table" then
+                    names[i] = ("Slot %d  -  %sh  B%d  Bloom%d  %s"):format(
+                        i, tostring(math.floor(tonumber(p.ShaderTime) or 14)),
+                        math.floor(tonumber(p.ShaderBrightness) or 200),
+                        math.floor(tonumber(p.ShaderBloom) or 0), tostring(p.ShaderTint or "Neutral"))
+                else
+                    names[i] = ("Slot %d  -  empty"):format(i)
+                end
+            end
+            return names
+        end
+        mkAction(secShaderCustom, "Save Shader Pack", function()
+            if type(writefile) ~= "function" then
+                Notify("Shaders", "This executor cannot write files", 3)
+                return
+            end
+            local packs = readPacks()
+            S._OpenOptionPicker("Save to slot", slotLabels(packs), 0, function(pick)
+                local snap = {}
+                for _, k in ipairs(PACK_KEYS) do snap[k] = S[k] end
+                packs[tostring(pick)] = snap
+                writePacks(packs)
+                Notify("Shaders", "Saved to slot " .. pick, 2)
+            end)
+        end, 16)
+        mkAction(secShaderCustom, "Load Shader Pack", function()
+            local packs = readPacks()
+            S._OpenOptionPicker("Load slot", slotLabels(packs), 0, function(pick)
+                local p = packs[tostring(pick)]
+                if type(p) ~= "table" then
+                    Notify("Shaders", "Slot " .. pick .. " is empty", 2)
+                    return
+                end
+                for _, k in ipairs(PACK_KEYS) do
+                    if p[k] ~= nil then S[k] = p[k] end
+                end
+                clearOtherToggles("Custom")
+                if shaderToggles["Custom"] then shaderToggles["Custom"].state = true; shaderToggles["Custom"].updateVisuals() end
+                applyShader("Custom")
+                Notify("Shaders", "Loaded slot " .. pick, 2)
+            end)
+        end, 17)
+        mkAction(secShaderCustom, "Delete Shader Pack", function()
+            local packs = readPacks()
+            S._OpenOptionPicker("Delete slot", slotLabels(packs), 0, function(pick)
+                packs[tostring(pick)] = nil
+                writePacks(packs)
+                Notify("Shaders", "Cleared slot " .. pick, 2)
+            end)
+        end, 18)
+    end
 
 
     -- Dual Wield: removed
@@ -6649,7 +6797,10 @@ end, 6)
         end
         setVisible(isESP, sec1, sec2, sec5)
         setVisible(isEnvironment, sec4, secFx)
-        setVisible(isShaders, secShaders, secHandShaders)
+        -- secShaderCustom was built but never listed here, so it was the one card with no owner:
+        -- nothing ever set its visibility, which is exactly why the Custom Shader Pack sat on
+        -- screen under ESP, Environment and Customs as well as Shaders.
+        setVisible(isShaders, secShaders, secHandShaders, secShaderCustom)
         setVisible(isCustoms, secCustoms, secKnifeEffects)
         for _, section in ipairs(S._CustomsSections) do
             if section and section.Parent then section.Parent.Visible = isCustoms end
@@ -10420,6 +10571,13 @@ local function saveLighting()
     savedLighting.GlobalShadows = Lighting.GlobalShadows
     savedLighting.Ambient = Lighting.Ambient
     savedLighting.OutdoorAmbient = Lighting.OutdoorAmbient
+    -- The presets now drive image-based lighting and shadow softness too. They have to be part of
+    -- the snapshot or "Disable Shaders" leaves the map permanently over-lit.
+    pcall(function()
+        savedLighting.EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale
+        savedLighting.EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+        savedLighting.ShadowSoftness = Lighting.ShadowSoftness
+    end)
     savedLighting.done = true
 end
 -- Snapshot pristine map lighting immediately (before any shader/sky/fog can touch it) so that
@@ -10439,82 +10597,84 @@ end
 -- here so applyShader() can trigger an instant atmosphere refresh.
 local applyAtmo
 
--- Compact shader packs share one calibrated compositor. This keeps the preset UI extensible without
--- cloning the same Bloom/ColorCorrection/SunRays boilerplate for every new look.
+-- The build-your-own shader pack. Every stock preset below is hand-tuned in applyShader; this is
+-- the one compositor whose numbers the player owns, driven entirely by the Custom Shader sliders.
+-- Same pipeline the presets use (bloom / grade / sun rays / depth-of-field / blur), so a pack you
+-- build can look exactly like a preset -- it is a preset whose table lives in S.
 S._ApplySimpleShader = function(name)
-    local packs = {
-        ["Clean HDR"] = {
-            time = 14.2, brightness = 2.05, ambient = Color3.fromRGB(96, 101, 112), outdoor = Color3.fromRGB(142, 148, 162), exposure = 0.04,
-            bloom = { intensity = 0.42, size = 20, threshold = 1.75 }, cc = { brightness = 0.01, contrast = 0.12, saturation = 0.16, tint = Color3.fromRGB(255, 252, 246) },
-        },
-        ["Performance"] = {
-            time = 14, brightness = 1.9, ambient = Color3.fromRGB(100, 100, 104), outdoor = Color3.fromRGB(132, 134, 140), exposure = 0,
-            cc = { brightness = 0, contrast = 0.06, saturation = 0.04, tint = Color3.fromRGB(255, 255, 255) },
-        },
-        ["Vibrant"] = {
-            time = 13.8, brightness = 2.15, ambient = Color3.fromRGB(84, 98, 112), outdoor = Color3.fromRGB(150, 166, 182), exposure = 0.05,
-            bloom = { intensity = 0.6, size = 24, threshold = 1.5 }, sun = { intensity = 0.08, spread = 0.6 }, cc = { brightness = 0.01, contrast = 0.14, saturation = 0.38, tint = Color3.fromRGB(244, 250, 255) },
-        },
-        ["Retro Film"] = {
-            time = 16.3, brightness = 1.85, ambient = Color3.fromRGB(104, 96, 88), outdoor = Color3.fromRGB(148, 136, 120), exposure = 0.02,
-            bloom = { intensity = 0.28, size = 16, threshold = 1.85 }, cc = { brightness = -0.01, contrast = 0.25, saturation = -0.12, tint = Color3.fromRGB(255, 235, 205) },
-        },
-    }
-    -- User-built shader pack, driven entirely by the Custom Shader sliders. Same compositor as the
-    -- presets, so it gets the same bloom/grade/sun pipeline -- it is just a preset whose numbers the
-    -- player owns. Values are stored 0..100 in S and scaled here.
-    if name == "Custom" then
-        packs["Custom"] = {
-            time = math.clamp(tonumber(S.ShaderTime) or 14, 0, 24),
-            brightness = math.clamp((tonumber(S.ShaderBrightness) or 200) / 100, 0.5, 4),
-            ambient = Color3.fromRGB(96, 100, 110),
-            outdoor = Color3.fromRGB(140, 146, 160),
-            exposure = math.clamp((tonumber(S.ShaderExposure) or 4) / 100, -1, 1),
-            bloom = { intensity = math.clamp((tonumber(S.ShaderBloom) or 40) / 100, 0, 4), size = 24, threshold = 1.6 },
-            cc = {
-                brightness = math.clamp((tonumber(S.ShaderCCBright) or 0) / 100, -1, 1),
-                contrast = math.clamp((tonumber(S.ShaderContrast) or 12) / 100, -1, 1),
-                saturation = math.clamp((tonumber(S.ShaderSaturation) or 18) / 100, -1, 3),
-                tint = Color3.fromRGB(255, 255, 255),
-            },
-        }
+    if name ~= "Custom" then return false end
+    local n = function(key, default, lo, hi)
+        return math.clamp((tonumber(S[key]) or default) / 100, lo, hi)
     end
-    local pack = packs[name]
-    if not pack then return false end
-    Lighting.ClockTime = pack.time
-    Lighting.Brightness = pack.brightness
-    Lighting.Ambient = pack.ambient
-    Lighting.OutdoorAmbient = pack.outdoor
-    pcall(function() Lighting.ExposureCompensation = pack.exposure end)
-    if pack.bloom then
+    Lighting.ClockTime = math.clamp(tonumber(S.ShaderTime) or 14, 0, 24)
+    Lighting.Brightness = n("ShaderBrightness", 200, 0.5, 4)
+    Lighting.Ambient = Color3.fromRGB(96, 100, 110)
+    Lighting.OutdoorAmbient = Color3.fromRGB(140, 146, 160)
+    Lighting.GlobalShadows = S.ShaderShadows ~= false
+    pcall(function() Lighting.ExposureCompensation = n("ShaderExposure", 4, -1, 1) end)
+
+    local bloomAmt = n("ShaderBloom", 40, 0, 4)
+    if bloomAmt > 0.01 then
         local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = pack.bloom.intensity
-        bloom.Size = pack.bloom.size
-        bloom.Threshold = pack.bloom.threshold
+        bloom.Intensity = bloomAmt
+        bloom.Size = math.clamp(tonumber(S.ShaderBloomSize) or 24, 1, 56)
+        -- Higher threshold as bloom rises keeps a strong glow from washing the whole frame out.
+        bloom.Threshold = 1.35 + math.min(bloomAmt, 2) * 0.18
         bloom.Parent = Lighting
         table.insert(shaderEffects, bloom)
     end
-    if pack.sun then
+
+    local sunAmt = n("ShaderSunRays", 8, 0, 1)
+    if sunAmt > 0.005 then
         local sun = Instance.new("SunRaysEffect")
-        sun.Intensity = pack.sun.intensity
-        sun.Spread = pack.sun.spread
+        sun.Intensity = sunAmt * 0.25
+        sun.Spread = 0.4 + sunAmt * 0.6
         sun.Parent = Lighting
         table.insert(shaderEffects, sun)
     end
+
+    local dofAmt = n("ShaderDOF", 0, 0, 1)
+    if dofAmt > 0.005 then
+        local dof = Instance.new("DepthOfFieldEffect")
+        dof.FarIntensity = dofAmt * 0.35
+        dof.FocusDistance = 40
+        dof.InFocusRadius = 90 - dofAmt * 55
+        dof.NearIntensity = dofAmt * 0.5
+        dof.Parent = Lighting
+        table.insert(shaderEffects, dof)
+    end
+
+    local blurAmt = math.clamp(tonumber(S.ShaderBlur) or 0, 0, 24)
+    if blurAmt > 0.2 then
+        local blur = Instance.new("BlurEffect")
+        blur.Size = blurAmt
+        blur.Parent = Lighting
+        table.insert(shaderEffects, blur)
+    end
+
+    local tintName = S.ShaderTint or "Neutral"
     local cc = Instance.new("ColorCorrectionEffect")
-    cc.Brightness = pack.cc.brightness
-    cc.Contrast = pack.cc.contrast
-    cc.Saturation = pack.cc.saturation
-    cc.TintColor = pack.cc.tint
+    cc.Brightness = n("ShaderCCBright", 0, -1, 1)
+    cc.Contrast = n("ShaderContrast", 12, -1, 1)
+    cc.Saturation = tintName == "Mono" and -1 or n("ShaderSaturation", 18, -1, 3)
+    cc.TintColor = S._TINT_RGB[tintName] or S._TINT_RGB.Neutral
     cc.Parent = Lighting
     table.insert(shaderEffects, cc)
     return true
 end
 
+-- Presets that still exist. An autoload written before the cull can name a deleted one, and
+-- without this it would set S.ActiveShader to a preset no branch matches -- reported as "shaders
+-- are on but nothing happens". Unknown names collapse to None.
+S._LiveShaders = {
+    ["RTX Low"] = true, ["RTX Medium"] = true, ["RTX High"] = true, ["RTX Ultra"] = true,
+    ["Night Shaders"] = true, ["Pink Shaders"] = true, ["Custom"] = true,
+}
 applyShader = function(name)
     saveLighting()
     clearShaderEffects()
-    
+    if name ~= "None" and not S._LiveShaders[name] then name = "None" end
+
     if name == "None" then
         S.ActiveShader = "None"
         pcall(function() Lighting.ExposureCompensation = 0 end)
@@ -10527,6 +10687,13 @@ applyShader = function(name)
             Lighting.OutdoorAmbient = savedLighting.OutdoorAmbient
             Lighting.FogColor = Color3.fromRGB(192, 192, 192)
             Lighting.FogStart = 0
+            pcall(function()
+                if savedLighting.EnvironmentDiffuseScale then
+                    Lighting.EnvironmentDiffuseScale = savedLighting.EnvironmentDiffuseScale
+                    Lighting.EnvironmentSpecularScale = savedLighting.EnvironmentSpecularScale
+                    Lighting.ShadowSoftness = savedLighting.ShadowSoftness
+                end
+            end)
         end
         if applyAtmo then pcall(applyAtmo) end
         return
@@ -10539,128 +10706,166 @@ applyShader = function(name)
         return
     end
 
+    -- The four RTX tiers plus Night and Pink are the whole preset list now. Each one drives the
+    -- same six levers in the same order so they stay comparable:
+    --   time / brightness / ambient  -> the base exposure of the scene
+    --   EnvironmentDiffuseScale + EnvironmentSpecularScale -> how much image-based light the
+    --     surfaces pick up. This is the single property that makes a scene read as "ray traced"
+    --     rather than flat, and nothing here used to touch it.
+    --   ShadowSoftness -> contact hardness of the shadow terminator
+    --   bloom / sun rays / depth-of-field / grade -> the post chain
     if name == "RTX Low" then
-        -- Clean, softly lit look: gentle bloom + subtle warm grade. No blown-out highlights.
+        -- Clean and cheap. No sun rays, no DOF -- just corrected light and a gentle glow, so it
+        -- stays usable on a weak machine while still looking graded rather than raw.
         Lighting.ClockTime = 14
-        Lighting.Brightness = 1.8
+        Lighting.Brightness = 2.0
         Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(90, 94, 102)
-        Lighting.OutdoorAmbient = Color3.fromRGB(128, 132, 142)
-        pcall(function() Lighting.ExposureCompensation = 0.03 end)
+        Lighting.Ambient = Color3.fromRGB(84, 88, 98)
+        Lighting.OutdoorAmbient = Color3.fromRGB(126, 132, 144)
+        pcall(function() Lighting.ExposureCompensation = 0.04 end)
+        pcall(function()
+            Lighting.EnvironmentDiffuseScale = 0.6
+            Lighting.EnvironmentSpecularScale = 0.5
+            Lighting.ShadowSoftness = 0.3
+        end)
 
         local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.35
-        bloom.Size = 18
-        bloom.Threshold = 1.7
+        bloom.Intensity = 0.4
+        bloom.Size = 20
+        bloom.Threshold = 1.75
         bloom.Parent = Lighting
         table.insert(shaderEffects, bloom)
 
         local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.08
-        cc.Saturation = 0.12
-        cc.TintColor = Color3.fromRGB(255, 252, 246)
+        cc.Brightness = 0.005
+        cc.Contrast = 0.11
+        cc.Saturation = 0.14
+        cc.TintColor = Color3.fromRGB(255, 252, 247)
         cc.Parent = Lighting
         table.insert(shaderEffects, cc)
 
     elseif name == "RTX Medium" then
-        -- Balanced daylight with soft sun shafts and a warm cinematic tint.
-        Lighting.ClockTime = 14.5
-        Lighting.Brightness = 2.0
+        -- Balanced daylight: soft god-rays, warmer highlights, noticeably richer surfaces than Low
+        -- thanks to the higher environment specular.
+        Lighting.ClockTime = 14.6
+        Lighting.Brightness = 2.15
         Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(96, 100, 110)
-        Lighting.OutdoorAmbient = Color3.fromRGB(138, 142, 154)
-        pcall(function() Lighting.ExposureCompensation = 0.06 end)
+        Lighting.Ambient = Color3.fromRGB(90, 95, 106)
+        Lighting.OutdoorAmbient = Color3.fromRGB(136, 142, 156)
+        pcall(function() Lighting.ExposureCompensation = 0.07 end)
+        pcall(function()
+            Lighting.EnvironmentDiffuseScale = 0.85
+            Lighting.EnvironmentSpecularScale = 0.8
+            Lighting.ShadowSoftness = 0.4
+        end)
 
         local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.55
-        bloom.Size = 24
-        bloom.Threshold = 1.6
+        bloom.Intensity = 0.6
+        bloom.Size = 26
+        bloom.Threshold = 1.62
         bloom.Parent = Lighting
         table.insert(shaderEffects, bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
         sunrays.Intensity = 0.07
-        sunrays.Spread = 0.55
+        sunrays.Spread = 0.6
         sunrays.Parent = Lighting
         table.insert(shaderEffects, sunrays)
 
         local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.12
-        cc.Saturation = 0.18
-        cc.TintColor = Color3.fromRGB(255, 250, 242)
+        cc.Brightness = 0.005
+        cc.Contrast = 0.15
+        cc.Saturation = 0.2
+        cc.TintColor = Color3.fromRGB(255, 250, 243)
         cc.Parent = Lighting
         table.insert(shaderEffects, cc)
 
     elseif name == "RTX High" then
-        -- Cinematic contrast + sun shafts + subtle depth-of-field. Tuned to avoid glare.
-        Lighting.ClockTime = 15.2
-        Lighting.Brightness = 2.2
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(100, 104, 116)
-        Lighting.OutdoorAmbient = Color3.fromRGB(144, 148, 162)
-        pcall(function() Lighting.ExposureCompensation = 0.08 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.8
-        bloom.Size = 30
-        bloom.Threshold = 1.5
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.11
-        sunrays.Spread = 0.65
-        sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.Contrast = 0.16
-        cc.Saturation = 0.22
-        cc.TintColor = Color3.fromRGB(255, 248, 236)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "RTX Ultra" then
-        -- Premium cinematic look: bright & vibrant with soft glowing highlights, gentle god-rays and a
-        -- light depth-of-field — WITHOUT blowing the scene out. Only genuinely bright spots bloom (high
-        -- threshold), exposure is modest, saturation is rich but not crushed. The animator just makes it
-        -- "breathe" softly instead of pulsing hard.
-        Lighting.ClockTime = 15.2
+        -- Cinematic afternoon: full image-based lighting, soft shadows, a shallow far-field blur so
+        -- distance reads as depth instead of clutter.
+        Lighting.ClockTime = 15.3
         Lighting.Brightness = 2.3
         Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(104, 108, 122)
-        Lighting.OutdoorAmbient = Color3.fromRGB(150, 155, 170)
+        Lighting.Ambient = Color3.fromRGB(94, 99, 112)
+        Lighting.OutdoorAmbient = Color3.fromRGB(142, 148, 163)
         pcall(function() Lighting.ExposureCompensation = 0.09 end)
+        pcall(function()
+            Lighting.EnvironmentDiffuseScale = 1
+            Lighting.EnvironmentSpecularScale = 1
+            Lighting.ShadowSoftness = 0.5
+        end)
 
         local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.9
-        bloom.Size = 34
-        bloom.Threshold = 1.4
+        bloom.Intensity = 0.78
+        bloom.Size = 30
+        bloom.Threshold = 1.55
         bloom.Parent = Lighting
         table.insert(shaderEffects, bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.16
-        sunrays.Spread = 0.7
+        sunrays.Intensity = 0.1
+        sunrays.Spread = 0.68
         sunrays.Parent = Lighting
         table.insert(shaderEffects, sunrays)
 
         local dof = Instance.new("DepthOfFieldEffect")
-        dof.FarIntensity = 0.08
-        dof.FocusDistance = 45
-        dof.InFocusRadius = 55
-        dof.NearIntensity = 0.2
+        dof.FarIntensity = 0.09
+        dof.FocusDistance = 50
+        dof.InFocusRadius = 70
+        dof.NearIntensity = 0.12
         dof.Parent = Lighting
         table.insert(shaderEffects, dof)
 
         local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
+        cc.Brightness = 0.005
         cc.Contrast = 0.18
+        cc.Saturation = 0.24
+        cc.TintColor = Color3.fromRGB(255, 249, 240)
+        cc.Parent = Lighting
+        table.insert(shaderEffects, cc)
+
+    elseif name == "RTX Ultra" then
+        -- The full look: maximum image-based lighting, softest shadows, rich but not crushed grade,
+        -- and a slow breathe on the glow (see the animator below). Bloom threshold stays high on
+        -- purpose -- only genuinely bright pixels glow, so the frame never washes out.
+        Lighting.ClockTime = 15.2
+        Lighting.Brightness = 2.4
+        Lighting.GlobalShadows = true
+        Lighting.Ambient = Color3.fromRGB(98, 103, 118)
+        Lighting.OutdoorAmbient = Color3.fromRGB(148, 154, 170)
+        pcall(function() Lighting.ExposureCompensation = 0.1 end)
+        pcall(function()
+            Lighting.EnvironmentDiffuseScale = 1
+            Lighting.EnvironmentSpecularScale = 1
+            Lighting.ShadowSoftness = 0.65
+        end)
+
+        local bloom = Instance.new("BloomEffect")
+        bloom.Intensity = 0.9
+        bloom.Size = 34
+        bloom.Threshold = 1.45
+        bloom.Parent = Lighting
+        table.insert(shaderEffects, bloom)
+
+        local sunrays = Instance.new("SunRaysEffect")
+        sunrays.Intensity = 0.15
+        sunrays.Spread = 0.72
+        sunrays.Parent = Lighting
+        table.insert(shaderEffects, sunrays)
+
+        local dof = Instance.new("DepthOfFieldEffect")
+        dof.FarIntensity = 0.12
+        dof.FocusDistance = 45
+        dof.InFocusRadius = 55
+        dof.NearIntensity = 0.18
+        dof.Parent = Lighting
+        table.insert(shaderEffects, dof)
+
+        local cc = Instance.new("ColorCorrectionEffect")
+        cc.Brightness = 0.005
+        cc.Contrast = 0.2
         cc.Saturation = 0.32
-        cc.TintColor = Color3.fromRGB(255, 251, 246)
+        cc.TintColor = Color3.fromRGB(255, 251, 245)
         cc.Parent = Lighting
         table.insert(shaderEffects, cc)
 
@@ -10668,173 +10873,77 @@ applyShader = function(name)
         S._ultraFX = { bloom = bloom, sunrays = sunrays, cc = cc }
 
     elseif name == "Night Shaders" then
-        -- Moody moonlit blue with soft glow and a cool tint. Ambient lifted so
-        -- shadowed corners / indoors don't crush to black.
+        -- Moonlit blue. Ambient is deliberately lifted so shadowed corners and interiors do not
+        -- crush to unplayable black, and the bloom threshold is low so every light source blooms --
+        -- that glow against the dark is the whole point of the preset.
         Lighting.ClockTime = 0
-        Lighting.Brightness = 1.7
-        Lighting.Ambient = Color3.fromRGB(72, 86, 122)
-        Lighting.OutdoorAmbient = Color3.fromRGB(88, 104, 146)
+        Lighting.Brightness = 1.8
+        Lighting.Ambient = Color3.fromRGB(70, 84, 122)
+        Lighting.OutdoorAmbient = Color3.fromRGB(86, 102, 148)
         Lighting.GlobalShadows = true
-        pcall(function() Lighting.ExposureCompensation = 0.15 end)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.06
-        cc.TintColor = Color3.fromRGB(165, 186, 255)
-        cc.Contrast = 0.15
-        cc.Saturation = 0.28
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        pcall(function() Lighting.ExposureCompensation = 0.16 end)
+        pcall(function()
+            Lighting.EnvironmentDiffuseScale = 0.75
+            Lighting.EnvironmentSpecularScale = 0.9
+            Lighting.ShadowSoftness = 0.7
+        end)
 
         local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.7
-        bloom.Size = 24
-        bloom.Threshold = 1.2
+        bloom.Intensity = 0.8
+        bloom.Size = 28
+        bloom.Threshold = 1.15
         bloom.Parent = Lighting
         table.insert(shaderEffects, bloom)
+
+        local dof = Instance.new("DepthOfFieldEffect")
+        dof.FarIntensity = 0.1
+        dof.FocusDistance = 40
+        dof.InFocusRadius = 65
+        dof.NearIntensity = 0.1
+        dof.Parent = Lighting
+        table.insert(shaderEffects, dof)
+
+        local cc = Instance.new("ColorCorrectionEffect")
+        cc.Brightness = 0.05
+        cc.TintColor = Color3.fromRGB(168, 190, 255)
+        cc.Contrast = 0.17
+        cc.Saturation = 0.26
+        cc.Parent = Lighting
+        table.insert(shaderEffects, cc)
 
     elseif name == "Pink Shaders" then
-        -- Dreamy sunset: warm pink/orange glow, soft blooming highlights.
+        -- Dreamy low sun: warm pink glow, soft god-rays through it, gentle contrast so the pastel
+        -- tint stays pastel instead of turning into a red filter.
         Lighting.ClockTime = 17.4
-        Lighting.Brightness = 1.8
-        Lighting.Ambient = Color3.fromRGB(110, 86, 100)
-        Lighting.OutdoorAmbient = Color3.fromRGB(195, 145, 168)
+        Lighting.Brightness = 1.95
+        Lighting.Ambient = Color3.fromRGB(108, 86, 100)
+        Lighting.OutdoorAmbient = Color3.fromRGB(198, 150, 172)
         Lighting.GlobalShadows = true
-        pcall(function() Lighting.ExposureCompensation = 0.06 end)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.0
-        cc.TintColor = Color3.fromRGB(255, 205, 226)
-        cc.Contrast = 0.11
-        cc.Saturation = 0.18
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        pcall(function() Lighting.ExposureCompensation = 0.07 end)
+        pcall(function()
+            Lighting.EnvironmentDiffuseScale = 0.9
+            Lighting.EnvironmentSpecularScale = 0.85
+            Lighting.ShadowSoftness = 0.6
+        end)
 
         local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.7
-        bloom.Size = 26
-        bloom.Threshold = 1.4
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-    elseif name == "Cinematic" then
-        -- Film look: strong contrast, warm highlights, soft depth-of-field.
-        Lighting.ClockTime = 15.8
-        Lighting.Brightness = 2.0
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(92, 96, 106)
-        Lighting.OutdoorAmbient = Color3.fromRGB(138, 144, 156)
-        pcall(function() Lighting.ExposureCompensation = 0.05 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.5
-        bloom.Size = 22
-        bloom.Threshold = 1.6
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Contrast = 0.25
-        cc.Saturation = 0.10
-        cc.TintColor = Color3.fromRGB(255, 244, 228)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Golden Hour" then
-        -- Low warm sun, long golden light, heavy glow.
-        Lighting.ClockTime = 17.8
-        Lighting.Brightness = 2.3
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(140, 105, 70)
-        Lighting.OutdoorAmbient = Color3.fromRGB(215, 160, 105)
-        pcall(function() Lighting.ExposureCompensation = 0.08 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.9
-        bloom.Size = 32
-        bloom.Threshold = 1.35
+        bloom.Intensity = 0.75
+        bloom.Size = 28
+        bloom.Threshold = 1.45
         bloom.Parent = Lighting
         table.insert(shaderEffects, bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
-        sunrays.Intensity = 0.18
-        sunrays.Spread = 0.8
+        sunrays.Intensity = 0.13
+        sunrays.Spread = 0.75
         sunrays.Parent = Lighting
         table.insert(shaderEffects, sunrays)
 
         local cc = Instance.new("ColorCorrectionEffect")
-        cc.Contrast = 0.12
-        cc.Saturation = 0.22
-        cc.TintColor = Color3.fromRGB(255, 214, 165)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Arctic" then
-        -- Crisp cold daylight: icy blue tint, slightly desaturated, bright and clean.
-        Lighting.ClockTime = 13
-        Lighting.Brightness = 2.4
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(120, 132, 148)
-        Lighting.OutdoorAmbient = Color3.fromRGB(170, 185, 205)
-        pcall(function() Lighting.ExposureCompensation = 0.04 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.45
-        bloom.Size = 20
-        bloom.Threshold = 1.6
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = 0.03
-        cc.Contrast = 0.15
-        cc.Saturation = -0.08
-        cc.TintColor = Color3.fromRGB(205, 228, 255)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Neon" then
-        -- Cyberpunk night: deep purple ambient, saturated colours, heavy bloom on lights.
-        Lighting.ClockTime = 0
-        Lighting.Brightness = 1.4
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(55, 30, 85)
-        Lighting.OutdoorAmbient = Color3.fromRGB(80, 45, 130)
-        pcall(function() Lighting.ExposureCompensation = 0.0 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 1.1
-        bloom.Size = 34
-        bloom.Threshold = 1.1
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Contrast = 0.2
-        cc.Saturation = 0.35
-        cc.TintColor = Color3.fromRGB(200, 150, 255)
-        cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
-
-    elseif name == "Noir" then
-        -- Black & white detective film: no colour, hard contrast, soft glow.
-        Lighting.ClockTime = 16
-        Lighting.Brightness = 1.7
-        Lighting.GlobalShadows = true
-        Lighting.Ambient = Color3.fromRGB(90, 90, 90)
-        Lighting.OutdoorAmbient = Color3.fromRGB(130, 130, 130)
-        pcall(function() Lighting.ExposureCompensation = 0.0 end)
-
-        local bloom = Instance.new("BloomEffect")
-        bloom.Intensity = 0.3
-        bloom.Size = 16
-        bloom.Threshold = 1.8
-        bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
-
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.Brightness = -0.02
-        cc.Contrast = 0.35
-        cc.Saturation = -1
+        cc.Brightness = 0.005
+        cc.TintColor = Color3.fromRGB(255, 208, 228)
+        cc.Contrast = 0.13
+        cc.Saturation = 0.2
         cc.Parent = Lighting
         table.insert(shaderEffects, cc)
     end
@@ -10876,15 +10985,8 @@ do
         ["RTX Ultra"]     = {density=0.28, offset=0.26, color=Color3.fromRGB(214,219,230), decay=Color3.fromRGB(96,140,210),  glare=0.22, haze=1.8},
         ["Night Shaders"] = {density=0.36, offset=0.10, color=Color3.fromRGB(34,44,88),   decay=Color3.fromRGB(12,16,46),   glare=0.05, haze=1.9},
         ["Pink Shaders"]  = {density=0.28, offset=0.20, color=Color3.fromRGB(255,192,216), decay=Color3.fromRGB(255,150,185), glare=0.25, haze=2.0},
-        ["Cinematic"]     = {density=0.30, offset=0.22, color=Color3.fromRGB(198,205,215), decay=Color3.fromRGB(105,130,175), glare=0.22, haze=2.0},
-        ["Golden Hour"]   = {density=0.34, offset=0.18, color=Color3.fromRGB(255,190,120), decay=Color3.fromRGB(230,140,70),  glare=0.50, haze=2.5},
-        ["Arctic"]        = {density=0.30, offset=0.20, color=Color3.fromRGB(215,230,245), decay=Color3.fromRGB(150,185,225), glare=0.15, haze=1.6},
-        ["Neon"]          = {density=0.38, offset=0.12, color=Color3.fromRGB(120,70,180),  decay=Color3.fromRGB(60,20,120),   glare=0.10, haze=2.4},
-        ["Noir"]          = {density=0.30, offset=0.15, color=Color3.fromRGB(150,150,155), decay=Color3.fromRGB(70,70,80),    glare=0.05, haze=2.2},
-        ["Clean HDR"]     = {density=0.22, offset=0.20, color=Color3.fromRGB(214,220,230), decay=Color3.fromRGB(126,148,190), glare=0.12, haze=1.4},
-        ["Performance"]   = {density=0.16, offset=0.18, color=Color3.fromRGB(205,208,214), decay=Color3.fromRGB(145,150,165), glare=0.03, haze=0.8},
-        ["Vibrant"]       = {density=0.30, offset=0.18, color=Color3.fromRGB(188,220,244), decay=Color3.fromRGB(88,140,210), glare=0.30, haze=2.1},
-        ["Retro Film"]    = {density=0.28, offset=0.16, color=Color3.fromRGB(232,202,168), decay=Color3.fromRGB(166,112,76), glare=0.10, haze=1.8},
+        -- The user-built pack drives its own haze from the Atmosphere slider.
+        ["Custom"]        = {density=0.22, offset=0.20, color=Color3.fromRGB(210,214,222), decay=Color3.fromRGB(120,142,190), glare=0.15, haze=1.6},
     }
 
     -- Sky presets change the WHOLE environment so the effect is clearly visible: time of day,
@@ -10981,6 +11083,16 @@ do
             skyHue = (skyHue + 0.006) % 1
             fogHue = (fogHue + 0.004) % 1
             local shaderBase = SHADER_ATMO[S.ActiveShader]
+            -- The custom pack owns its haze: copy the template and let the Atmosphere slider drive
+            -- density, otherwise every user-built pack would be stuck on one fixed fog level.
+            if S.ActiveShader == "Custom" and shaderBase then
+                local amount = math.clamp((tonumber(S.ShaderAtmo) or 22) / 100, 0, 1)
+                shaderBase = {
+                    density = amount * 0.55, offset = shaderBase.offset,
+                    color = shaderBase.color, decay = shaderBase.decay,
+                    glare = shaderBase.glare, haze = 0.4 + amount * 3,
+                }
+            end
 
             -- Fog has two modes: Classic (legacy FogStart/End -- needs every Atmosphere gone)
             -- and Atmosphere (density-based soft haze -- needs OUR Atmosphere present).
@@ -18812,4 +18924,171 @@ do
 
     -- Custom Fog removed on request. S.FogEnabled stays false, so the pre-existing fog engine in
     -- applyAtmo() stays dormant and the map's own lighting is untouched.
+end
+
+-- ============ HUB PRESENCE TAG (who else is running this script) ============
+-- Nothing a client creates or writes replicates to anyone else -- attributes, instance names and
+-- property writes all stay local -- so two clients can only find each other through a remote the
+-- game itself broadcasts. The chat channel is the one MM2 gives us, so presence is a short marker
+-- posted there and read back off MessageReceived. That is the entire mechanism: no server code, no
+-- injected instances, and it degrades to "nobody detected" rather than breaking anything.
+do
+    local BEACON = "::inertia::"
+    local REANNOUNCE = 90            -- seconds; late joiners pick you up on the next round of these
+    local tags = {}                  -- [Player] = BillboardGui
+    local known = {}                 -- [Player] = true once their beacon has been seen
+
+    local function dropTag(plr)
+        local tag = tags[plr]
+        if tag then pcall(function() tag:Destroy() end) end
+        tags[plr] = nil
+    end
+
+    local function makeTag(plr)
+        if not S.HubTag or not plr or not plr.Parent then return end
+        local char = plr.Character
+        local head = char and char:FindFirstChild("Head")
+        if not head then return end
+        local existing = tags[plr]
+        -- Re-tag on respawn: the old billboard died with the old head.
+        if existing and existing.Parent == head then return end
+        dropTag(plr)
+
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "InertiaHubTag"
+        bb.Adornee = head
+        bb.AlwaysOnTop = true
+        bb.Size = UDim2.fromOffset(132, 20)
+        bb.StudsOffset = Vector3.new(0, 3.4, 0)
+        bb.MaxDistance = 250
+        bb.Parent = head
+
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.Size = UDim2.fromScale(1, 1)
+        lbl.Font = FM
+        lbl.TextSize = 13
+        lbl.Text = "INERTIA"
+        lbl.TextColor3 = T.Accent
+        lbl.TextStrokeTransparency = 0.4
+        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Accent") end)
+        lbl.Parent = bb
+        tags[plr] = bb
+    end
+
+    local function clearAll()
+        for plr in pairs(tags) do dropTag(plr) end
+    end
+
+    local function refreshAll()
+        if not S.HubTag then clearAll() return end
+        for plr in pairs(known) do
+            if plr.Parent then makeTag(plr) else known[plr] = nil dropTag(plr) end
+        end
+        if S.HubTagShowSelf ~= false then makeTag(LP) end
+    end
+    S._RefreshHubTags = refreshAll
+
+    local function markUser(plr)
+        if not plr or known[plr] then return end
+        known[plr] = true
+        if plr ~= LP then
+            Notify("Hub", plr.Name .. " is running the hub", 3)
+        end
+        makeTag(plr)
+    end
+    -- We are trivially a user of our own hub; no beacon needs to come back for that.
+    known[LP] = true
+
+    local function announce()
+        if not S.HubTag or not S.HubTagAnnounce then return end
+        pcall(function()
+            local tcs = game:GetService("TextChatService")
+            local chans = tcs and tcs:FindFirstChild("TextChannels")
+            local general = chans and (chans:FindFirstChild("RBXGeneral") or chans:FindFirstChildWhichIsA("TextChannel"))
+            if general then
+                general:SendAsync(BEACON)
+            else
+                local remote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
+                if remote then remote:FireServer(BEACON, "All") end
+            end
+        end)
+    end
+
+    local function onMessage(senderPlayer, text)
+        if not senderPlayer or type(text) ~= "string" then return end
+        if not text:find(BEACON, 1, true) then return end
+        markUser(senderPlayer)
+    end
+
+    pcall(function()
+        local tcs = game:GetService("TextChatService")
+        if tcs.ChatVersion == Enum.ChatVersion.TextChatService then
+            tc(tcs.MessageReceived:Connect(function(msg)
+                if S.Destroyed or not S.HubTag then return end
+                local src = msg.TextSource
+                if not src then return end
+                onMessage(Players:GetPlayerByUserId(src.UserId), msg.Text)
+            end))
+        else
+            local events = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
+            local filtered = events and events:FindFirstChild("OnMessageDoneFiltering")
+            if filtered then
+                tc(filtered.OnClientEvent:Connect(function(data)
+                    if S.Destroyed or not S.HubTag or not data then return end
+                    onMessage(Players:FindFirstChild(tostring(data.FromSpeaker or "")), data.Message)
+                end))
+            end
+        end
+    end)
+
+    tc(Players.PlayerRemoving:Connect(function(plr)
+        known[plr] = nil
+        dropTag(plr)
+    end))
+    -- One connection for every player's respawn rather than one per known user: a tag has to come
+    -- back after death, and CharacterAdded on a player we have not seen yet is a no-op anyway.
+    tc(Players.PlayerAdded:Connect(function(plr)
+        tc(plr.CharacterAdded:Connect(function()
+            task.delay(1, function() if known[plr] then makeTag(plr) end end)
+        end))
+    end))
+    for _, plr in ipairs(Players:GetPlayers()) do
+        tc(plr.CharacterAdded:Connect(function()
+            task.delay(1, function() if known[plr] then makeTag(plr) end end)
+        end))
+    end
+
+    task.spawn(function()
+        -- First beacon is delayed: firing it during the boot burst races the chat system's own
+        -- setup and the message is simply dropped.
+        task.wait(6)
+        while S.Gui and S.Gui.Parent do
+            if S.HubTag and S.HubTagAnnounce then announce() end
+            task.wait(REANNOUNCE)
+        end
+    end)
+
+    local secHub = mkSection(Pages.Visuals, "Hub Presence", 4.9)
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secHub) end
+    mkToggle(secHub, "Hub Tag", true, function(v)
+        S.HubTag = v
+        refreshAll()
+        if v then announce() end
+    end, 1)
+    mkToggle(secHub, "Announce Me", true, function(v)
+        S.HubTagAnnounce = v
+        if v then announce() end
+    end, 2)
+    mkToggle(secHub, "Tag Myself", true, function(v)
+        S.HubTagShowSelf = v
+        refreshAll()
+    end, 3)
+    mkAction(secHub, "Re-announce Now", function()
+        announce()
+        Notify("Hub", "Presence broadcast sent", 2)
+    end, 4)
+
+    task.delay(2, refreshAll)
 end
