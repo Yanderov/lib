@@ -10187,7 +10187,7 @@ end
 HUD.hPing, HUD.pingLbl = mkStatHUD("Ping", UDim2.new(1, -142, 0, 326), 130, 856)
 HUD.hSession, HUD.sessionLbl = mkStatHUD("Session", UDim2.new(1, -142, 0, 362), 130, 863)
 HUD.hSpeed, HUD.speedLbl = mkStatHUD("Speed", UDim2.new(1, -142, 0, 398), 130, 861)
-HUD.hCoords, HUD.coordLbl = mkStatHUD("Coords", UDim2.new(0, 10, 0, 540), 190, 857)
+HUD.hCoords, HUD.coordLbl = mkStatHUD("Coords", UDim2.new(0, 10, 0, 540), 260, 857)
 HUD.hWatermark, HUD.watermarkLbl = mkWatermark()
 
 HUD.hPinnedEmotes = mkDragHUD("Pinned Emotes", UDim2.new(0, 230, 0, 540), UDim2.fromOffset(130, 112), 865)
