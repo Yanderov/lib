@@ -9142,128 +9142,88 @@ end
 
 local startInvisibleFE, stopInvisibleFE, toggleInvisible, toggleBlink
 do
-
     local running = false
-    local conns = {}
     local savedCF = nil
+    local INVISIBILITY_POSITION = Vector3.new(-25.95, 84, 3537.55)
 
-    local function killPlatform()
-        if S.VoidPlatform then
-            pcall(function() S.VoidPlatform:Destroy() end)
-            S.VoidPlatform = nil
+    local function setCharacterTransparency(character, transparency)
+        for _, descendant in character:GetDescendants() do
+            if descendant:IsA("BasePart") or descendant:IsA("Decal") then
+                descendant.Transparency = transparency
+            end
         end
-    end
-
-    local floorY = 0
-
-    local function ensurePlatform(pos)
-        local plat = S.VoidPlatform
-        if not plat or not plat.Parent then
-            plat = Instance.new("Part")
-            plat.Name = "InertiaInvisFloor"
-            plat.Anchored = true
-            plat.CanCollide = true
-            plat.CanQuery = false
-            plat.CanTouch = false
-            plat.CastShadow = false
-            plat.Transparency = 1
-            plat.Size = Vector3.new(9e8, 2, 9e8)
-            plat.Parent = workspace
-            S.VoidPlatform = plat
-        end
-
-        plat.CFrame = CFrame.new(pos.X, floorY, pos.Z)
-        return plat
     end
 
     stopInvisibleFE = function()
         if not running then return end
         running = false
-        conns = disconnectAll(conns)
         if toggleInvisible and toggleInvisible.state then
             pcall(function() toggleInvisible.trigger() end)
         end
-        killPlatform()
-        local returned = false
-        if S.InvisReturn ~= false and savedCF then
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hrp and hum and hum.Health > 0 then
-                pcall(function()
-                    hrp.CFrame = savedCF
-
-                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                end)
-                returned = true
+        local invisChair = workspace:FindFirstChild("invischair")
+        if invisChair then invisChair:Destroy() end
+        
+        local char = LP.Character
+        if char then
+            setCharacterTransparency(char, 0)
+            if S.InvisReturn ~= false and savedCF then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = savedCF end
+                Notify("Invisible", "Back where you were", 3)
+            else
+                Notify("Invisible", "You are visible again", 3)
             end
         end
-        savedCF = nil
-        Notify("Invisible", returned and "Back where you were" or "You are visible again", 3)
     end
 
     startInvisibleFE = function()
         if running then return end
-        if toggleBlink and toggleBlink.state then toggleBlink.trigger() end
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
+
         if not (char and hrp and hum) then Notify("Invisible", "No character", 3) return end
         if hum.Health <= 0 then Notify("Invisible", "You are dead", 3) return end
-
-        savedCF = hrp.CFrame
+        
         running = true
-
-        local height = 9e8
-
-        local base = hrp.Position
-        local target = Vector3.new(
-            base.X + math.random(-400, 400),
-            height,
-            base.Z + math.random(-400, 400))
-
-        floorY = height - 3.5
-        local ok = pcall(function()
-            ensurePlatform(target)
-            hrp.CFrame = CFrame.new(target) * (savedCF - savedCF.Position)
-            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        end)
-        if not ok then
-            running = false
-            savedCF = nil
-            killPlatform()
-            Notify("Invisible", "Failed (game blocks it)", 3)
+        savedCF = hrp.CFrame
+        
+        char:MoveTo(INVISIBILITY_POSITION)
+        task.wait(0.15)
+        
+        if not running then return end
+        
+        local seat = Instance.new("Seat")
+        seat.Name = "invischair"
+        seat.Anchored = false
+        seat.CanCollide = false
+        seat.Transparency = 1
+        seat.Position = INVISIBILITY_POSITION
+        seat.Parent = workspace
+        
+        local weld = Instance.new("Weld")
+        weld.Part0 = seat
+        weld.Part1 = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+        weld.Parent = seat
+        
+        task.wait()
+        
+        if not running then
+            seat:Destroy()
             return
         end
-
-        table.insert(conns, tc(hum.Died:Connect(function() stopInvisibleFE() end)))
-
-        table.insert(conns, tc(LP.CharacterAdded:Connect(function()
-            savedCF = nil
-            task.defer(stopInvisibleFE)
-        end)))
-        table.insert(conns, tc(RunService.Heartbeat:Connect(function()
-            if not running then return end
-            local c = LP.Character
-            local r = c and c:FindFirstChild("HumanoidRootPart")
-            if not r then return end
-            local p = r.Position
-
-            if p.Y < height - 400 then
-                pcall(function()
-                    r.CFrame = CFrame.new(p.X, height, p.Z)
-                    r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                end)
-                p = r.Position
-            end
-            ensurePlatform(p)
-        end)))
-
-        Notify("Invisible", "Hidden " .. math.floor(height) .. " studs up — walk freely, toggle off to return", 4)
+        
+        seat.CFrame = savedCF
+        setCharacterTransparency(char, 0.5)
+        Notify("Invisible", "Invisible (Seat Method Active)", 3)
+        
+        local diedConn
+        diedConn = hum.Died:Connect(function()
+            if diedConn then diedConn:Disconnect() end
+            stopInvisibleFE()
+        end)
     end
 end
-
 local startBlink, stopBlink
 do
     local running = false
