@@ -4323,6 +4323,7 @@ local function mkToggle(parent, label, default, callback, order, configLabel)
         end
         if old_cb then old_cb(v) end
     end
+    if old_cb then pcall(old_cb, default) end
     local row = Instance.new("Frame")
     row.Name = label
     row.Parent = parent
@@ -9288,7 +9289,7 @@ do
         
         if not running then return end
         
-        local seat = Instance.new("Seat")
+        local seat = Instance.new("Part")
         seat.Name = "invischair"
         seat.Anchored = false
         seat.CanCollide = false
@@ -20037,8 +20038,8 @@ do
     
     do
     local secDesync = mkSection(Pages.Combat, "Desync", 13)
-    mkToggle(secDesync, "Desync (Fake Position)", false, function(v) S.DesyncFakePos = v end, 1)
-    mkToggle(secDesync, "Velocity Desync", false, function(v) S.DesyncVelocity = v end, 2)
+    mkToggle(secDesync, "Desync (Fake Position)", false, function(v) S.Desync = v end, 1)
+    mkToggle(secDesync, "Velocity Desync", false, function(v) S.VelDesync = v end, 2)
 
 end
 do
