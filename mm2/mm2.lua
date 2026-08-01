@@ -19539,29 +19539,7 @@ do
     mkToggle(secView, "Custom FOV", false, function(v) S.CustomFOV = v end, 1)
     mkSlider(secView, "FOV", 20, 120, 70, function(v) S.FOVValue = v end, 2)
 
-    local secFog = mkSection(Pages.Visuals, "Custom Fog", 6)
-    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secFog) end
-    local function repaintFog() if S._ApplyEnvironment then pcall(S._ApplyEnvironment) end end
-    mkToggle(secFog, "Fog", false, function(v) S.FogEnabled = v; repaintFog() end, 1)
-    mkCycle(secFog, "Fog Mode", { "Atmosphere", "Classic" }, "Atmosphere", function(v) S.FogMode = v; repaintFog() end, 2)
-    mkCycle(secFog, "Fog Color",
-        { "Gray", "White", "Black", "Blue", "Purple", "Pink", "Cyan", "Orange", "Green", "Red", "Custom" },
-        "Gray", function(v) S.FogColorName = v; repaintFog() end, 3)
-    mkSlider(secFog, "Custom Red", 0, 255, 150, function(v) S.FogR = v; repaintFog() end, 3.1)
-    mkSlider(secFog, "Custom Green", 0, 255, 150, function(v) S.FogG = v; repaintFog() end, 3.2)
-    mkSlider(secFog, "Custom Blue", 0, 255, 158, function(v) S.FogB = v; repaintFog() end, 3.3)
-    mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; repaintFog() end, 4)
-    mkSlider(secFog, "Rainbow Speed (%)", 5, 500, 100, function(v) S.FogRainbowSpeed = v; repaintFog() end, 4.1)
-    mkSlider(secFog, "Rainbow Saturation (%)", 0, 100, 55, function(v) S.FogRainbowSat = v; repaintFog() end, 4.2)
-    mkSlider(secFog, "Fog Density (%)", 2, 95, 40, function(v) S.FogDensity = v; repaintFog() end, 5)
-
-    mkToggle(secFog, "Auto Tuning", true, function(v) S.FogAuto = v; repaintFog() end, 5.1)
-    mkSlider(secFog, "Offset", 0, 100, 20, function(v) S.FogOffset = v; repaintFog() end, 5.2)
-    mkSlider(secFog, "Glare", 0, 100, 24, function(v) S.FogGlare = v; repaintFog() end, 5.3)
-    mkSlider(secFog, "Haze", 0, 100, 40, function(v) S.FogHaze = v; repaintFog() end, 5.4)
-    mkSlider(secFog, "Depth Falloff", 0, 100, 35, function(v) S.FogDepth = v; repaintFog() end, 5.5)
-    mkSlider(secFog, "Fog Start (Classic)", 0, 1000, 0, function(v) S.FogStart = v; repaintFog() end, 6)
-    mkSlider(secFog, "Fog End (Classic)", 50, 2000, 500, function(v) S.FogEnd = v; repaintFog() end, 7)
+    
 
     do
         local a = game:GetService("Lighting"):FindFirstChild("InertiaAtmosphere")
@@ -19994,7 +19972,7 @@ do
     mkSlider(secLight, "ClockTime", 0, 240, 140, function(v) S.LightClock = v / 10 end, 2)
     mkSlider(secLight, "Brightness", 0, 100, 20, function(v) S.LightBright = v / 10 end, 3)
     mkSlider(secLight, "Exposure Comp", -50, 50, 0, function(v) S.LightExposure = v / 10 end, 4)
-    mkSlider(secLight, "Fog End", 10, 5000, 1500, function(v) S.LightFogEnd = v end, 5)
+    
     mkToggle(secLight, "Global Shadows", true, function(v) S.LightShadows = v end, 6)
 
     local secPost = mkSection(Pages.Visuals, "Post Processing", 11)
@@ -20042,7 +20020,7 @@ do
             LightingService.ClockTime = S.LightClock or 14
             LightingService.Brightness = S.LightBright or 2
             LightingService.ExposureCompensation = S.LightExposure or 0
-            LightingService.FogEnd = S.LightFogEnd or 1500
+            
             if S.LightShadows ~= nil then LightingService.GlobalShadows = S.LightShadows end
         end
 
