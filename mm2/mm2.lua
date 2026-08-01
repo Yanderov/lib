@@ -1236,10 +1236,10 @@ local function Notify(title, msg, dur, style)
         local camera = workspace.CurrentCamera
         local vp = camera and camera.ViewportSize
 
-        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.30), 180, 260) end
+        if vp then toastWidth = math.clamp(math.floor(vp.X * 0.22), 140, 200) end
     end
-    local bodyTextSize = math.clamp(math.round((MOBILE and 10 or 12) * (S.TextSizeScale or 1)), 9, 16)
-    local titleTextSize = math.clamp(math.round((MOBILE and 11 or 13) * (S.TextSizeScale or 1)), 10, 17)
+    local bodyTextSize = math.clamp(math.round((MOBILE and 9 or 12) * (S.TextSizeScale or 1)), 9, 16)
+    local titleTextSize = math.clamp(math.round((MOBILE and 10 or 13) * (S.TextSizeScale or 1)), 10, 17)
     local bodyHeight = roleReveal and 52 or 19
     if not roleReveal then
         pcall(function()
@@ -1247,7 +1247,7 @@ local function Notify(title, msg, dur, style)
             local measured = game:GetService("TextService"):GetTextSize(
                 bodyText, bodyTextSize, FM, Vector2.new(toastWidth - 38, MOBILE and 84 or 96)
             )
-            bodyHeight = math.clamp(math.ceil(measured.Y), 19, MOBILE and 60 or 72)
+            bodyHeight = math.clamp(math.ceil(measured.Y), 19, MOBILE and 45 or 72)
         end)
     end
     local finalHeight = roleReveal and 98 or (50 + bodyHeight)
