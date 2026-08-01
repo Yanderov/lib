@@ -46,7 +46,7 @@ local S = {
     AutoKillSheriff = false, AutoKillNearest = false, ClickKill = false, KillAura = false, KillAuraRange = 18,
     ActiveShader = "None",
     HubTag = true, HubTagAnnounce = true, HubTagShowSelf = true,
-    MGWidth = 2, MGStyle = "Accent",
+    MGWidth = 2, MGStyle = "Accent", UIFont = "Gotham",
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
     HUD_Ping = false, HUD_Coords = false, NoEmoteStop = false, LoopEmote = false,
     NameESP = false, DistanceESP = false, RoleESP = false,
@@ -2559,6 +2559,526 @@ S._BuildThemeEditor = function()
         roleHost.Visible = not roleHost.Visible
         editCustomBtn.Text = roleHost.Visible and "Hide Custom Theme Editor" or "Edit Custom Theme..."
         if roleHost.Visible then loadRole() end
+    end
+end
+
+-- ===== THEME EDITOR WINDOW (desktop) =====
+-- The settings-modal panel above stays for mobile -- a 720px window does not fit on a phone. On
+-- desktop S._OpenThemeEditor is rebound to this, a real draggable window with the roles split into
+-- tabs and a live mock of the hub next to them.
+--
+-- The preview repaints for free and that is the whole design: every mock element carries the same
+-- ThemeColorRole_<Property> attribute the real widgets do, so applyTheme("Custom") -- which
+-- pushColor already calls on every slider move -- walks SG and repaints the mock in the same pass
+-- as the actual interface. That is what fixes "previews don't change": there is no second paint
+-- path that could fall out of sync, because there is no second paint path.
+S._BuildThemeWindow = function()
+    if MOBILE then return end
+    local win, selected, refreshSwatches, loadRole, activeTab
+    local swatchRows, tabBtns = {}, {}
+    local rSet, gSet, bSet
+
+    local TABS = {
+        { name = "Window",  roles = { "BG", "Bd", "Bd2", "Glow" } },
+        { name = "Sidebar", roles = { "Sidebar", "ActiveBg", "Hover" } },
+        { name = "Cards",   roles = { "Card", "Elev", "Accent", "AccentSoft", "TgOn", "TgOff", "KnobOn", "KnobOff" } },
+        { name = "Text",    roles = { "Tx", "Tx2", "Tx3", "Tx4" } },
+        { name = "HUD",     roles = { "Card", "Elev", "Accent", "Tx", "Tx2", "Bd2" } },
+    }
+    -- Font families, three weights each, so a swap keeps the regular/medium/bold split the UI is
+    -- built around instead of flattening every label to one weight.
+    -- Only Gotham, SourceSans and Arial actually ship multiple weights in Enum.Font; the rest
+    -- repeat one face rather than pretending a mono or condensed cut is the bold of a family it
+    -- has nothing to do with.
+    local FONTS = {
+        Gotham     = { Enum.Font.Gotham, Enum.Font.GothamMedium, Enum.Font.GothamBold },
+        SourceSans = { Enum.Font.SourceSans, Enum.Font.SourceSansSemibold, Enum.Font.SourceSansBold },
+        Arial      = { Enum.Font.Arial, Enum.Font.Arial, Enum.Font.ArialBold },
+        Nunito     = { Enum.Font.Nunito, Enum.Font.Nunito, Enum.Font.Nunito },
+        Ubuntu     = { Enum.Font.Ubuntu, Enum.Font.Ubuntu, Enum.Font.Ubuntu },
+        Code       = { Enum.Font.Code, Enum.Font.Code, Enum.Font.Code },
+    }
+    local FONT_NAMES = { "Gotham", "SourceSans", "Arial", "Nunito", "Ubuntu", "Code" }
+
+    local function colOf(role)
+        return (Themes.Custom and Themes.Custom[role]) or T[role] or Color3.new(1, 1, 1)
+    end
+
+    local function applyFont(name)
+        local fam = FONTS[name]
+        if not fam or not SG then return end
+        S.UIFont = name
+        for _, o in ipairs(SG:GetDescendants()) do
+            if o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox") then
+                -- The weight tier is stamped once, on the first swap, from whatever font the widget
+                -- was built with. Reading the live Font on every swap would drift: after one change
+                -- the original weight is no longer recoverable from the object.
+                local tier = o:GetAttribute("InertiaFontTier")
+                if not tier then
+                    local f = o.Font
+                    tier = (f == FB or f == Enum.Font.SourceSansBold or f == Enum.Font.ArialBold) and 3
+                        or (f == FM or f == Enum.Font.SourceSansSemibold) and 2
+                        or 1
+                    pcall(function() o:SetAttribute("InertiaFontTier", tier) end)
+                end
+                pcall(function() o.Font = fam[tier] or fam[1] end)
+            end
+        end
+    end
+    S._ApplyUIFont = applyFont
+
+    -- --- minimal slider (the modal's mkSlider builds a settings row, not a bare control) ---
+    local function mkBar(parent, label, order, onChange)
+        local row = Instance.new("Frame")
+        row.Parent = parent
+        row.LayoutOrder = order
+        row.Size = UDim2.new(1, 0, 0, 30)
+        row.BackgroundTransparency = 1
+
+        local cap = Instance.new("TextLabel")
+        cap.Parent = row
+        cap.BackgroundTransparency = 1
+        cap.Size = UDim2.new(0, 22, 1, 0)
+        cap.Font = FM
+        cap.TextSize = 12
+        cap.Text = label
+        cap.TextColor3 = T.Tx3
+        pcall(function() cap:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
+
+        local track = Instance.new("TextButton")
+        track.Parent = row
+        track.AutoButtonColor = false
+        track.Text = ""
+        track.AnchorPoint = Vector2.new(0, 0.5)
+        track.Position = UDim2.new(0, 26, 0.5, 0)
+        track.Size = UDim2.new(1, -74, 0, 6)
+        track.BackgroundColor3 = T.Elev
+        pcall(function() track:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        track.BorderSizePixel = 0
+        Corner(track, 3)
+
+        local fill = Instance.new("Frame")
+        fill.Parent = track
+        fill.Size = UDim2.fromScale(0, 1)
+        fill.BackgroundColor3 = T.Accent
+        pcall(function() fill:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+        fill.BorderSizePixel = 0
+        Corner(fill, 3)
+
+        local val = Instance.new("TextLabel")
+        val.Parent = row
+        val.BackgroundTransparency = 1
+        val.AnchorPoint = Vector2.new(1, 0)
+        val.Position = UDim2.new(1, 0, 0, 0)
+        val.Size = UDim2.new(0, 42, 1, 0)
+        val.Font = FM
+        val.TextSize = 12
+        val.TextXAlignment = Enum.TextXAlignment.Right
+        val.TextColor3 = T.Tx2
+        pcall(function() val:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+
+        local dragging = false
+        local function set(v, fire)
+            v = math.clamp(math.floor(v + 0.5), 0, 255)
+            fill.Size = UDim2.fromScale(v / 255, 1)
+            val.Text = tostring(v)
+            if fire then onChange(v) end
+        end
+        local function fromX(x)
+            local a = track.AbsolutePosition.X
+            local w = math.max(track.AbsoluteSize.X, 1)
+            set(math.clamp((x - a) / w, 0, 1) * 255, true)
+        end
+        track.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                fromX(i.Position.X)
+            end
+        end)
+        track.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        UIS.InputChanged:Connect(function(i)
+            if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+                fromX(i.Position.X)
+            end
+        end)
+        UIS.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        return { set = function(v) set(v, false) end }
+    end
+
+    local function pushColor()
+        local c = Color3.fromRGB(
+            math.clamp(tonumber(S._ThemeR) or 0, 0, 255),
+            math.clamp(tonumber(S._ThemeG) or 0, 0, 255),
+            math.clamp(tonumber(S._ThemeB) or 0, 0, 255))
+        Themes.Custom = Themes.Custom or {}
+        Themes.Custom[selected] = c
+        S.SelectedTheme = "Custom"
+        pcall(applyTheme, "Custom")
+        if refreshSwatches then refreshSwatches() end
+        pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+    end
+
+    local function build()
+        win = Instance.new("Frame")
+        win.Name = "InertiaThemeWindow"
+        win.Parent = SG
+        win.AnchorPoint = Vector2.new(0.5, 0.5)
+        win.Position = UDim2.fromScale(0.5, 0.5)
+        win.Size = UDim2.fromOffset(760, 470)
+        win.BackgroundColor3 = T.BG
+        pcall(function() win:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
+        win.BorderSizePixel = 0
+        win.ZIndex = 4000
+        win.Visible = false
+        Corner(win, 12)
+        Stroke(win, T.Bd2, 1, 0.2)
+
+        local bar = Instance.new("TextButton")
+        bar.Parent = win
+        bar.AutoButtonColor = false
+        bar.Text = ""
+        bar.Size = UDim2.new(1, 0, 0, 38)
+        bar.BackgroundColor3 = T.Sidebar
+        pcall(function() bar:SetAttribute("ThemeColorRole_BackgroundColor3", "Sidebar") end)
+        bar.BorderSizePixel = 0
+        bar.ZIndex = 4001
+        Corner(bar, 12)
+
+        local title = Instance.new("TextLabel")
+        title.Parent = bar
+        title.BackgroundTransparency = 1
+        title.Position = UDim2.new(0, 14, 0, 0)
+        title.Size = UDim2.new(1, -60, 1, 0)
+        title.Font = FB
+        title.TextSize = 14
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Text = "Theme Editor"
+        title.TextColor3 = T.Tx
+        title.ZIndex = 4002
+        pcall(function() title:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+
+        local close = Instance.new("TextButton")
+        close.Parent = bar
+        close.AnchorPoint = Vector2.new(1, 0.5)
+        close.Position = UDim2.new(1, -10, 0.5, 0)
+        close.Size = UDim2.fromOffset(24, 24)
+        close.BackgroundColor3 = T.Elev
+        pcall(function() close:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        close.BorderSizePixel = 0
+        close.AutoButtonColor = false
+        close.Font = FM
+        close.TextSize = 14
+        close.Text = "x"
+        close.TextColor3 = T.Tx2
+        close.ZIndex = 4002
+        pcall(function() close:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+        Corner(close, 6)
+        close.MouseButton1Click:Connect(function() SFX.Click(); win.Visible = false end)
+
+        do
+            local dragging, startPos, startInput = false, nil, nil
+            bar.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging, startInput, startPos = true, i.Position, win.Position
+                end
+            end)
+            bar.InputEnded:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+            end)
+            UIS.InputChanged:Connect(function(i)
+                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+                    local d = i.Position - startInput
+                    win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                             startPos.Y.Scale, startPos.Y.Offset + d.Y)
+                end
+            end)
+        end
+
+        -- ---- left: tabs ----
+        local tabCol = Instance.new("Frame")
+        tabCol.Parent = win
+        tabCol.Position = UDim2.new(0, 10, 0, 48)
+        tabCol.Size = UDim2.new(0, 118, 1, -58)
+        tabCol.BackgroundTransparency = 1
+        tabCol.ZIndex = 4001
+        local tl = Instance.new("UIListLayout")
+        tl.Parent = tabCol
+        tl.Padding = UDim.new(0, 5)
+        tl.SortOrder = Enum.SortOrder.LayoutOrder
+
+        -- ---- middle: roles + sliders ----
+        local mid = Instance.new("Frame")
+        mid.Parent = win
+        mid.Position = UDim2.new(0, 136, 0, 48)
+        mid.Size = UDim2.new(0, 236, 1, -58)
+        mid.BackgroundColor3 = T.Card
+        pcall(function() mid:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+        mid.BorderSizePixel = 0
+        mid.ZIndex = 4001
+        Corner(mid, 8)
+        Stroke(mid, T.Bd, 1, 0.4)
+        Pad(mid, 10, 10, 10, 10)
+        local ml = Instance.new("UIListLayout")
+        ml.Parent = mid
+        ml.Padding = UDim.new(0, 5)
+        ml.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local roleList = Instance.new("ScrollingFrame")
+        roleList.Parent = mid
+        roleList.LayoutOrder = 1
+        roleList.Size = UDim2.new(1, 0, 0, 210)
+        roleList.BackgroundTransparency = 1
+        roleList.BorderSizePixel = 0
+        roleList.ScrollBarThickness = 3
+        roleList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        roleList.CanvasSize = UDim2.new()
+        roleList.ZIndex = 4002
+        local rl = Instance.new("UIListLayout")
+        rl.Parent = roleList
+        rl.Padding = UDim.new(0, 4)
+        rl.SortOrder = Enum.SortOrder.LayoutOrder
+
+        rSet = mkBar(mid, "R", 2, function(v) S._ThemeR = v; pushColor() end)
+        gSet = mkBar(mid, "G", 3, function(v) S._ThemeG = v; pushColor() end)
+        bSet = mkBar(mid, "B", 4, function(v) S._ThemeB = v; pushColor() end)
+
+        local function mkFlatBtn(parent, text, order, fn)
+            local b = Instance.new("TextButton")
+            b.Parent = parent
+            b.LayoutOrder = order
+            b.Size = UDim2.new(1, 0, 0, 26)
+            b.BackgroundColor3 = T.Elev
+            pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+            b.BorderSizePixel = 0
+            b.AutoButtonColor = false
+            b.Font = FM
+            b.TextSize = 12
+            b.Text = text
+            b.TextColor3 = T.Tx2
+            b.ZIndex = 4002
+            pcall(function() b:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+            Corner(b, 6)
+            b.MouseButton1Click:Connect(function() SFX.Click(); fn(b) end)
+            return b
+        end
+
+        local fontIdx = 1
+        for i, n in ipairs(FONT_NAMES) do if n == S.UIFont then fontIdx = i end end
+        local fontBtn
+        fontBtn = mkFlatBtn(mid, "Font: " .. FONT_NAMES[fontIdx], 5, function()
+            fontIdx = fontIdx % #FONT_NAMES + 1
+            fontBtn.Text = "Font: " .. FONT_NAMES[fontIdx]
+            applyFont(FONT_NAMES[fontIdx])
+            pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+        end)
+        mkFlatBtn(mid, "Reset This Role", 6, function()
+            if Themes.Custom then Themes.Custom[selected] = nil end
+            pcall(applyTheme, S.SelectedTheme or "Custom")
+            loadRole()
+        end)
+        mkFlatBtn(mid, "Reset Whole Theme", 7, function()
+            Themes.Custom = {}
+            S.SelectedTheme = "Default"
+            pcall(applyTheme, "Default")
+            loadRole()
+            pcall(function() if S.SaveConfig then S.SaveConfig("_autoload") end end)
+            Notify("Theme", "Back to the stock theme", 2)
+        end)
+
+        -- ---- right: live preview ----
+        local prev = Instance.new("Frame")
+        prev.Parent = win
+        prev.Position = UDim2.new(0, 380, 0, 48)
+        prev.Size = UDim2.new(1, -390, 1, -58)
+        prev.BackgroundColor3 = T.BG
+        pcall(function() prev:SetAttribute("ThemeColorRole_BackgroundColor3", "BG") end)
+        prev.BorderSizePixel = 0
+        prev.ClipsDescendants = true
+        prev.ZIndex = 4001
+        Corner(prev, 8)
+        Stroke(prev, T.Bd2, 1, 0.3)
+
+        local function box(parent, pos, size, role, z, corner)
+            local f = Instance.new("Frame")
+            f.Parent = parent
+            f.Position = pos
+            f.Size = size
+            f.BackgroundColor3 = T[role]
+            pcall(function() f:SetAttribute("ThemeColorRole_BackgroundColor3", role) end)
+            f.BorderSizePixel = 0
+            f.ZIndex = z
+            Corner(f, corner or 6)
+            return f
+        end
+        local function text(parent, pos, size, str, role, size2, font)
+            local l = Instance.new("TextLabel")
+            l.Parent = parent
+            l.Position = pos
+            l.Size = size
+            l.BackgroundTransparency = 1
+            l.Font = font or FM
+            l.TextSize = size2 or 12
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            l.Text = str
+            l.TextColor3 = T[role]
+            l.ZIndex = 4004
+            pcall(function() l:SetAttribute("ThemeColorRole_TextColor3", role) end)
+            return l
+        end
+
+        -- Miniature of the real hub: sidebar rail, a card with a toggle and a slider row, and a HUD
+        -- pill. Every piece is theme-attributed, so it is repainted by the same pass as the hub.
+        local side = box(prev, UDim2.new(0, 10, 0, 10), UDim2.new(0, 74, 1, -20), "Sidebar", 4002, 8)
+        box(side, UDim2.new(0, 6, 0, 10), UDim2.new(1, -12, 0, 22), "ActiveBg", 4003, 5)
+        text(side, UDim2.new(0, 12, 0, 10), UDim2.new(1, -16, 0, 22), "Combat", "Tx", 11)
+        box(side, UDim2.new(0, 6, 0, 36), UDim2.new(1, -12, 0, 22), "Hover", 4003, 5)
+        text(side, UDim2.new(0, 12, 0, 36), UDim2.new(1, -16, 0, 22), "Visuals", "Tx3", 11)
+        text(side, UDim2.new(0, 12, 0, 62), UDim2.new(1, -16, 0, 22), "Player", "Tx4", 11)
+
+        local card = box(prev, UDim2.new(0, 94, 0, 10), UDim2.new(1, -104, 0, 132), "Card", 4002, 8)
+        Stroke(card, T.Bd, 1, 0.4)
+        text(card, UDim2.new(0, 10, 0, 6), UDim2.new(1, -20, 0, 18), "Aimbot", "Tx", 12, FB)
+        text(card, UDim2.new(0, 10, 0, 30), UDim2.new(1, -70, 0, 18), "Silent Aim", "Tx2", 12)
+        local tgOn = box(card, UDim2.new(1, -48, 0, 32), UDim2.fromOffset(34, 16), "TgOn", 4003, 8)
+        box(tgOn, UDim2.new(1, -15, 0.5, -6), UDim2.fromOffset(12, 12), "KnobOn", 4004, 6)
+        text(card, UDim2.new(0, 10, 0, 54), UDim2.new(1, -70, 0, 18), "Wallbang", "Tx2", 12)
+        local tgOff = box(card, UDim2.new(1, -48, 0, 56), UDim2.fromOffset(34, 16), "TgOff", 4003, 8)
+        box(tgOff, UDim2.new(0, 3, 0.5, -6), UDim2.fromOffset(12, 12), "KnobOff", 4004, 6)
+        text(card, UDim2.new(0, 10, 0, 78), UDim2.new(1, -20, 0, 18), "FOV", "Tx3", 12)
+        local tr = box(card, UDim2.new(0, 10, 0, 102), UDim2.new(1, -20, 0, 6), "Elev", 4003, 3)
+        box(tr, UDim2.new(0, 0, 0, 0), UDim2.fromScale(0.55, 1), "Accent", 4004, 3)
+
+        local hud = box(prev, UDim2.new(0, 94, 0, 152), UDim2.new(1, -104, 0, 40), "Elev", 4002, 8)
+        Stroke(hud, T.Bd2, 1, 0.4)
+        box(hud, UDim2.new(0, 10, 0.5, -4), UDim2.fromOffset(8, 8), "Accent", 4003, 4)
+        text(hud, UDim2.new(0, 26, 0, 0), UDim2.new(1, -36, 1, 0), "MURDERER   38ms   240fps", "Tx2", 11)
+
+        local swatchBig = box(prev, UDim2.new(0, 94, 0, 202), UDim2.new(1, -104, 0, 34), "Accent", 4002, 8)
+        local swatchTxt = text(swatchBig, UDim2.new(0, 10, 0, 0), UDim2.new(1, -20, 1, 0), "Accent", "BG", 12, FB)
+        swatchTxt.ZIndex = 4005
+
+        -- ---- role swatches ----
+        local function rebuildRoles()
+            for _, c in ipairs(roleList:GetChildren()) do
+                if not c:IsA("UIListLayout") then c:Destroy() end
+            end
+            table.clear(swatchRows)
+            for i, role in ipairs(activeTab.roles) do
+                local b = Instance.new("TextButton")
+                b.Parent = roleList
+                b.LayoutOrder = i
+                b.Size = UDim2.new(1, -6, 0, 26)
+                b.BackgroundColor3 = T.Elev
+                pcall(function() b:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+                b.BorderSizePixel = 0
+                b.AutoButtonColor = false
+                b.Font = FM
+                b.TextSize = 12
+                b.Text = ""
+                b.ZIndex = 4003
+                Corner(b, 6)
+                local st = Stroke(b, T.Accent, 2, 1)
+
+                local chip = Instance.new("Frame")
+                chip.Parent = b
+                chip.Position = UDim2.new(0, 5, 0.5, -8)
+                chip.Size = UDim2.fromOffset(16, 16)
+                chip.BorderSizePixel = 0
+                chip.BackgroundColor3 = colOf(role)
+                chip.ZIndex = 4004
+                Corner(chip, 4)
+
+                local nm = Instance.new("TextLabel")
+                nm.Parent = b
+                nm.BackgroundTransparency = 1
+                nm.Position = UDim2.new(0, 28, 0, 0)
+                nm.Size = UDim2.new(1, -34, 1, 0)
+                nm.Font = FM
+                nm.TextSize = 12
+                nm.TextXAlignment = Enum.TextXAlignment.Left
+                nm.Text = role
+                nm.TextColor3 = T.Tx2
+                nm.ZIndex = 4004
+                pcall(function() nm:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+
+                swatchRows[#swatchRows + 1] = { role = role, chip = chip, stroke = st }
+                b.MouseButton1Click:Connect(function()
+                    SFX.Click()
+                    selected = role
+                    loadRole()
+                end)
+            end
+            refreshSwatches()
+        end
+
+        refreshSwatches = function()
+            for _, r in ipairs(swatchRows) do
+                r.chip.BackgroundColor3 = colOf(r.role)
+                r.stroke.Transparency = (r.role == selected) and 0 or 1
+            end
+            if swatchTxt then swatchTxt.Text = selected or "Accent" end
+            if swatchBig then
+                swatchBig.BackgroundColor3 = colOf(selected or "Accent")
+                pcall(function() swatchBig:SetAttribute("ThemeColorRole_BackgroundColor3", selected or "Accent") end)
+            end
+        end
+
+        loadRole = function()
+            local c = colOf(selected)
+            S._ThemeR, S._ThemeG = math.round(c.R * 255), math.round(c.G * 255)
+            S._ThemeB = math.round(c.B * 255)
+            rSet.set(S._ThemeR); gSet.set(S._ThemeG); bSet.set(S._ThemeB)
+            refreshSwatches()
+        end
+
+        local function pickTab(tab)
+            activeTab = tab
+            for _, tb in ipairs(tabBtns) do
+                local on = tb.tab == tab
+                tb.btn.BackgroundColor3 = on and T.ActiveBg or T.Elev
+                pcall(function() tb.btn:SetAttribute("ThemeColorRole_BackgroundColor3", on and "ActiveBg" or "Elev") end)
+                tb.btn.TextColor3 = on and T.Tx or T.Tx3
+                pcall(function() tb.btn:SetAttribute("ThemeColorRole_TextColor3", on and "Tx" or "Tx3") end)
+            end
+            selected = tab.roles[1]
+            rebuildRoles()
+            loadRole()
+        end
+
+        for i, tab in ipairs(TABS) do
+            local b = Instance.new("TextButton")
+            b.Parent = tabCol
+            b.LayoutOrder = i
+            b.Size = UDim2.new(1, 0, 0, 30)
+            b.BackgroundColor3 = T.Elev
+            b.BorderSizePixel = 0
+            b.AutoButtonColor = false
+            b.Font = FM
+            b.TextSize = 12
+            b.Text = tab.name
+            b.TextColor3 = T.Tx3
+            b.ZIndex = 4002
+            Corner(b, 6)
+            tabBtns[#tabBtns + 1] = { btn = b, tab = tab }
+            b.MouseButton1Click:Connect(function() SFX.Click(); pickTab(tab) end)
+        end
+        pickTab(TABS[1])
+    end
+
+    S._OpenThemeEditor = function()
+        if not win then
+            local ok, err = pcall(build)
+            if not ok then
+                warn("[Inertia] theme window: " .. tostring(err))
+                return
+            end
+        end
+        win.Visible = not win.Visible
+        if win.Visible then loadRole() end
     end
 end
 
@@ -5397,6 +5917,19 @@ if S._BuildThemeEditor then
     -- take the whole menu build down with it.
     pcall(S._BuildThemeEditor)
     S._BuildThemeEditor = nil
+end
+-- After the inline editor, never before: _BuildThemeEditor assigns S._OpenThemeEditor, and on
+-- desktop the window has to be the thing that assignment ends up pointing at.
+if S._BuildThemeWindow then
+    pcall(S._BuildThemeWindow)
+    S._BuildThemeWindow = nil
+end
+-- Re-apply a saved font family on boot. The theme itself replays through applyTheme, but fonts are
+-- stamped on each widget at creation, so nothing else would put a custom one back.
+-- Skipped for the stock family: re-applying it would walk every SG descendant at boot to set the
+-- fonts they were already built with.
+if S.UIFont and S.UIFont ~= "Gotham" and S._ApplyUIFont then
+    task.defer(function() pcall(S._ApplyUIFont, S.UIFont) end)
 end
 -- Both halves finally exist here: the settings-modal closure and the asset list + fetcher.
 if S._BuildWallpaperPicker then
@@ -12646,7 +13179,13 @@ local function loadConfig(name)
     end
     
     if type(S._UpdateAvatarMods) == "function" then pcall(S._UpdateAvatarMods) end
-    if type(applyTheme) == "function" then pcall(applyTheme) end
+    -- With no argument this was applyTheme(nil) -> Themes[nil] -> nil -> an immediate return, so
+    -- loading a config never repainted anything. The palette was restored into Themes.Custom
+    -- correctly and then simply never applied: "the theme saves but does not come back".
+    if type(applyTheme) == "function" then
+        pcall(applyTheme, (S.SelectedTheme and Themes[S.SelectedTheme]) and S.SelectedTheme or "Default")
+    end
+    if S.UIFont and S._ApplyUIFont then pcall(S._ApplyUIFont, S.UIFont) end
     if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
     -- Spawned for the same reason as the catalog refresh: this walks Database.Sync, which means
     -- requiring a game module, and doing that on the restore thread costs that thread its ability
