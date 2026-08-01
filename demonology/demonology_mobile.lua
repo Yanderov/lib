@@ -1,5 +1,4 @@
 _G.INERTIA_MOBILE = true
-
 local RS = game:GetService("RunService")
 local PS = game:GetService("Players")
 local Lighting = game:GetService("Lighting")

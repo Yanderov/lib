@@ -87,7 +87,8 @@ local S = {
     Orbit = false, OrbitSpeed = 20, OrbitDist = 6, OrbitHeight = 0,
     Bang = false, BangSpeed = 3, Jerk = false,
     BlockJump = false,
-    InvisibleFE = false, FreeCam = false, Blink = false, ClickFling = false,
+    FreeCam = false, Blink = false, ClickFling = false,
+    InvisHeight = 9000, InvisReturn = true,
     Fling = false, FlyFling = false, InvisFling = false,
     FastAutofarm = false, FastAutofarmSpeed = 20,
 
@@ -9108,9 +9109,40 @@ end
 
 local startInvisibleFE, stopInvisibleFE, toggleInvisible, toggleBlink
 do
+
     local running = false
     local conns = {}
-    local realChar, cloneChar = nil, nil
+    local savedCF = nil
+
+    local function killPlatform()
+        if S.VoidPlatform then
+            pcall(function() S.VoidPlatform:Destroy() end)
+            S.VoidPlatform = nil
+        end
+    end
+
+    local floorY = 0
+
+    local function ensurePlatform(pos)
+        local plat = S.VoidPlatform
+        if not plat or not plat.Parent then
+            plat = Instance.new("Part")
+            plat.Name = "InertiaInvisFloor"
+            plat.Anchored = true
+            plat.CanCollide = true
+            plat.CanQuery = false
+            plat.CanTouch = false
+            plat.CastShadow = false
+            plat.Transparency = 1
+            plat.Size = Vector3.new(80, 2, 80)
+            plat.Parent = workspace
+            S.VoidPlatform = plat
+        end
+
+        plat.CFrame = CFrame.new(pos.X, floorY, pos.Z)
+        return plat
+    end
+
     stopInvisibleFE = function()
         if not running then return end
         running = false
@@ -9118,66 +9150,84 @@ do
         if toggleInvisible and toggleInvisible.state then
             pcall(function() toggleInvisible.trigger() end)
         end
-        local ok = pcall(function()
-            local real, clone = realChar, cloneChar
-            local cf
-            if clone and clone:FindFirstChild("HumanoidRootPart") then cf = clone.HumanoidRootPart.CFrame end
-            if real and real:FindFirstChildOfClass("Humanoid") and real:FindFirstChild("HumanoidRootPart") then
-                real.Parent = workspace
-                if cf then real.HumanoidRootPart.CFrame = cf end
-                LP.Character = real
-                pcall(function() workspace.CurrentCamera.CameraSubject = real:FindFirstChildOfClass("Humanoid") end)
-                pcall(function() real.Animate.Disabled = true; real.Animate.Disabled = false end)
-                if clone then clone:Destroy() end
-            else
-                if clone then pcall(function() clone:Destroy() end) end
-                S._resetMyCharacter()
+        killPlatform()
+        local returned = false
+        if S.InvisReturn ~= false and savedCF then
+            local char = LP.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                pcall(function()
+                    hrp.CFrame = savedCF
+
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end)
+                returned = true
             end
-        end)
-        realChar, cloneChar = nil, nil
-        if not ok then S._resetMyCharacter() end
-        Notify("Invisible", "You are visible again", 3)
+        end
+        savedCF = nil
+        Notify("Invisible", returned and "Back where you were" or "You are visible again", 3)
     end
+
     startInvisibleFE = function()
         if running then return end
         if toggleBlink and toggleBlink.state then toggleBlink.trigger() end
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if not (char and hrp and hum) then Notify("Invisible", "No character", 3); return end
-        running = true
-        local ok = pcall(function()
-            char.Archivable = true
-            local cf = hrp.CFrame
-            local clone = char:Clone()
-            clone.Parent = workspace
-            if clone:FindFirstChild("HumanoidRootPart") then clone.HumanoidRootPart.CFrame = cf end
-            for _, p in ipairs(clone:GetDescendants()) do
-                if p:IsA("BasePart") then p.Transparency = (p.Name == "HumanoidRootPart") and 1 or 0.6 end
-            end
-            LP.Character = clone
-            pcall(function() workspace.CurrentCamera.CameraSubject = clone:FindFirstChildOfClass("Humanoid") end)
-            pcall(function() clone.Animate.Disabled = true; clone.Animate.Disabled = false end)
-            char.Parent = game:GetService("Lighting")
-            realChar, cloneChar = char, clone
-            local ch = clone:FindFirstChildOfClass("Humanoid")
+        if not (char and hrp and hum) then Notify("Invisible", "No character", 3) return end
+        if hum.Health <= 0 then Notify("Invisible", "You are dead", 3) return end
 
-            if ch then table.insert(conns, tc(ch.Died:Connect(function() stopInvisibleFE() end))) end
-            local Void = workspace.FallenPartsDestroyHeight
-            table.insert(conns, tc(RunService.Stepped:Connect(function()
-                local r = cloneChar and cloneChar:FindFirstChild("HumanoidRootPart")
-                if r and r.Position.Y <= Void + 5 then stopInvisibleFE() end
-            end)))
+        savedCF = hrp.CFrame
+        running = true
+
+        local height = math.clamp(tonumber(S.InvisHeight) or 9000, 500, 40000)
+
+        local base = hrp.Position
+        local target = Vector3.new(
+            base.X + math.random(-400, 400),
+            height,
+            base.Z + math.random(-400, 400))
+
+        floorY = height - 3.5
+        local ok = pcall(function()
+            ensurePlatform(target)
+            hrp.CFrame = CFrame.new(target) * (savedCF - savedCF.Position)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         end)
         if not ok then
             running = false
-            conns = disconnectAll(conns)
-            realChar, cloneChar = nil, nil
-            S._resetMyCharacter()
+            savedCF = nil
+            killPlatform()
             Notify("Invisible", "Failed (game blocks it)", 3)
-        else
-            Notify("Invisible", "Invisible to others — you CAN'T shoot while on (for hiding)", 4)
+            return
         end
+
+        table.insert(conns, tc(hum.Died:Connect(function() stopInvisibleFE() end)))
+
+        table.insert(conns, tc(LP.CharacterAdded:Connect(function()
+            savedCF = nil
+            task.defer(stopInvisibleFE)
+        end)))
+        table.insert(conns, tc(RunService.Heartbeat:Connect(function()
+            if not running then return end
+            local c = LP.Character
+            local r = c and c:FindFirstChild("HumanoidRootPart")
+            if not r then return end
+            local p = r.Position
+
+            if p.Y < height - 400 then
+                pcall(function()
+                    r.CFrame = CFrame.new(p.X, height, p.Z)
+                    r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                end)
+                p = r.Position
+            end
+            ensurePlatform(p)
+        end)))
+
+        Notify("Invisible", "Hidden " .. math.floor(height) .. " studs up — walk freely, toggle off to return", 4)
     end
 end
 
@@ -9380,6 +9430,8 @@ do
     toggleInvisible = mkToggle(secM, "Invisible", false, function(v)
         if v then startInvisibleFE() else stopInvisibleFE() end
     end, 6)
+    mkSlider(secM, "Invisible Height", 500, 40000, 9000, function(v) S.InvisHeight = v end, 6.1)
+    mkToggle(secM, "Return On Disable", true, function(v) S.InvisReturn = v end, 6.2)
     local secTr = mkSection(Pages.Motion, "Troll", 8)
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(secTr) end
     mkToggle(secTr, "Spinbot", false, function(v) S.Spinbot = v end, 1)

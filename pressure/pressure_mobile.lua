@@ -1,5 +1,4 @@
 _G.INERTIA_MOBILE = true
-
 if _G.Pressure_Script then
 	pcall(function() _G.Pressure_Script:Destroy() end)
 	_G.Pressure_Script = nil
