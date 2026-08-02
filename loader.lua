@@ -1,641 +1,312 @@
+--[[
+    ╔════════════════════════════════════════════════════════════════════════╗
+    ║                     INERTIAHUB UNIVERSAL AUTO-LOADER                   ║
+    ║                     Aesthetic: Matte Dark Charcoal / Zinc              ║
+    ║                     Telemetry: Deduplicated Roblox UserId Hook         ║
+    ╚════════════════════════════════════════════════════════════════════════╝
+]]
+
+local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local LocalPlayer = Players.LocalPlayer
+local PlaceId = game.PlaceId
+local GameId = game.GameId
 
-local function destroyOld(parent)
-	if not parent then return end
-	local old = parent:FindFirstChild("GameLoaderUI")
-	if old then old:Destroy() end
-end
-destroyOld(CoreGui)
-if LocalPlayer then destroyOld(LocalPlayer:FindFirstChildOfClass("PlayerGui")) end
+-- Configurable Base URL (Website Host)
+local BASE_URL = "http://localhost:3000"
 
-local parentGui = CoreGui
-pcall(function() if gethui then parentGui = gethui() end end)
-if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
-destroyOld(parentGui)
-
-local T = {
-	BG = Color3.fromRGB(6, 6, 7),
-	Card = Color3.fromRGB(13, 13, 15),
-	Elev = Color3.fromRGB(21, 21, 24),
-	Hover = Color3.fromRGB(30, 30, 34),
-	Border = Color3.fromRGB(42, 42, 47),
-	White = Color3.fromRGB(255, 255, 255),
-	Text = Color3.fromRGB(238, 238, 240),
-	Dim = Color3.fromRGB(128, 128, 136),
-	Faint = Color3.fromRGB(84, 84, 92),
-	Good = Color3.fromRGB(126, 214, 156),
-	Bad = Color3.fromRGB(228, 100, 100),
-}
-
-local function gameIcon(id)
-	return "rbxthumb://type=GameIcon&id=" .. tostring(id) .. "&w=150&h=150"
+-- Executor Identification
+local executorName = "Potassium"
+if identifyexecutor then
+    executorName = tostring(identifyexecutor())
+elseif KRNL_LOADED then
+    executorName = "Volt"
+elseif syn then
+    executorName = "Velocity"
 end
 
-local function corner(object, radius)
-	local value = Instance.new("UICorner")
-	value.CornerRadius = UDim.new(0, radius or 10)
-	value.Parent = object
-	return value
-end
-local function stroke(object, transparency, color)
-	local value = Instance.new("UIStroke")
-	value.Color = color or T.Border
-	value.Thickness = 1
-	value.Transparency = transparency or 0.45
-	value.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	value.Parent = object
-	return value
-end
-local function text(parent, value, size, color, font)
-	local label = Instance.new("TextLabel")
-	label.Parent = parent
-	label.BackgroundTransparency = 1
-	label.Text = value or ""
-	label.TextSize = size or 13
-	label.TextColor3 = color or T.Text
-	label.Font = font or Enum.Font.Gotham
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	return label
-end
-local function tween(object, time, props, style, dir)
-	return TweenService:Create(object, TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
-end
-local function grad(object, topColor, bottomColor, rotation)
-	local value = Instance.new("UIGradient")
-	value.Color = ColorSequence.new(topColor, bottomColor)
-	value.Rotation = rotation or 90
-	value.Parent = object
-	return value
+-- Telemetry Reporter (Deduplicated Roblox Account Analytics)
+local function reportTelemetry(targetGame)
+    task.spawn(function()
+        pcall(function()
+            local requestFunc = syn and syn.request or http_request or request or (http and http.request)
+            if requestFunc and LocalPlayer then
+                requestFunc({
+                    Url = BASE_URL .. "/api/v1/telemetry/ping",
+                    Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = HttpService:JSONEncode({
+                        userId = tostring(LocalPlayer.UserId),
+                        game = targetGame,
+                        executor = executorName,
+                        placeId = tostring(PlaceId),
+                        timestamp = os.time()
+                    })
+                })
+            end
+        end)
+    end)
 end
 
-local MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local REPO = "https://raw.githubusercontent.com/Yanderov/lib/refs/heads/main/"
+-- GUI Builder
+local function createLoaderUI()
+    local parentTarget = nil
+    pcall(function() parentTarget = CoreGui end)
+    if not parentTarget then
+        parentTarget = LocalPlayer:WaitForChild("PlayerGui")
+    end
 
-local Games = {
-	{ name = "Murder Mystery 2", desc = "Innocent, Sheriff, Murderer", icon = 66654135, file = "mm2/mm2" },
+    -- Remove existing loader
+    local existing = parentTarget:FindFirstChild("InertiaLoaderUI")
+    if existing then existing:Destroy() end
 
-	{ name = "Demonology", desc = "Co-op ghost hunting", icon = 6170143659, file = "demonology/demonology" },
-	{ name = "Pressure", desc = "Hadal Blacksite, deep-sea horror", icon = 4367208330, file = "pressure/pressure" },
-}
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "InertiaLoaderUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.DisplayOrder = 99999
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.Parent = parentTarget
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "GameLoaderUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 2147483646
-pcall(function() ScreenGui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets end)
-ScreenGui.Parent = parentGui
+    -- Main Container
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    MainFrame.Size = UDim2.new(0, 360, 0, 160)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 17)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.ClipsDescendants = true
+    MainFrame.BackgroundTransparency = 1
+    MainFrame.Parent = ScreenGui
 
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Parent = ScreenGui
-Main.AnchorPoint = Vector2.new(0.5, 0.5)
-Main.Position = UDim2.fromScale(0.5, 0.52)
-Main.BackgroundColor3 = T.BG
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.ClipsDescendants = true
-corner(Main, 16)
-stroke(Main, 0.3)
-grad(Main, Color3.fromRGB(11, 11, 13), Color3.fromRGB(4, 4, 5))
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 14)
+    MainCorner.Parent = MainFrame
 
-local Scale = Instance.new("UIScale")
-Scale.Scale = 0.92
-Scale.Parent = Main
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Color = Color3.fromRGB(39, 39, 42)
+    MainStroke.Thickness = 1
+    MainStroke.Transparency = 1
+    MainStroke.Parent = MainFrame
 
-local Header = Instance.new("Frame")
-Header.Name = "Header"
-Header.Parent = Main
-Header.BackgroundTransparency = 1
-Header.Active = true
+    -- Header / Title
+    local Header = Instance.new("Frame")
+    Header.Name = "Header"
+    Header.Size = UDim2.new(1, 0, 0, 48)
+    Header.BackgroundTransparency = 1
+    Header.Parent = MainFrame
 
-local Brand = text(Header, "INERTIA", 18, T.White, Enum.Font.GothamBold)
-local BrandSub = text(Header, "script launcher", 11, T.Faint)
+    local LogoIcon = Instance.new("ImageLabel")
+    LogoIcon.Size = UDim2.new(0, 24, 0, 24)
+    LogoIcon.Position = UDim2.new(0, 18, 0, 12)
+    LogoIcon.BackgroundTransparency = 1
+    LogoIcon.Image = "rbxassetid://10723345518" -- Diamond / Shield icon
+    LogoIcon.ImageColor3 = Color3.fromRGB(240, 240, 240)
+    LogoIcon.Parent = Header
 
-local Close = Instance.new("TextButton")
-Close.Parent = Header
-Close.AnchorPoint = Vector2.new(1, 0.5)
-Close.BackgroundColor3 = T.Elev
-Close.BorderSizePixel = 0
-Close.AutoButtonColor = false
-Close.Text = "×"
-Close.TextColor3 = T.Dim
-Close.Font = Enum.Font.GothamMedium
-corner(Close, 9)
-local closeStroke = stroke(Close, 0.5)
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Position = UDim2.new(0, 50, 0, 10)
+    TitleLabel.Size = UDim2.new(0, 160, 0, 16)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "INERTIA HUB"
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.TextSize = 13
+    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = Header
 
-local Switch = Instance.new("Frame")
-Switch.Parent = Header
-Switch.AnchorPoint = Vector2.new(1, 0.5)
-Switch.BackgroundColor3 = T.Elev
-Switch.BorderSizePixel = 0
-corner(Switch, 10)
-stroke(Switch, 0.55)
+    local SubtitleLabel = Instance.new("TextLabel")
+    SubtitleLabel.Position = UDim2.new(0, 50, 0, 26)
+    SubtitleLabel.Size = UDim2.new(0, 160, 0, 12)
+    SubtitleLabel.BackgroundTransparency = 1
+    SubtitleLabel.Text = "Universal Execution Engine"
+    SubtitleLabel.TextColor3 = Color3.fromRGB(113, 113, 122)
+    SubtitleLabel.TextSize = 10
+    SubtitleLabel.Font = Enum.Font.GothamMedium
+    SubtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SubtitleLabel.Parent = Header
 
-local SwitchPill = Instance.new("Frame")
-SwitchPill.Parent = Switch
-SwitchPill.BackgroundColor3 = T.Hover
-SwitchPill.BorderSizePixel = 0
-SwitchPill.Size = UDim2.new(0.5, -4, 1, -6)
-SwitchPill.Position = UDim2.new(0, 2, 0, 3)
-corner(SwitchPill, 8)
-stroke(SwitchPill, 0.6)
+    -- Badge
+    local Badge = Instance.new("Frame")
+    Badge.Size = UDim2.new(0, 72, 0, 20)
+    Badge.Position = UDim2.new(1, -90, 0, 14)
+    Badge.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+    Badge.BorderSizePixel = 0
+    Badge.Parent = Header
 
-local function mkSwitchOption(label, isRight)
-	local button = Instance.new("TextButton")
-	button.Parent = Switch
-	button.Size = UDim2.new(0.5, 0, 1, 0)
-	button.Position = isRight and UDim2.new(0.5, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
-	button.BackgroundTransparency = 1
-	button.AutoButtonColor = false
-	button.Font = Enum.Font.GothamMedium
-	button.Text = label
-	button.ZIndex = 2
-	return button
-end
-local PcOption = mkSwitchOption("PC", false)
-local MobileOption = mkSwitchOption("MOBILE", true)
+    local BadgeCorner = Instance.new("UICorner")
+    BadgeCorner.CornerRadius = UDim.new(0, 6)
+    BadgeCorner.Parent = Badge
 
-local List = Instance.new("ScrollingFrame")
-List.Name = "Games"
-List.Parent = Main
-List.BackgroundTransparency = 1
-List.BorderSizePixel = 0
-List.CanvasSize = UDim2.new()
-List.ScrollBarThickness = 0
-List.ScrollingEnabled = false
+    local BadgeLabel = Instance.new("TextLabel")
+    BadgeLabel.Size = UDim2.new(1, 0, 1, 0)
+    BadgeLabel.BackgroundTransparency = 1
+    BadgeLabel.Text = executorName
+    BadgeLabel.TextColor3 = Color3.fromRGB(161, 161, 170)
+    BadgeLabel.TextSize = 9
+    BadgeLabel.Font = Enum.Font.GothamBold
+    BadgeLabel.Parent = Badge
 
-local Layout = Instance.new("UIListLayout")
-Layout.Parent = List
-Layout.SortOrder = Enum.SortOrder.LayoutOrder
+    -- Status Text
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Name = "StatusLabel"
+    StatusLabel.Position = UDim2.new(0, 18, 0, 62)
+    StatusLabel.Size = UDim2.new(1, -36, 0, 20)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = "Detecting environment..."
+    StatusLabel.TextColor3 = Color3.fromRGB(212, 212, 216)
+    StatusLabel.TextSize = 11
+    StatusLabel.Font = Enum.Font.GothamMedium
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatusLabel.Parent = MainFrame
 
-local Cards = {}
-local busy = false
-local setLoading
+    -- Progress Bar Track
+    local ProgressTrack = Instance.new("Frame")
+    ProgressTrack.Name = "ProgressTrack"
+    ProgressTrack.Position = UDim2.new(0, 18, 0, 92)
+    ProgressTrack.Size = UDim2.new(1, -36, 0, 6)
+    ProgressTrack.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+    ProgressTrack.BorderSizePixel = 0
+    ProgressTrack.Parent = MainFrame
 
-local readfileF = type(readfile) == "function" and readfile or nil
-local isfileF = type(isfile) == "function" and isfile or nil
-local listfilesF = type(listfiles) == "function" and listfiles or nil
+    local ProgressCorner = Instance.new("UICorner")
+    ProgressCorner.CornerRadius = UDim.new(0, 3)
+    ProgressCorner.Parent = ProgressTrack
 
-if not readfileF or not isfileF then
-	warn("INERTIA launcher: executor exposes no readfile/isfile — local-first disabled, GitHub only")
-end
+    local ProgressBar = Instance.new("Frame")
+    ProgressBar.Name = "ProgressBar"
+    ProgressBar.Size = UDim2.new(0, 0, 1, 0)
+    ProgressBar.BackgroundColor3 = Color3.fromRGB(220, 220, 225)
+    ProgressBar.BorderSizePixel = 0
+    ProgressBar.Parent = ProgressTrack
 
-local loaderDir
-do
-	local src = (debug and debug.getinfo and debug.getinfo(1, "S") or {}).source
-	if type(src) == "string" and src:sub(1, 1) == "@" then
-		src = src:match("^(.-)[/\\][^/\\]*$")
-		if type(src) == "string" and #src > 0 then loaderDir = src end
-	end
-end
+    local BarCorner = Instance.new("UICorner")
+    BarCorner.CornerRadius = UDim.new(0, 3)
+    BarCorner.Parent = ProgressBar
 
-local function localPayloadSource(payloadPath)
-	local names = { payloadPath .. ".lua", payloadPath .. ".txt" }
+    -- Footer / Info
+    local FooterLabel = Instance.new("TextLabel")
+    FooterLabel.Position = UDim2.new(0, 18, 0, 114)
+    FooterLabel.Size = UDim2.new(1, -36, 0, 16)
+    FooterLabel.BackgroundTransparency = 1
+    FooterLabel.Text = "t.me/+QXgW7cwKsPc3MjA1 • v2.9"
+    FooterLabel.TextColor3 = Color3.fromRGB(82, 82, 91)
+    FooterLabel.TextSize = 9
+    FooterLabel.Font = Enum.Font.Gotham
+    FooterLabel.TextXAlignment = Enum.TextXAlignment.Right
+    FooterLabel.Parent = MainFrame
 
-	local function readAt(path)
-		if not readfileF then return nil end
-		local ok, data = pcall(readfileF, path)
-		if ok and type(data) == "string" and #data > 0 then return data end
-		return nil
-	end
+    -- Fade In Animation
+    TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0
+    }):Play()
+    TweenService:Create(MainStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Transparency = 0
+    }):Play()
 
-	local function existsAt(path)
-		if not isfileF then return readAt(path) ~= nil end
-		local ok, is = pcall(isfileF, path)
-		return ok and is == true
-	end
+    local function setProgress(pct, text)
+        StatusLabel.Text = text
+        TweenService:Create(ProgressBar, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
+        }):Play()
+    end
 
-	local dirs = { "inertia/", "scripts/", "loadstring/", "autosave/", "" }
-	if loaderDir then dirs[#dirs + 1] = loaderDir .. "/" end
-	for _, dir in ipairs(dirs) do
-		for _, name in ipairs(names) do
-			local path = dir .. name
-			if existsAt(path) then
-				local data = readAt(path)
-				if data then return data, path end
-			end
-		end
-	end
+    local function dismiss()
+        local tween = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0.5, 0, 0.48, 0)
+        })
+        TweenService:Create(MainStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Transparency = 1
+        }):Play()
+        tween:Play()
+        tween.Completed:Connect(function()
+            ScreenGui:Destroy()
+        end)
+    end
 
-	local devRoots = {
-		"C:\\Users\\sadhasdkfj\\Desktop\\script\\",
-	}
-	for _, root in ipairs(devRoots) do
-		for _, name in ipairs(names) do
-			local path = root .. name
-			if existsAt(path) then
-				local data = readAt(path)
-				if data then return data, path end
-			end
-		end
-	end
-
-	if listfilesF then
-		local queue, head = { "" }, 1
-		local depth = { [""] = 0 }
-		while head <= #queue do
-			local dir = queue[head]
-			head = head + 1
-			if depth[dir] < 6 then
-				local ok, items = pcall(listfilesF, dir)
-				if ok and type(items) == "table" then
-					for _, item in ipairs(items) do
-						if type(item) == "string" and item ~= "" then
-							local isDir = item:sub(-1) == "/" or item:sub(-1) == "\\"
-							if isDir then
-								depth[item] = depth[dir] + 1
-								queue[#queue + 1] = item
-							else
-								local leaf = item:match("[^/\\]+$")
-								for _, name in ipairs(names) do
-									if leaf == name then
-										local data = readAt(item)
-										if data then return data, item end
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-
-	return nil, nil
+    return { setProgress = setProgress, dismiss = dismiss }
 end
 
-local function launch(entry)
-	if busy then return end
-	busy = true
-	setLoading(entry, "downloading")
-	task.defer(function()
+-- Initialization Flow
+local loader = createLoaderUI()
+task.wait(0.2)
 
-		_G.INERTIA_MOBILE = MOBILE
+loader.setProgress(0.25, "Matching Game Universe...")
 
-		local payloadPath = entry.file .. (MOBILE and "_mobile" or "")
-		local source, usedPath = localPayloadSource(payloadPath)
+local MM2_PLACES = { [142823291] = true, [335132309] = true, [66654135] = true }
+local PRESSURE_PLACES = { [12411473842] = true, [14120361937] = true }
+local DEMONOLOGY_PLACES = { [15886981881] = true, [18451885664] = true }
 
-		if source then
-			warn("INERTIA launcher: local source " .. tostring(usedPath))
-			setLoading(entry, "local · " .. tostring(usedPath and usedPath:match("[^/\\]+$") or payloadPath))
-		else
-			local sha = "main"
-			local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
-			if okApi and type(apiRes) == "string" then
-				local extracted = apiRes:match('"sha"%s*:%s*"([^"]+)"')
-				if extracted then sha = extracted end
-			end
-			local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".lua"
-			local ok, gSrc = pcall(function() return game:HttpGet(url) end)
-			if ok and type(gSrc) == "string" and #gSrc > 0 then
-				source = gSrc
-			else
-				url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".txt"
-				ok, gSrc = pcall(function() return game:HttpGet(url) end)
-				if ok and type(gSrc) == "string" and #gSrc > 0 then
-					source = gSrc
-				end
-			end
-			if source then
-				warn("INERTIA launcher: remote source " .. url)
-				setLoading(entry, "github · " .. payloadPath)
-			end
-		end
+local targetGame = "MM2"
+local scriptEndpoint = "/scripts/mm2.lua"
 
-		if not source then
-			busy = false
-			setLoading(entry, "no source found", true)
-			warn("INERTIA launcher: no local file and no network payload for " .. payloadPath)
-			return
-		end
-		setLoading(entry, "starting")
-
-		local chunk, compileError = loadstring(source)
-		if type(chunk) ~= "function" then
-			busy = false
-			setLoading(entry, "compile failed", true)
-			warn("INERTIA launcher: " .. entry.file .. " did not compile: " .. tostring(compileError))
-			return
-		end
-		local ran, err = pcall(chunk)
-		if not ran then
-			busy = false
-			setLoading(entry, "failed to start", true)
-			warn("INERTIA launcher: " .. entry.file .. " crashed: " .. tostring(err))
-			return
-		end
-		setLoading(entry, "ready")
-		task.wait(0.35)
-		if ScreenGui.Parent then
-			tween(Scale, 0.18, { Scale = 0.9 }):Play()
-			tween(Main, 0.18, { BackgroundTransparency = 1 }):Play()
-			task.delay(0.2, function() if ScreenGui.Parent then ScreenGui:Destroy() end end)
-		end
-	end)
+if MM2_PLACES[PlaceId] then
+    targetGame = "MM2"
+    scriptEndpoint = "/scripts/mm2.lua"
+elseif PRESSURE_PLACES[PlaceId] then
+    targetGame = "Pressure"
+    scriptEndpoint = "/scripts/pressure.lua"
+elseif DEMONOLOGY_PLACES[PlaceId] then
+    targetGame = "Demonology"
+    scriptEndpoint = "/scripts/demonology.lua"
+else
+    -- Match by product name
+    local pName = ""
+    pcall(function()
+        pName = string.lower(MarketplaceService:GetProductInfo(PlaceId).Name or "")
+    end)
+    if string.find(pName, "pressure") then
+        targetGame = "Pressure"
+        scriptEndpoint = "/scripts/pressure.lua"
+    elseif string.find(pName, "demon") then
+        targetGame = "Demonology"
+        scriptEndpoint = "/scripts/demonology.lua"
+    else
+        targetGame = "MM2"
+        scriptEndpoint = "/scripts/mm2.lua"
+    end
 end
 
-for index, entry in ipairs(Games) do
-	local card = Instance.new("TextButton")
-	card.Name = entry.name
-	card.Parent = List
-	card.LayoutOrder = index
-	card.BackgroundColor3 = T.Card
-	card.BorderSizePixel = 0
-	card.AutoButtonColor = false
-	card.Text = ""
-	corner(card, 14)
-	local cardStroke = stroke(card, 0.5)
-	grad(card, Color3.fromRGB(18, 18, 21), Color3.fromRGB(11, 11, 13))
+loader.setProgress(0.55, "Identified Module: " .. targetGame)
+reportTelemetry(targetGame)
+task.wait(0.3)
 
-	local icon = Instance.new("ImageLabel")
-	icon.Name = "Icon"
-	icon.Parent = card
-	icon.BackgroundColor3 = T.Elev
-	icon.BorderSizePixel = 0
-	icon.Image = gameIcon(entry.icon)
-	icon.ScaleType = Enum.ScaleType.Crop
-	corner(icon, 12)
-	stroke(icon, 0.55)
+loader.setProgress(0.85, "Downloading Payload from Hub...")
 
-	local name = text(card, entry.name, 14, T.Text, Enum.Font.GothamMedium)
-	name.Name = "Title"
-	name.TextTruncate = Enum.TextTruncate.AtEnd
-
-	local desc = text(card, entry.desc, 11, T.Faint)
-	desc.Name = "Desc"
-	desc.TextTruncate = Enum.TextTruncate.AtEnd
-
-	local play = Instance.new("TextButton")
-	play.Name = "Play"
-	play.Parent = card
-	play.BackgroundColor3 = T.Elev
-	play.BorderSizePixel = 0
-	play.AutoButtonColor = false
-	play.Font = Enum.Font.GothamMedium
-	play.Text = "LAUNCH"
-	play.TextColor3 = T.Text
-	corner(play, 10)
-	local playStroke = stroke(play, 0.5)
-
-	local function hover(on)
-		tween(card, 0.14, { BackgroundColor3 = on and T.Elev or T.Card }):Play()
-		tween(cardStroke, 0.14, { Transparency = on and 0.25 or 0.5 }):Play()
-		tween(play, 0.14, { BackgroundColor3 = on and T.White or T.Elev }):Play()
-		play.TextColor3 = on and T.BG or T.Text
-		tween(playStroke, 0.14, { Transparency = on and 1 or 0.5 }):Play()
-	end
-	card.MouseEnter:Connect(function() if not busy then hover(true) end end)
-	card.MouseLeave:Connect(function() if not busy then hover(false) end end)
-	play.MouseEnter:Connect(function() if not busy then hover(true) end end)
-	play.MouseLeave:Connect(function() if not busy then hover(false) end end)
-
-	card.MouseButton1Click:Connect(function() launch(entry) end)
-	play.MouseButton1Click:Connect(function() launch(entry) end)
-
-	Cards[index] = { card = card, icon = icon, name = name, desc = desc, play = play, entry = entry }
-end
-
-local Overlay = Instance.new("Frame")
-Overlay.Name = "Loader"
-Overlay.Parent = Main
-Overlay.BackgroundColor3 = T.BG
-Overlay.BackgroundTransparency = 0.06
-Overlay.BorderSizePixel = 0
-Overlay.Size = UDim2.fromScale(1, 1)
-Overlay.Visible = false
-Overlay.ZIndex = 40
-
-local OverlayIcon = Instance.new("ImageLabel")
-OverlayIcon.Parent = Overlay
-OverlayIcon.AnchorPoint = Vector2.new(0.5, 1)
-OverlayIcon.BackgroundColor3 = T.Elev
-OverlayIcon.BorderSizePixel = 0
-OverlayIcon.ScaleType = Enum.ScaleType.Crop
-OverlayIcon.ZIndex = 41
-corner(OverlayIcon, 14)
-stroke(OverlayIcon, 0.55)
-
-local OverlayName = text(Overlay, "", 15, T.White, Enum.Font.GothamMedium)
-OverlayName.AnchorPoint = Vector2.new(0.5, 0)
-OverlayName.TextXAlignment = Enum.TextXAlignment.Center
-OverlayName.ZIndex = 41
-
-local OverlayStatus = text(Overlay, "", 11, T.Dim)
-OverlayStatus.AnchorPoint = Vector2.new(0.5, 0)
-OverlayStatus.TextXAlignment = Enum.TextXAlignment.Center
-OverlayStatus.ZIndex = 41
-
-local Track = Instance.new("Frame")
-Track.Parent = Overlay
-Track.AnchorPoint = Vector2.new(0.5, 0)
-Track.BackgroundColor3 = T.Elev
-Track.BorderSizePixel = 0
-Track.ZIndex = 41
-corner(Track, 99)
-
-local Sweep = Instance.new("Frame")
-Sweep.Parent = Track
-Sweep.BackgroundColor3 = T.White
-Sweep.BorderSizePixel = 0
-Sweep.Size = UDim2.new(0.34, 0, 1, 0)
-Sweep.ZIndex = 42
-corner(Sweep, 99)
-
-local sweepRunning = false
-local function runSweep()
-	if sweepRunning then return end
-	sweepRunning = true
-	task.spawn(function()
-		while sweepRunning and Overlay.Visible do
-			Sweep.Position = UDim2.fromScale(-0.34, 0)
-			tween(Sweep, 0.85, { Position = UDim2.fromScale(1, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut):Play()
-			task.wait(0.95)
-		end
-		sweepRunning = false
-	end)
-end
-
-setLoading = function(entry, status, failed)
-	Overlay.Visible = true
-	OverlayIcon.Image = gameIcon(entry.icon)
-	OverlayName.Text = entry.name
-	OverlayStatus.Text = status
-	OverlayStatus.TextColor3 = failed and T.Bad or T.Dim
-	Sweep.BackgroundColor3 = failed and T.Bad or T.White
-	if failed then
-		sweepRunning = false
-		task.delay(1.8, function()
-			if not busy then Overlay.Visible = false end
-		end)
-	else
-		runSweep()
-	end
-end
-
-local function fit()
-	local camera = Workspace.CurrentCamera
-	local vp = camera and camera.ViewportSize or Vector2.new(1280, 720)
-	local portrait = vp.Y >= vp.X
-
-	local pad = MOBILE and 16 or 18
-	local headerH = MOBILE and 58 or 54
-
-	local width, height
-	if MOBILE then
-		width = math.clamp(vp.X * (portrait and 0.92 or 0.6), 260, 460)
-
-		local contentH = headerH + #Games * 72 + (#Games - 1) * 8 + pad + 6
-		height = math.min(contentH, math.floor(vp.Y * 0.9))
-	else
-		width = math.clamp(vp.X - 80, 380, 620)
-		height = math.clamp(vp.Y - 80, 260, 380)
-	end
-	Main.Size = UDim2.fromOffset(math.floor(width), math.floor(height))
-	Header.Position = UDim2.fromOffset(pad, 0)
-	Header.Size = UDim2.new(1, -pad * 2, 0, headerH)
-	Brand.Position = UDim2.fromOffset(0, MOBILE and 10 or 9)
-	Brand.Size = UDim2.fromOffset(160, 20)
-	Brand.TextSize = MOBILE and 18 or 17
-	BrandSub.Position = UDim2.fromOffset(0, MOBILE and 30 or 28)
-	BrandSub.Size = UDim2.fromOffset(160, 14)
-
-	local btn = MOBILE and 36 or 30
-	Close.Position = UDim2.new(1, 0, 0.5, 0)
-	Close.Size = UDim2.fromOffset(btn, btn)
-	Close.TextSize = MOBILE and 22 or 19
-	Switch.Position = UDim2.new(1, -(btn + 10), 0.5, 0)
-	Switch.Size = UDim2.fromOffset(MOBILE and 132 or 118, btn)
-	PcOption.TextSize = MOBILE and 12 or 11
-	MobileOption.TextSize = MOBILE and 12 or 11
-
-	List.Position = UDim2.fromOffset(pad, headerH)
-	List.Size = UDim2.new(1, -pad * 2, 1, -(headerH + pad))
-	Layout.FillDirection = MOBILE and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
-	Layout.Padding = UDim.new(0, MOBILE and 8 or 12)
-	List.ScrollingEnabled = MOBILE
-	List.AutomaticCanvasSize = MOBILE and Enum.AutomaticSize.Y or Enum.AutomaticSize.None
-	List.ScrollingDirection = Enum.ScrollingDirection.Y
-
-	for _, item in ipairs(Cards) do
-		if MOBILE then
-
-			local rowH = 72
-			item.card.Size = UDim2.new(1, 0, 0, rowH)
-			item.icon.Position = UDim2.fromOffset(10, 10)
-			item.icon.Size = UDim2.fromOffset(rowH - 20, rowH - 20)
-			item.name.Position = UDim2.fromOffset(rowH - 2, 15)
-			item.name.Size = UDim2.new(1, -(rowH + 86), 0, 17)
-			item.name.TextSize = 14
-			item.desc.Position = UDim2.fromOffset(rowH - 2, 34)
-			item.desc.Size = UDim2.new(1, -(rowH + 86), 0, 15)
-			item.desc.TextSize = 11
-			item.play.AnchorPoint = Vector2.new(1, 0.5)
-			item.play.Position = UDim2.new(1, -10, 0.5, 0)
-			item.play.Size = UDim2.fromOffset(70, 34)
-			item.play.TextSize = 11
-		else
-
-			item.card.Size = UDim2.new(1 / #Cards, -8, 1, 0)
-			local inner = math.floor(width - pad * 2 - 8 * (#Cards - 1))
-			local tileW = math.floor(inner / #Cards)
-			local iconSize = math.min(tileW - 24, math.floor(height - headerH - 118))
-			item.icon.Position = UDim2.new(0.5, -math.floor(iconSize / 2), 0, 12)
-			item.icon.Size = UDim2.fromOffset(iconSize, iconSize)
-			item.name.Position = UDim2.fromOffset(12, 20 + iconSize)
-			item.name.Size = UDim2.new(1, -24, 0, 18)
-			item.name.TextSize = 14
-			item.desc.Position = UDim2.fromOffset(12, 38 + iconSize)
-			item.desc.Size = UDim2.new(1, -24, 0, 15)
-			item.desc.TextSize = 11
-			item.play.AnchorPoint = Vector2.new(0.5, 1)
-			item.play.Position = UDim2.new(0.5, 0, 1, -12)
-			item.play.Size = UDim2.new(1, -24, 0, 32)
-			item.play.TextSize = 12
-		end
-	end
-
-	local overlayIcon = MOBILE and 64 or 58
-	OverlayIcon.Position = UDim2.new(0.5, 0, 0.5, -14)
-	OverlayIcon.Size = UDim2.fromOffset(overlayIcon, overlayIcon)
-	OverlayName.Position = UDim2.new(0.5, 0, 0.5, -6)
-	OverlayName.Size = UDim2.new(1, -40, 0, 20)
-	OverlayStatus.Position = UDim2.new(0.5, 0, 0.5, 16)
-	OverlayStatus.Size = UDim2.new(1, -40, 0, 14)
-	Track.Position = UDim2.new(0.5, 0, 0.5, 40)
-	Track.Size = UDim2.new(0, math.floor(math.min(width - 80, 220)), 0, 3)
-end
-
-local function refreshSwitch()
-	tween(SwitchPill, 0.18, {
-		Position = MOBILE and UDim2.new(0.5, 2, 0, 3) or UDim2.new(0, 2, 0, 3),
-	}, Enum.EasingStyle.Back):Play()
-	PcOption.TextColor3 = MOBILE and T.Faint or T.White
-	MobileOption.TextColor3 = MOBILE and T.White or T.Faint
-	fit()
-end
-PcOption.MouseButton1Click:Connect(function() if not busy then MOBILE = false; refreshSwitch() end end)
-MobileOption.MouseButton1Click:Connect(function() if not busy then MOBILE = true; refreshSwitch() end end)
-refreshSwitch()
-
-do
-	local camera = Workspace.CurrentCamera
-	if camera then camera:GetPropertyChangedSignal("ViewportSize"):Connect(fit) end
-	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-		local newCamera = Workspace.CurrentCamera
-		if newCamera then fit(); newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit) end
-	end)
-end
-
-local function closeWindow()
-	if not ScreenGui.Parent then return end
-	tween(Scale, 0.16, { Scale = 0.94 }):Play()
-	tween(Main, 0.16, { BackgroundTransparency = 1 }):Play()
-	task.delay(0.18, function() if ScreenGui.Parent then ScreenGui:Destroy() end end)
-end
-Close.MouseEnter:Connect(function()
-	tween(Close, 0.12, { BackgroundColor3 = T.Hover, TextColor3 = T.White }):Play()
-	tween(closeStroke, 0.12, { Transparency = 0.25 }):Play()
+local targetUrl = BASE_URL .. scriptEndpoint
+local fetchSuccess, scriptPayload = pcall(function()
+    return game:HttpGet(targetUrl)
 end)
-Close.MouseLeave:Connect(function()
-	tween(Close, 0.12, { BackgroundColor3 = T.Elev, TextColor3 = T.Dim }):Play()
-	tween(closeStroke, 0.12, { Transparency = 0.5 }):Play()
-end)
-Close.MouseButton1Click:Connect(closeWindow)
 
-do
-	local dragging, startPointer, startPosition
-	Header.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			local pos = input.Position
-			local function over(gui)
-				local p, s = gui.AbsolutePosition, gui.AbsoluteSize
-				return pos.X >= p.X and pos.X <= p.X + s.X and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
-			end
-
-			if over(Switch) or over(Close) then return end
-			dragging = true; startPointer = input.Position; startPosition = Main.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local delta = input.Position - startPointer
-			Main.Position = UDim2.new(
-				startPosition.X.Scale, startPosition.X.Offset + delta.X,
-				startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
-			)
-		end
-	end)
+-- Fallback if local server unreachable, fetch local cache or repo
+if not fetchSuccess or not scriptPayload or #scriptPayload < 50 then
+    local fallbackUrl = "https://raw.githubusercontent.com/Yanderov/lib/refs/heads/main/" .. string.lower(targetGame) .. ".lua"
+    pcall(function()
+        scriptPayload = game:HttpGet(fallbackUrl)
+        fetchSuccess = true
+    end)
 end
 
-tween(Scale, 0.26, { Scale = 1 }, Enum.EasingStyle.Back):Play()
-tween(Main, 0.22, { Position = UDim2.fromScale(0.5, 0.5) }):Play()
+if fetchSuccess and scriptPayload and #scriptPayload > 50 then
+    loader.setProgress(1.0, "Executing " .. targetGame .. " Core...")
+    task.wait(0.25)
+    loader.dismiss()
+
+    task.spawn(function()
+        local executeSuccess, executeErr = pcall(function()
+            loadstring(scriptPayload)()
+        end)
+        if not executeSuccess then
+            warn("[InertiaHub Execution Error]: " .. tostring(executeErr))
+        end
+    end)
+else
+    loader.setProgress(1.0, "Failed to load script payload.")
+    task.wait(1.5)
+    loader.dismiss()
+end

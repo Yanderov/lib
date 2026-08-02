@@ -4585,6 +4585,7 @@ local function mkSection(parent, title, order, collapsible)
     if collapsible then
         local collapsed = true
         local animating = false
+        local pendingToggle = false
         card.ClipsDescendants = true
 
         local chevron = Instance.new("TextLabel")
@@ -4625,11 +4626,23 @@ local function mkSection(parent, title, order, collapsible)
         end)
 
         local function setCollapsed(collapse)
-            if animating then return end
+            if animating then
+                pendingToggle = true
+                return
+            end
             if collapsed == collapse then return end
             animating = true
             collapsed = collapse
             pcall(function() card:SetAttribute("LayoutAnimating", true) end)
+
+            local function finishAnimation()
+                animating = false
+                pcall(function() card:SetAttribute("LayoutAnimating", false) end)
+                if pendingToggle then
+                    pendingToggle = false
+                    task.defer(function() setCollapsed(not collapsed) end)
+                end
+            end
 
             TweenService.Create(TweenService, chevron, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 Rotation = collapse and 0 or 90
@@ -4651,8 +4664,7 @@ local function mkSection(parent, title, order, collapsible)
                 })
                 tw.Completed:Connect(function()
                     card.AutomaticSize = Enum.AutomaticSize.Y
-                    animating = false
-                    pcall(function() card:SetAttribute("LayoutAnimating", false) end)
+                    finishAnimation()
                 end)
                 tw:Play()
             else
@@ -4685,8 +4697,7 @@ local function mkSection(parent, title, order, collapsible)
                     })
                     tw.Completed:Connect(function()
                         card.AutomaticSize = Enum.AutomaticSize.Y
-                        animating = false
-                        pcall(function() card:SetAttribute("LayoutAnimating", false) end)
+                        finishAnimation()
                     end)
                     tw:Play()
                 end)
