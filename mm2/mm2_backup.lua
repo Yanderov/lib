@@ -1,7 +1,3 @@
--- MURDER MYSTERY 2 - MOBILE BUILD (generated, do not edit by hand).
--- Identical source to mm2/mm2.lua with the build flag forced on.
--- Regenerate after ANY edit to the source:   .\build_mobile.ps1
-_G.INERTIA_MOBILE = true
 if _G.MM2_Visuals_Script then
     pcall(function() _G.MM2_Visuals_Script:Destroy() end)
     _G.MM2_Visuals_Script = nil
@@ -104,11 +100,6 @@ local S = {
     AIChatProvider = "DeepSeek",
     AIChatResponseChance = 100, AIChatMaxTokens = 220, AIChatHistoryLimit = 18,
     AIChatMaxHumanizer = false,
-    AntiAim = false, AntiAimIgnoreList = true,
-    AntiAimSlot1 = "None", AntiAimSlot2 = "None", AntiAimSlot3 = "None",
-    KnifeSilentAimPredictMode = "Perfect", KnifeSilentAimPrediction = 100, KnifePingOffset = 0,
-    AntiKillVoid = false,
-    CoinAura = false, CoinAuraRange = 8,
 }
 
 S._Surfaces = {}
@@ -7246,57 +7237,6 @@ end, 6)
         Notify("Shaders", "All shaders disabled", 2)
     end, #SHADER_LIST + 1)
 
-    local function applyLibraryProfile(name)
-        local profile = S._ShaderLibrary and S._ShaderLibrary.Profiles and S._ShaderLibrary.Profiles[name]
-        if not profile then
-            Notify("Shader Library", "Preset missing: " .. tostring(name), 3)
-            return
-        end
-        for k, v in pairs(profile) do
-            if k ~= "category" then S[k] = v end
-        end
-        clearOtherToggles("Custom")
-        if shaderToggles["Custom"] then
-            shaderToggles["Custom"].state = true
-            shaderToggles["Custom"].updateVisuals()
-        end
-        applyShader("Custom")
-        Notify("Shader Library", "Applied: " .. name, 2)
-    end
-    local function libraryNames()
-        local names = {}
-        for nm in pairs(S._ShaderLibrary and S._ShaderLibrary.Profiles or {}) do
-            local p = S._ShaderLibrary.Profiles[nm]
-            names[#names + 1] = ((p and p.category) or "Other") .. "  |  " .. nm
-        end
-        table.sort(names)
-        return names
-    end
-    mkAction(secShaders, "Browse Custom Presets", function()
-        local names = libraryNames()
-        if #names == 0 then
-            Notify("Shader Library", "No presets available", 3)
-            return
-        end
-        S._OpenOptionPicker("Browse Custom Presets", names, 0, function(pick)
-            local label = names[pick]
-            local _, nm = label and label:match("^(.-)  |  (.+)$")
-            if nm then applyLibraryProfile(nm) end
-        end)
-    end, #SHADER_LIST + 2)
-    mkAction(secShaders, "Editor Page", function()
-        local names = libraryNames()
-        if #names == 0 then
-            Notify("Shader Library", "No presets available", 3)
-            return
-        end
-        S._OpenOptionPicker("Editor Page", names, 0, function(pick)
-            local label = names[pick]
-            local _, nm = label and label:match("^(.-)  |  (.+)$")
-            if nm then applyLibraryProfile(nm) end
-        end)
-    end, #SHADER_LIST + 3)
-
     local shaderStudioSections = {}
     do
         local function section(name, order)
@@ -7474,14 +7414,6 @@ end, 6)
                 Notify("Shaders", "Cleared slot " .. pick, 2)
             end)
         end, 3)
-
-        S.shaderStudioReady = true
-        local function refreshShaderStudioControls()
-            S.shaderStudioReady = true
-            if S.ActiveShader == "Custom" then pcall(reapplyCustom) end
-            return true
-        end
-        S._RefreshShaderStudioControls = refreshShaderStudioControls
     end
 
     local activeVisualsSubTab = "ESP"
@@ -7591,6 +7523,8 @@ do
     local secGunFire = mkSection(Pages.Combat, "Gun Fire", 2, true)
     secGunFire.Parent:SetAttribute("ConfigSection", "Silent Aim")
     mkToggle(secGunFire, "Force Shoot", false, function(v) S.ForceShoot = v end, 1)
+    
+    mkSlider(secGunFire, "Fire Delay (ms)", 0, 500, 60, function(v) S.ForceShootDelay = v end, 3)
     do
         local function heldGun()
             local c = LP.Character
@@ -7634,32 +7568,49 @@ do
             return CFrame.new(hit and hit.Position or (ray.Origin + ray.Direction * 300))
         end
 
+        local mouseDown = false
+        tc(UIS.InputBegan:Connect(function(i, processed)
+            if processed then return end
+            if i.UserInputType == Enum.UserInputType.MouseButton1
+                or i.UserInputType == Enum.UserInputType.Touch then
+                mouseDown = true
+            end
+        end))
+        tc(UIS.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1
+                or i.UserInputType == Enum.UserInputType.Touch then
+                mouseDown = false
+            end
+        end))
+
         task.spawn(function()
             while S.Gui and S.Gui.Parent do
+                local delay = math.max(tonumber(S.ForceShootDelay) or 60, 0) / 1000
                 if not S.ForceShoot or S.Destroyed then
                     task.wait(0.2)
+                elseif S.ForceShootHold ~= false and not mouseDown then
+                    task.wait(0.03)
                 else
                     pcall(function()
                         local held, stowed = heldGun()
-                        local gun = held
-                        if not gun and stowed then
-                            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-                            if hum then pcall(function() hum:EquipTool(stowed) end) end
-                            local _, nowHeld = heldGun()
-                            gun = nowHeld or stowed
-                        end
+                        local gun = held or stowed
                         if not gun then return end
+
+                        if not held and stowed then
+                            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:EquipTool(stowed) end
+                            return
+                        end
+
                         if gun.Enabled == false then gun.Enabled = true end
                         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                         local att = hrp and hrp:FindFirstChild("GunRaycastAttachment")
-                        if not att then return end
                         local target = mouseTargetCF()
-                        if not target then return end
-                        local shoot = gun:FindFirstChild("Shoot")
-                        if shoot then shoot:FireServer(att.WorldCFrame, target) end
+                        if not att or not target then return end
+                        gun.Shoot:FireServer(att.WorldCFrame, target)
                     end)
+                    task.wait(delay > 0 and delay or 0.03)
                 end
-                RunService.Heartbeat:Wait()
             end
         end)
     end
@@ -7671,8 +7622,8 @@ do
     mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
 
     mkCycle(secKnifeAim, "Prediction", { "Off", "Standard", "Lag Comp", "Perfect", "Adaptive" },
-        "Perfect", function(v) S.KnifeSilentAimPredictMode = v end, 5)
-    mkSlider(secKnifeAim, "Prediction Amount (%)", 0, 200, 100, function(v) S.KnifeSilentAimPrediction = v end, 6)
+        "Perfect", function(v) S.KnifePredictMode = v end, 5)
+    mkSlider(secKnifeAim, "Prediction Amount (%)", 0, 200, 100, function(v) S.KnifePredictAmount = v end, 6)
     mkSlider(secKnifeAim, "Ping Offset (ms)", -100, 200, 0, function(v) S.KnifePingOffset = v end, 7)
 
     local secKnifeThrow = mkSection(Pages.Combat, "Knife Throw", 4, true)
@@ -7848,8 +7799,6 @@ do
         return best
     end
 do
-    S._HooksActive = true
-    cleanup(function() S._HooksActive = false end)
 
     local beamHooks = {}
     local piercingVisualHookReady = false
@@ -7874,7 +7823,7 @@ do
             if fn and not beamHooks[fn] then
                 local oldFn
                 local wrapper = function(handle, startPos, endPos, hitPart, ...)
-                    if S._HooksActive and S.SheriffSilentAimPiercing and typeof(startPos) == "Vector3" then
+                    if S.SheriffSilentAimPiercing and typeof(startPos) == "Vector3" then
                         local origin = muzzlePosition()
                         if origin then return oldFn(handle, origin, endPos, hitPart, ...) end
                     end
@@ -7913,28 +7862,17 @@ do
     S._GetMurdererChar = getMurdererChar
 
     local resolverData = {}
-    local lastResolveTime = 0
-    S._ResolveData = resolverData
 
 RunService.Heartbeat:Connect(function()
-    if not (S.SheriffAntiDesync or S.KnifeSilentAim or S.SheriffSilentAim or S.SheriffSilentAimPiercing) then return end
-
+    if not S.SheriffAntiDesync then return end
+    
     local chars = {}
     if S._GetMurdererChar then
         local murd = S._GetMurdererChar()
         if murd then table.insert(chars, murd) end
     end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP and p.Character and p.Character ~= chars[1] then
-            table.insert(chars, p.Character)
-        end
-    end
-
+    
     local now = os.clock()
-    local dt = now - lastResolveTime
-    lastResolveTime = now
-    if dt < 0.001 then dt = 0.001 end
-
     for _, char in ipairs(chars) do
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
@@ -7944,53 +7882,40 @@ RunService.Heartbeat:Connect(function()
                 resolverData[char] = { lastPos = rawPos, lastValidTime = now, smoothVel = Vector3.zero, history = {}, desyncStart = 0 }
                 d = resolverData[char]
             end
-
-            local step = rawPos - d.lastPos
-            local instVel = step / dt
-
-            if instVel.Magnitude < 5 then
-                -- Effectively stationary (interpolation jitter noise).
-                d.smoothVel = d.smoothVel:Lerp(Vector3.zero, 0.25)
-                d.lastPos = rawPos
-                d.lastValidTime = now
-                d.desyncStart = 0
-            elseif instVel.Magnitude > 150 then
+            
+            local dt = now - d.lastValidTime
+            if dt > 0 then
+                local step = rawPos - d.lastPos
+                local instVel = step / dt
+                
                 -- Detect desync: If they move more than 150 studs/sec physically in 1 frame, they are teleporting.
-                if d.desyncStart == 0 then d.desyncStart = now end
-                if now - d.desyncStart > 0.5 then
-                    -- Continuous desync for 0.5s -> likely a real teleport (e.g. map change or void). Reset.
+                if instVel.Magnitude > 150 then
+                    if d.desyncStart == 0 then d.desyncStart = now end
+                    if now - d.desyncStart > 0.5 then
+                        -- Continuous desync for 0.5s -> likely a real teleport (e.g. map change or void). Reset.
+                        d.lastPos = rawPos
+                        d.lastValidTime = now
+                        d.desyncStart = 0
+                        d.history = {}
+                        d.smoothVel = Vector3.zero
+                    end
+                else
+                    -- Valid physical movement
+                    d.desyncStart = 0
+                    table.insert(d.history, instVel)
+                    if #d.history > 5 then table.remove(d.history, 1) end
+                    
+                    local sumVel = Vector3.zero
+                    for _, v in ipairs(d.history) do sumVel = sumVel + v end
+                    d.smoothVel = sumVel / #d.history
+                    
                     d.lastPos = rawPos
                     d.lastValidTime = now
-                    d.desyncStart = 0
-                    d.history = {}
-                    d.smoothVel = Vector3.zero
                 end
-            else
-                -- Valid physical movement
-                d.desyncStart = 0
-                table.insert(d.history, instVel)
-                if #d.history > 6 then table.remove(d.history, 1) end
-
-                local sumVel = Vector3.zero
-                for _, v in ipairs(d.history) do sumVel = sumVel + v end
-                d.smoothVel = sumVel / #d.history
-
-                d.lastPos = rawPos
-                d.lastValidTime = now
             end
         end
     end
 end)
-
-S._ResolveDesynced = function(targetChar)
-    local d = resolverData[targetChar]
-    return d ~= nil and d.desyncStart > 0
-end
-
-S._ResolveSmoothVel = function(targetChar)
-    local d = resolverData[targetChar]
-    return d and d.smoothVel or nil
-end
 
 local function resolveTargetPos(targetChar, hrp)
     local raw = hrp.Position
@@ -8015,11 +7940,7 @@ local function resolveTargetPos(targetChar, hrp)
         end
         
         -- Extreme fallback: Extrapolate from the last valid position using smoothed velocity
-        local predicted = d.lastPos + (d.smoothVel * age)
-        if (predicted - d.lastPos).Magnitude > 50 then
-            predicted = d.lastPos + ((predicted - d.lastPos).Unit * 50)
-        end
-        return predicted
+        return d.lastPos + (d.smoothVel * age)
     end
     
     return raw
@@ -8029,11 +7950,7 @@ S._ResolveAntiDesyncPos = resolveTargetPos
     local function piercingOrigin(hitPos, targetChar)
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
         local vel = hrp and hrp.AssemblyLinearVelocity or Vector3.zero
-        if S._ResolveSmoothVel then
-            local sv = S._ResolveSmoothVel(targetChar)
-            if sv and sv.Magnitude > 0.5 then vel = sv end
-        end
-        local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2.5) or Vector3.new(0, 1.25, 0)
+        local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2) or Vector3.new(0, 1.25, 0)
         return CFrame.lookAt(hitPos + back, hitPos)
     end
 
@@ -8044,16 +7961,11 @@ S._ResolveAntiDesyncPos = resolveTargetPos
         local targetChar = getMurdererChar()
         if not targetChar then return nil end
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil end
         local pos = resolveTargetPos(targetChar, hrp)
-        if S.SheriffSilentAim and pos.Magnitude > 0.5
-            and not (S._ResolveDesynced and S._ResolveDesynced(targetChar)) then
-            local pred = getPredictedPosition(targetChar, "HumanoidRootPart", "Lag Comp", 100, S.KnifePingOffset or 0, 0)
-            if pred and pred.Magnitude > 0.5 then pos = pred end
-        end
         if S.SheriffSilentAimPiercing then
             args[1] = piercingOrigin(pos, targetChar)
         end
+
         args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
         return args
     end
@@ -8067,17 +7979,10 @@ S._ResolveAntiDesyncPos = resolveTargetPos
             or targetChar:FindFirstChild("Torso")
             or targetChar:FindFirstChild("HumanoidRootPart")
         if not aimPart then return nil end
-        local mode = S.KnifeSilentAimPredictMode or "Perfect"
-        local amt = (mode == "Off") and 0 or (S.KnifeSilentAimPrediction or 100)
-        local flight = (S.KnifeFlightSpeedControl and tonumber(S.KnifeFlightSpeed)) or 80
-        local pos = getPredictedPosition(targetChar, aimPart.Name, mode, amt, S.KnifePingOffset or 0, flight)
-        if pos and pos.Magnitude > 0.5 and S.SheriffAntiDesync and S._ResolveDesynced and S._ResolveDesynced(targetChar) then
-            local hrp2 = targetChar:FindFirstChild("HumanoidRootPart")
-            if hrp2 then
-                local res = resolveTargetPos(targetChar, hrp2)
-                if res and res.Magnitude > 0.5 then pos = res end
-            end
-        end
+        local pos = getPredictedPosition(
+            targetChar, aimPart.Name,
+            S.KnifeSilentAimPredictMode or "Perfect",
+            S.KnifeSilentAimPrediction or 0, 0, 80)
         args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
         return args
     end
@@ -8088,7 +7993,6 @@ end
 if hookmetamethod then
     local oldNamecall
     oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        if not S._HooksActive then return oldNamecall(self, ...) end
         local cc = checkcaller and checkcaller()
         if not cc and getnamecallmethod() == "FireServer" then
             local ok, modArgs = pcall(handleFireServer, self, ...)
@@ -8127,7 +8031,7 @@ do
     local knifeChamsWasOn = false
     tc(RunService.Heartbeat:Connect(function()
 
-        if S.KnifeSilentAim or S.SheriffSilentAim or S.SheriffSilentAimPiercing then
+        if S.KnifeSilentAim then
             local pingMs = getPing()
             MSP.Latency = pingMs / 1000
             trackJitter(pingMs)
@@ -8143,10 +8047,6 @@ do
                         local dt = now - entry.Time
                         if dt > 0 then
                             local newVel = (hrp.Position - entry.Pos) / dt
-                            if S._ResolveSmoothVel then
-                                local sv = S._ResolveSmoothVel(character)
-                                if sv and sv.Magnitude > 0.5 then newVel = newVel:Lerp(sv, 0.7) end
-                            end
                             local rawAcc = (newVel - (entry.Vel or newVel)) / dt
                             entry.Acc = (entry.Acc or Vector3.new()):Lerp(rawAcc, 0.3)
                             entry.Vel = newVel
@@ -8186,10 +8086,6 @@ do
         if predAmount == 0 then return part.Position end
         local hist = MSP.History[targetChar.Name]
         local vel = hist and hist.Vel or hrp.AssemblyLinearVelocity
-        if S._ResolveSmoothVel then
-            local sv = S._ResolveSmoothVel(targetChar)
-            if sv and sv.Magnitude > 0.5 then vel = vel:Lerp(sv, 0.7) end
-        end
         local ping = MSP.Latency + (customPingOffset or 0)
         local pos = part.Position
 
@@ -8202,9 +8098,7 @@ do
             local accMag = acc.Magnitude
             if accMag > 400 then acc = acc * (400 / accMag) end
 
-            local jitter = math.clamp(tonumber(MSP.Jitter) or 0, 0, 0.15)
-            local t = (ping + jitter + (1 / 60)) * (predAmount / 100)
-            t = math.min(t, 1.5)
+            local t = (ping + (1 / 60)) * (predAmount / 100)
             if customBulletSpeed and customBulletSpeed > 0 then
                 local shooterHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                 if shooterHrp then
@@ -8226,7 +8120,6 @@ do
             if accMag > 400 then acc = acc * (400 / accMag) end
             local jitter = math.clamp(tonumber(MSP.Jitter) or 0, 0, 0.15)
             local t = (ping + jitter + (1 / 60)) * (predAmount / 100)
-            t = math.min(t, 1.5)
             if customBulletSpeed and customBulletSpeed > 0 then
                 local shooterHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                 if shooterHrp then
@@ -8244,158 +8137,6 @@ do
     end
 end
 
-do
-
-    local _knifeRef = nil
-    local function findKnife()
-        if _knifeRef and _knifeRef.Parent then return _knifeRef end
-        _knifeRef = nil
-        local c = LP.Character
-        if c then _knifeRef = c:FindFirstChild("Knife") end
-        if not _knifeRef and LP.Backpack then _knifeRef = LP.Backpack:FindFirstChild("Knife") end
-        return _knifeRef
-    end
-
-    S._MurdererNearest = function()
-        local c = LP.Character
-        local me = c and c:FindFirstChild("HumanoidRootPart")
-        if not me then return nil end
-        local best, bestD = nil, math.huge
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and not isWhitelisted(p) and p.Character then
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                if hrp and hum and hum.Health > 0 then
-                    local d = (hrp.Position - me.Position).Magnitude
-                    if d < bestD then best, bestD = p.Character, d end
-                end
-            end
-        end
-        return best
-    end
-
-    local function knifeTargetPos(targetChar)
-        local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil end
-        local pos = hrp.Position
-        if S.SheriffAntiDesync and S._ResolveDesynced and S._ResolveDesynced(targetChar) and S._ResolveAntiDesyncPos then
-            local res = S._ResolveAntiDesyncPos(targetChar, hrp)
-            if res and res.Magnitude > 0.5 then return res end
-        end
-        local flight = (S.KnifeFlightSpeedControl and tonumber(S.KnifeFlightSpeed)) or 80
-        local pred = getPredictedPosition(targetChar, "HumanoidRootPart", "Perfect", 100, S.KnifePingOffset or 0, flight)
-        if pred and pred.Magnitude > 0.5 then return pred end
-        return pos
-    end
-
-    S._MurdererKill = function(targetChar)
-        if not targetChar or not targetChar.Parent then return false end
-        local knife = findKnife()
-        if not knife then return false end
-        local pos = knifeTargetPos(targetChar)
-        if not pos then return false end
-        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum and knife.Parent ~= LP.Character then
-            pcall(function() hum:EquipTool(knife) end)
-            task.wait(0.06)
-            knife = findKnife()
-        end
-        local ev = knife and knife:FindFirstChild("Events") and knife.Events:FindFirstChild("KnifeThrown")
-        if not ev then return false end
-        local handle = knife:FindFirstChild("Handle")
-        local origin = handle and handle.CFrame or (LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") and LP.Character.HumanoidRootPart.CFrame or CFrame.new(pos))
-        pcall(function() ev:FireServer(origin, CFrame.new(pos)) end)
-        return true
-    end
-
-    S._MurdererKillAll = function()
-        local killed = 0
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and not isWhitelisted(p) and p.Character then
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if hum and hum.Health > 0 and hrp then
-                    if S._MurdererKill(p.Character) then killed = killed + 1 end
-                    task.wait(0.08)
-                end
-            end
-        end
-        return killed
-    end
-
-    S._ReapplyThrowSpeed = function()
-        local knife = findKnife()
-        if not knife then return end
-        local ts = 1
-        if S.KnifeThrowSpeedControl and S.KnifeThrowWindup then
-            ts = math.max(S.KnifeThrowWindup, 0.05)
-        elseif S.FastThrow then
-            ts = 0.08
-        elseif S.NoKnifeAnim then
-            ts = 0.2
-        end
-        pcall(function() knife:SetAttribute("ThrowSpeed", ts) end)
-    end
-
-    S._ReapplyKnifeFlightSpeed = function()
-        local knife = findKnife()
-        if knife and S.KnifeFlightSpeedControl then
-            pcall(function() knife:SetAttribute("FlightSpeed", tonumber(S.KnifeFlightSpeed) or 100) end)
-        end
-    end
-
-    task.spawn(function()
-        local lastAutoKill, lastClickKill = 0, 0
-        while S.Gui and S.Gui.Parent do
-            task.wait(0.1)
-            if S.Destroyed then break end
-            pcall(function()
-                local role = S.getRole and S.getRole(LP)
-                local isMurderer = role == "Murderer"
-                local knife = isMurderer and findKnife()
-                local c = LP.Character
-                local me = c and c:FindFirstChild("HumanoidRootPart")
-                if isMurderer and knife and me then
-                    if S.KillAura then
-                        local range = S.KillAuraRange or 18
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= LP and not isWhitelisted(p) and p.Character then
-                                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                                if hrp and hum and hum.Health > 0 and (hrp.Position - me.Position).Magnitude <= range then
-                                    S._MurdererKill(p.Character)
-                                    task.wait(0.05)
-                                end
-                            end
-                        end
-                    end
-                    local autoTarget = nil
-                    if S.AutoKillSheriff then
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= LP and not isWhitelisted(p) and p.Character then
-                                local r = S.getRole and S.getRole(p)
-                                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                                if (r == "Sheriff" or r == "Hero") and hum and hum.Health > 0 then
-                                    autoTarget = p.Character
-                                    break
-                                end
-                            end
-                        end
-                    elseif S.AutoKillNearest then
-                        autoTarget = S._MurdererNearest()
-                    end
-                    if autoTarget and tick() - lastAutoKill >= 1.1 then
-                        if S._MurdererKill(autoTarget) then lastAutoKill = tick() end
-                    end
-                    if S.ClickKill and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and tick() - lastClickKill >= 0.35 then
-                        local n = S._MurdererNearest()
-                        if n then S._MurdererKill(n); lastClickKill = tick() end
-                    end
-                end
-            end)
-        end
-    end)
-end
 do
 
     local motionSubTabBar = Instance.new("Frame")
@@ -8597,7 +8338,6 @@ do
     S._RegisterMiscSection(sec4, "Protection")
     mkToggle(sec4, "Anti-Fling", false, function(v) S.AntiFling = v end, 1)
     mkToggle(sec4, "Anti-Void", false, function(v) S.AntiVoid = v end, 2)
-    mkToggle(sec4, "Anti Kill Void", false, function(v) S.AntiKillVoid = v end, 5)
     mkToggle(sec4, "Anti-AFK", false, function(v) S.AntiAFK = v end, 3)
     mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 4)
     local sec6 = mkSection(Pages.Misc, "Performance", 4, true)
@@ -9720,7 +9460,7 @@ do
     info.TextColor3 = T.Tx4; pcall(function() info:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
     info.TextWrapped = true
     info.TextXAlignment = Enum.TextXAlignment.Left
-    info.Text = "Left-click = select targets (multi — pick several; Fun & Follow use the NEAREST selected). 'Auto' clears the selection = nearest of all."
+    info.Text = "Left-click = select targets (multi — pick several; Fun & Follow use the NEAREST selected). 'Auto' clears the selection = nearest of all. Right-click = Whitelist (green WL): that player is SKIPPED by Fling, Kill All, and Knife Aura."
     local searchBox = Instance.new("TextBox")
     searchBox.Parent = sec1
     searchBox.LayoutOrder = 2
@@ -9758,7 +9498,7 @@ do
     local rowRefreshers = {}
     local searchQ = ""
     local function refreshTargets()
-        for _, ch in pairs(tScroll:GetChildren()) do if ch:IsA("TextButton") or ch.Name == "TargetEmptyState" then ch:Destroy() end end
+        for _, ch in pairs(tScroll:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
         rowRefreshers = {}
         local order = 0
         local ROLE_COLORS = {
@@ -9878,19 +9618,6 @@ do
             if p ~= LP and (searchQ == "" or string.find(string.lower(p.Name), searchQ, 1, true)) then
                 mkRow(p.Name, p.Name, p)
             end
-        end
-        if order <= 1 then
-            local empty = Instance.new("TextLabel")
-            empty.Name = "TargetEmptyState"
-            empty.Parent = tScroll
-            empty.LayoutOrder = order + 1
-            empty.Size = UDim2.new(1, 0, 0, 40)
-            empty.BackgroundTransparency = 1
-            empty.Font = F
-            empty.TextSize = 13
-            empty.TextColor3 = T.Tx4; pcall(function() empty:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
-            empty.TextWrapped = true
-            empty.Text = (searchQ == "" and "No players found in this server." or "No players match \"" .. searchQ .. "\".") .. " Select a player below or press Auto (nearest)."
         end
     end
     refreshTargets()
@@ -10127,7 +9854,7 @@ local function doTrip()
     end
 end
 
-local startInvisibleFE, stopInvisibleFE, toggleInvisible
+local startInvisibleFE, stopInvisibleFE, toggleInvisible, toggleBlink
 do
     local running = false
     local savedCF = nil
@@ -10220,6 +9947,9 @@ do
         if not running then return end
         running = false
         conns = disconnectAll(conns)
+        if toggleBlink and toggleBlink.state then
+            pcall(function() toggleBlink.trigger() end)
+        end
         local ok = pcall(function()
             local real, clone = realChar, cloneChar
             local cf
@@ -10407,6 +10137,7 @@ do
     toggleInvisible = mkToggle(secM, "Invisible", false, function(v)
         if v then startInvisibleFE() else stopInvisibleFE() end
     end, 6)
+    mkSlider(secM, "Invisible Height", 500, 40000, 9000, function(v) S.InvisHeight = v end, 6.1)
     mkToggle(secM, "Return On Disable", true, function(v) S.InvisReturn = v end, 6.2)
     local secTr = mkSection(Pages.Motion, "Troll", 8, true)
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(secTr) end
@@ -10420,6 +10151,7 @@ do
         if S._TouchFlingToggle then S._TouchFlingToggle(v) end
     end, 5)
 
+    mkSlider(secTr, "Fling Duration (s)", 1, 15, 6, function(v) S.FlingDuration = v end, 7)
     mkSlider(secTr, "Fling Max Retries", 1, 10, 3, function(v) S.FlingMaxRetries = v end, 7.1)
     mkSlider(secTr, "Fling Max Seconds", 1, 10, 3, function(v) S.FlingMaxSeconds = v / 10 end, 7.2)
     mkAction(secTr, "Fling All", function() if S._FlingAll then S._FlingAll() end end, 8)
@@ -10540,6 +10272,7 @@ local HUDEls = {}
 local function attachHUDDrag(frame, handle)
     local dragHandle = handle or frame
     local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+    local moved, startOrigin = false, nil
 
     local hudBase = MOBILE and 0.78 or 1
     local scale = frame:FindFirstChild("HUDScale")
@@ -10578,6 +10311,7 @@ local function attachHUDDrag(frame, handle)
             moved = false
             dragStart = input.Position
             startPos = frame.Position
+            startOrigin = frame.Parent and (frame.AbsolutePosition - frame.Parent.AbsolutePosition) or nil
             dragVisual(true)
         end
     end)
@@ -10588,7 +10322,22 @@ local function attachHUDDrag(frame, handle)
             if not moved and math.abs(delta.X) < 8 and math.abs(delta.Y) < 8 then return end
             moved = true
 
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            local host = frame.Parent and frame.Parent.AbsoluteSize
+            if host and host.X > 0 and host.Y > 0 and startOrigin then
+                local size = frame.AbsoluteSize
+                local function fit(v, extent, span)
+
+                    if MOBILE then return v end
+                    if span >= extent then return (extent - span) / 2 end
+                    return math.clamp(v, 0, extent - span)
+                end
+                local x = fit(startOrigin.X + delta.X, host.X, size.X)
+                local y = fit(startOrigin.Y + delta.Y, host.Y, size.Y)
+                local pivot = Vector2.new(x, y) + frame.AnchorPoint * size
+                frame.Position = UDim2.fromScale(pivot.X / host.X, pivot.Y / host.Y)
+            else
+                frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
         end
     end))
     tc(UIS.InputEnded:Connect(function(input)
@@ -11989,7 +11738,6 @@ applyShader = function(name)
     end
 
     if applyAtmo then pcall(applyAtmo) end
-    pcall(S._RefreshShaderStudioControls)
 end
 
 S._RestoreShaderState = function()
@@ -12029,91 +11777,6 @@ do
 
         ["Custom"]        = {density=0.22, offset=0.20, color=Color3.fromRGB(210,214,222), decay=Color3.fromRGB(120,142,190), glare=0.15, haze=1.6},
     }
-
-    S._ShaderLibrary = { Profiles = {} }
-    do
-        local function add(name, category, profile)
-            local entry = { category = category }
-            for k, v in pairs(profile) do entry[k] = v end
-            S._ShaderLibrary.Profiles[name] = entry
-        end
-        add("ForceDay", "Time of Day", {
-            ShaderTime = 14, ShaderBrightness = 210, ShaderSaturation = 12, ShaderContrast = 8,
-            ShaderTint = "Warm",
-        })
-        add("ForceNight", "Time of Day", {
-            ShaderTime = 21, ShaderBrightness = 90, ShaderSaturation = 6, ShaderContrast = 18,
-            ShaderTint = "Cool",
-        })
-        add("Golden Hour", "Time of Day", {
-            ShaderTime = 17.4, ShaderBrightness = 230, ShaderSaturation = 26, ShaderContrast = 12,
-            ShaderTint = "Golden",
-        })
-        add("Sunrise", "Time of Day", {
-            ShaderTime = 6.5, ShaderBrightness = 205, ShaderSaturation = 20, ShaderContrast = 10,
-            ShaderTint = "Warm",
-        })
-        add("Sunset", "Time of Day", {
-            ShaderTime = 17.8, ShaderBrightness = 215, ShaderSaturation = 34, ShaderContrast = 14,
-            ShaderTint = "Custom", ShaderTintR = 255, ShaderTintG = 178, ShaderTintB = 110,
-        })
-        add("Midnight", "Time of Day", {
-            ShaderTime = 0.5, ShaderBrightness = 70, ShaderSaturation = 4, ShaderContrast = 20,
-            ShaderTint = "Cool",
-        })
-        add("Cyberpunk", "Vibe", {
-            ShaderTime = 20, ShaderBrightness = 120, ShaderSaturation = 42, ShaderContrast = 24,
-            ShaderTint = "Custom", ShaderTintR = 255, ShaderTintG = 130, ShaderTintB = 235,
-            ShaderBloom = 70, ShaderBloomThreshold = 130, ShaderSunEnabled = false,
-        })
-        add("Neon Night", "Vibe", {
-            ShaderTime = 20.5, ShaderBrightness = 105, ShaderSaturation = 36, ShaderContrast = 20,
-            ShaderTint = "Custom", ShaderTintR = 140, ShaderTintG = 235, ShaderTintB = 255,
-            ShaderBloom = 85, ShaderBloomThreshold = 120,
-        })
-        add("Synthwave", "Vibe", {
-            ShaderTime = 21, ShaderBrightness = 130, ShaderSaturation = 52, ShaderContrast = 26,
-            ShaderTint = "Pink", ShaderBloom = 95, ShaderBloomThreshold = 110,
-        })
-        add("Toxic", "Vibe", {
-            ShaderTime = 9, ShaderBrightness = 190, ShaderSaturation = 40, ShaderContrast = 16,
-            ShaderTint = "Toxic",
-        })
-        add("Blood Moon", "Vibe", {
-            ShaderTime = 19, ShaderBrightness = 140, ShaderSaturation = 46, ShaderContrast = 28,
-            ShaderTint = "Custom", ShaderTintR = 255, ShaderTintG = 90, ShaderTintB = 90,
-            ShaderBloom = 60, ShaderBloomThreshold = 140,
-        })
-        add("Sakura", "Environment", {
-            ShaderTime = 15.5, ShaderBrightness = 215, ShaderSaturation = 28, ShaderContrast = 10,
-            ShaderTint = "Pink", ShaderAtmo = 30, ShaderAtmoHaze = 200,
-        })
-        add("Ocean", "Environment", {
-            ShaderTime = 12, ShaderBrightness = 200, ShaderSaturation = 18, ShaderContrast = 10,
-            ShaderTint = "Custom", ShaderTintR = 200, ShaderTintG = 232, ShaderTintB = 255,
-            ShaderAmbientR = 100, ShaderAmbientG = 140, ShaderAmbientB = 180,
-        })
-        add("Desert", "Environment", {
-            ShaderTime = 13.5, ShaderBrightness = 235, ShaderSaturation = 30, ShaderContrast = 14,
-            ShaderTint = "Golden", ShaderAmbientR = 200, ShaderAmbientG = 170, ShaderAmbientB = 130,
-        })
-        add("Overcast", "Environment", {
-            ShaderTime = 11, ShaderBrightness = 150, ShaderSaturation = -12, ShaderContrast = 14,
-            ShaderTint = "Cool", ShaderAtmo = 36, ShaderAtmoHaze = 260,
-        })
-        add("Film Noir", "Cinematic", {
-            ShaderTime = 0, ShaderBrightness = 95, ShaderSaturation = -60, ShaderContrast = 34,
-            ShaderTint = "Mono", ShaderBloom = 20, ShaderBloomThreshold = 220,
-        })
-        add("Dreamy", "Cinematic", {
-            ShaderTime = 16, ShaderBrightness = 225, ShaderSaturation = 22, ShaderContrast = 6,
-            ShaderTint = "Pink", ShaderBloom = 55, ShaderBloomSize = 36, ShaderBloomThreshold = 120,
-        })
-        add("Blue Hour", "Cinematic", {
-            ShaderTime = 18.4, ShaderBrightness = 120, ShaderSaturation = 10, ShaderContrast = 18,
-            ShaderTint = "Cool",
-        })
-    end
 
     local SKY_PRESETS = {
         Day    = {clock=14.0, atmColor=Color3.fromRGB(190,210,235), decay=Color3.fromRGB(90,140,220),  glare=0.20, haze=1.4, density=0.30, ambient=Color3.fromRGB(120,128,140), outdoor=Color3.fromRGB(150,160,175)},
@@ -13184,9 +12847,6 @@ do
     syncDesc.TextXAlignment = Enum.TextXAlignment.Left
     syncDesc.TextYAlignment = Enum.TextYAlignment.Top
 
-    mkToggle(secAuto, "Coin Aura", false, function(v) S.CoinAura = v end, 4)
-    mkSlider(secAuto, "Coin Aura Range", 2, 30, 8, function(v) S.CoinAuraRange = v end, 6)
-
 
 
 
@@ -13323,15 +12983,6 @@ do
                                 return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude
                             end)
                         end
-                        if S.CoinAura then
-                            local auraR = math.max(S.CoinAuraRange or 8, 1)
-                            for _, cn in ipairs(coins) do
-                                if cn.Transparency < 1 and (myPos - cn.Position).Magnitude <= auraR then
-                                    pcall(firetouchinterest, hrp, cn, 0)
-                                    pcall(firetouchinterest, hrp, cn, 1)
-                                end
-                            end
-                        end
                         if #coins > 0 then
                             S._SetOwnedAnchored(hrp, false)
                             local targetCoin = coins[1]
@@ -13388,8 +13039,8 @@ do
     mkToggle(secAutoRoles, "Auto Reset As Murderer", false, function(v) S.AutoResetMurderer = v end, 1)
     mkToggle(secAutoRoles, "Auto Reset As Sheriff", false, function(v) S.AutoResetSheriff = v end, 2)
     mkToggle(secAutoRoles, "Auto Reset As Innocent", false, function(v) S.AutoResetInnocent = v end, 3)
-    mkToggle(secAutoRoles, "Kill Everyone", false, function(v) S.AutoKillAllMurderer = v end, 4)
-    mkToggle(secAutoRoles, "Shoot Murderer", false, function(v) S.AutoShootMurderer = v end, 5)
+    mkToggle(secAutoRoles, "Auto Kill Everyone As Murderer", false, function(v) S.AutoKillAllMurderer = v end, 4)
+    mkToggle(secAutoRoles, "Auto Shoot Murderer As Sheriff", false, function(v) S.AutoShootMurderer = v end, 5)
     mkToggle(secAutoRoles, "Auto Fling Murderer", false, function(v) S.AutoFlingMurderer = v end, 6)
 end
 
@@ -14955,35 +14606,6 @@ tc(RunService.RenderStepped:Connect(function()
 
                 if hrp.Position.Y <= _antivoidBaseHeight + 50 and hrp.AssemblyLinearVelocity.Y < -10 then
                     hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 250, hrp.AssemblyLinearVelocity.Z)
-                end
-            end
-        end
-
-        if S.AntiKillVoid then
-            local c = LP.Character
-            if c and c:FindFirstChild("HumanoidRootPart") then
-                local hrp = c.HumanoidRootPart
-                local hum = c:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    local nowK = tick()
-                    local p = RaycastParams.new()
-                    p.FilterType = Enum.RaycastFilterType.Exclude
-                    p.FilterDescendantsInstances = { c }
-                    local ray = workspace:Raycast(hrp.Position + Vector3.new(0, 0.5, 0), Vector3.new(0, -140, 0), p)
-                    if ray then
-                        if nowK - (S._AntiKillVoidSafeAt or 0) >= 0.2 then
-                            S._AntiKillVoidSafe = hrp.Position
-                            S._AntiKillVoidSafeAt = nowK
-                        end
-                    elseif hrp.AssemblyLinearVelocity.Y < -5 then
-                        local safe = S._AntiKillVoidSafe
-                        if safe then
-                            S._SafeTeleportSelf(CFrame.new(safe), 0.1)
-                            S._ZeroCharacterMomentum(c)
-                        else
-                            hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 200, hrp.AssemblyLinearVelocity.Z)
-                        end
-                    end
                 end
             end
         end
@@ -19371,287 +18993,6 @@ do
 end
 
 do
-    local secAA = mkSection(Pages.Motion, "Anti-Aim Extension", 5.5, true)
-
-    local userWantsEnabled = false
-    local enabled = false
-    local velocityConnection = nil
-    local hadKnifeLastFrame = false
-
-    local function getPlayerList()
-        local list = { "None" }
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP then
-                table.insert(list, p.Name)
-            end
-        end
-        return list
-    end
-
-    local function findPlayerByName(name)
-        if not name or name == "None" then return nil end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Name == name then return p end
-        end
-        return nil
-    end
-
-    local function hasKnife()
-        local backpack = LP:FindFirstChild("Backpack")
-        local character = LP.Character
-        if backpack and backpack:FindFirstChild("Knife") then return true end
-        if character and character:FindFirstChild("Knife") then return true end
-        return false
-    end
-
-    local function isPlayerNearby(hrp)
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LP and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                local otherHrp = player.Character.HumanoidRootPart
-                if (otherHrp.Position - hrp.Position).Magnitude <= 6 then
-                    return true
-                end
-            end
-        end
-        return false
-    end
-
-    local function isInWater(humanoid)
-        local state = humanoid:GetState()
-        return state == Enum.HumanoidStateType.Swimming or humanoid.FloorMaterial == Enum.Material.Water
-    end
-
-    local function slotPlayer(slotKey)
-        local name = tostring(S[slotKey] or "None")
-        return findPlayerByName(name)
-    end
-
-    local function isIgnoredPlayerArmed()
-        if S.AntiAimIgnoreList == false then return false end
-        local targets = { slotPlayer("AntiAimSlot1"), slotPlayer("AntiAimSlot2"), slotPlayer("AntiAimSlot3") }
-        for _, player in ipairs(targets) do
-            if player and player.Parent then
-                local backpack = player:FindFirstChild("Backpack")
-                local character = player.Character
-
-                if backpack then
-                    for _, item in ipairs(backpack:GetChildren()) do
-                        if item:IsA("Tool") then
-                            return true
-                        end
-                    end
-                end
-
-                if character then
-                    for _, item in ipairs(character:GetChildren()) do
-                        if item:IsA("Tool") then
-                            return true
-                        end
-                    end
-                end
-            end
-        end
-        return false
-    end
-
-    local function performRoleStep(humanoid)
-        task.spawn(function()
-            local randomX = math.random() > 0.5 and 1 or -1
-            local randomZ = math.random() > 0.5 and 1 or -1
-            local moveDir = Vector3.new(randomX, 0, randomZ).Unit
-
-            local startTime = tick()
-            while tick() - startTime < 0.15 do
-                if humanoid and humanoid.Parent then
-                    humanoid:Move(moveDir, false)
-                end
-                RunService.RenderStepped:Wait()
-            end
-        end)
-    end
-
-    local function stopAntiAim()
-        if velocityConnection then
-            velocityConnection:Disconnect()
-            velocityConnection = nil
-        end
-    end
-
-    local function startAntiAim()
-        if velocityConnection then return end
-        velocityConnection = tc(RunService.Heartbeat:Connect(function()
-            if isIgnoredPlayerArmed() then
-                if enabled then
-                    enabled = false
-                end
-                return
-            elseif userWantsEnabled and not enabled then
-                enabled = true
-            end
-
-            local character = LP.Character
-            if character and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("Humanoid") then
-                local humanoid = character.Humanoid
-                if humanoid.Health > 0 then
-                    local hrp = character.HumanoidRootPart
-                    local currentlyHasKnife = hasKnife()
-
-                    if currentlyHasKnife and not hadKnifeLastFrame then
-                        performRoleStep(humanoid)
-                    end
-                    hadKnifeLastFrame = currentlyHasKnife
-
-                    if currentlyHasKnife and not isPlayerNearby(hrp) and not isInWater(humanoid) then
-                        local oldVelocity = hrp.AssemblyLinearVelocity
-                        local state = humanoid:GetState()
-                        local isJumping = (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall)
-                        local isStopped = (humanoid.MoveDirection.Magnitude == 0)
-
-                        local multiplier = math.random(1, 2) == 1 and 320 or -320
-
-                        if isJumping then
-                            local jumpMultY = math.random(1, 2) == 1 and 250 or -250
-                            hrp.AssemblyLinearVelocity = Vector3.new(multiplier, jumpMultY, multiplier)
-                        elseif isStopped then
-                            local stopMult = math.random(1, 2) == 1 and 400 or -400
-                            hrp.AssemblyLinearVelocity = Vector3.new(stopMult, 0, stopMult)
-                        else
-                            hrp.AssemblyLinearVelocity = Vector3.new(multiplier, 0, multiplier)
-                        end
-
-                        RunService.RenderStepped:Wait()
-                        hrp.AssemblyLinearVelocity = oldVelocity
-                    end
-                end
-            else
-                hadKnifeLastFrame = false
-            end
-        end))
-    end
-
-    mkToggle(secAA, "Enable Anti-Aim", false, function(v)
-        S.AntiAim = v
-        userWantsEnabled = v
-        enabled = v
-        if v then
-            startAntiAim()
-        else
-            stopAntiAim()
-        end
-    end, 1, "AntiAim")
-
-    mkToggle(secAA, "Enable Ignore List", true, function(v)
-        S.AntiAimIgnoreList = v
-    end, 2, "AntiAimIgnoreList")
-
-    local function mkPlayerDropdown(parent, label, order, slotKey)
-        local row = Instance.new("Frame")
-        row.Name = label
-        row.Parent = parent
-        row.LayoutOrder = order
-        row.Size = UDim2.new(1, 0, 0, M.rowH)
-        row.BackgroundTransparency = 1
-        row.BackgroundColor3 = T.Hover
-        pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", "Hover") end)
-        row.Active = true
-        row.BorderSizePixel = 0
-        Corner(row, 6)
-
-        local lbl = Instance.new("TextLabel")
-        lbl.Parent = row
-        lbl.BackgroundTransparency = 1
-        lbl.Position = UDim2.new(0, 6, 0, 0)
-        lbl.Size = UDim2.new(1, -(M.cycleW + 74), 1, 0)
-        lbl.Font = F
-        lbl.TextSize = M.rowFont
-        lbl.TextTruncate = Enum.TextTruncate.None
-        lbl.TextWrapped = false
-        lbl.TextColor3 = T.Tx2
-        pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        bindLocalizedText(lbl, label, label, false)
-
-        local btn = Instance.new("TextButton")
-        btn.Parent = row
-        btn.AnchorPoint = Vector2.new(1, 0.5)
-        btn.Position = UDim2.new(1, -6, 0.5, 0)
-        btn.Size = UDim2.new(0, M.cycleW, 0, M.cycleH)
-        btn.BackgroundColor3 = T.Elev
-        pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-        btn.BorderSizePixel = 0
-        btn.AutoButtonColor = false
-        btn.Font = FM
-        btn.TextSize = MOBILE and 13 or 12
-        btn.TextColor3 = T.Tx
-        pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
-        Corner(btn, 6)
-        Stroke(btn, T.Bd2, 1, 0.4)
-
-        local function applyName(name)
-            name = tostring(name or "None")
-            if not table.find(getPlayerList(), name) then name = "None" end
-            S[slotKey] = name
-            btn.Text = name
-            pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
-        end
-
-        local function openPicker()
-            SFX.Click()
-            local opts = getPlayerList()
-            local cur = btn.Text
-            local idx = 1
-            for i, o in ipairs(opts) do
-                if o == cur then idx = i break end
-            end
-            if S._OpenOptionPicker then
-                S._OpenOptionPicker(label, opts, idx, function(newIdx)
-                    local name = opts[newIdx]
-                    local p = findPlayerByName(name)
-                    Notify(label, p and p.Name or "None", 2)
-                    applyName(name)
-                end)
-            end
-        end
-
-        btn.MouseButton1Click:Connect(openPicker)
-        btn.MouseButton2Click:Connect(openPicker)
-        btn.MouseEnter:Connect(function()
-            TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
-        end)
-        btn.MouseLeave:Connect(function()
-            TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
-        end)
-
-        btn.Text = tostring(S[slotKey] or "None")
-
-        table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
-        table.insert(ConfigControls, {
-            id = _cfgId(parent, label),
-            get = function() return tostring(S[slotKey] or "None") end,
-            set = function(v) applyName(v) end,
-        })
-        return {
-            refresh = function() applyName(S[slotKey]) end,
-        }
-    end
-
-    local drop1 = mkPlayerDropdown(secAA, "Ignore Player 1", 3, "AntiAimSlot1")
-    local drop2 = mkPlayerDropdown(secAA, "Ignore Player 2", 4, "AntiAimSlot2")
-    local drop3 = mkPlayerDropdown(secAA, "Ignore Player 3", 5, "AntiAimSlot3")
-
-    tc(Players.PlayerAdded:Connect(function()
-        drop1.refresh()
-        drop2.refresh()
-        drop3.refresh()
-    end))
-    tc(Players.PlayerRemoving:Connect(function()
-        drop1.refresh()
-        drop2.refresh()
-        drop3.refresh()
-    end))
-end
-
-do
 
     local secView = mkSection(Pages.Visuals, "View", 4, true)
     if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secView) end
@@ -19971,17 +19312,15 @@ do
         local cc = coinCont and coinCont:FindFirstChild("CoinContainer")
         if cc and cc:FindFirstChild("CoinText") then
             local text = cc.CoinText.Text
-            if text == "Max" or text == "50" then return true end
+            if text:match("40") or text == "Max" or text == "50" or text:match("Max") then return true end
             local t = tonumber(text)
             if t and (t >= 40) then return true end
         end
         return false
     end
 
-    tt(function()
-        while true do
-            task.wait(0.5)
-            if S.Destroyed then break end
+    task.spawn(function()
+        while task.wait(0.5) do
             if isCoinBagFull() then
                 local murd = S._GetMurdererChar and S._GetMurdererChar()
                 local c = LP.Character
@@ -20031,6 +19370,7 @@ end
 -- >>> INERTIA NETWORK LOGIC >>>
 do
     local LP = game:GetService("Players").LocalPlayer
+    local inertiaUsers = {}
     
     local function createTag(char)
         if not char then return end
@@ -20058,10 +19398,63 @@ do
         bg.Parent = head
     end
 
+    local rep = game:GetService("ReplicatedStorage")
+    local chatEvents = rep:WaitForChild("DefaultChatSystemChatEvents", 5)
+    local sayRequest = chatEvents and chatEvents:FindFirstChild("SayMessageRequest")
+    
+    if chatEvents then
+        local onMessage = chatEvents:WaitForChild("OnMessageDoneFiltering", 5)
+        if onMessage then
+            onMessage.OnClientEvent:Connect(function(msgData)
+                if msgData and msgData.Message and msgData.FromSpeaker then
+                    local msg = string.lower(msgData.Message)
+                    if string.find(msg, "!inertia") then
+                        local speakerName = msgData.FromSpeaker
+                        local p = game:GetService("Players"):FindFirstChild(speakerName)
+                        if p then
+                            if not inertiaUsers[p.UserId] then
+                                inertiaUsers[p.UserId] = true
+                                if p.Character then createTag(p.Character) end
+                            end
+                            
+                            -- Acknowledge back so they know we exist
+                            if not string.find(msg, "ack") and p ~= LP then
+                                if sayRequest then
+                                    task.wait(math.random(1, 2))
+                                    sayRequest:FireServer("!inertia_ack", "All")
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+    
+    local function setupPlayer(p)
+        p.CharacterAdded:Connect(function(char)
+            task.wait(0.5)
+            if inertiaUsers[p.UserId] then
+                createTag(char)
+            end
+        end)
+    end
+    
+    for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+        setupPlayer(p)
+    end
+    game:GetService("Players").PlayerAdded:Connect(setupPlayer)
+    
+    -- Tag ourselves immediately
+    inertiaUsers[LP.UserId] = true
     if LP.Character then createTag(LP.Character) end
-    LP.CharacterAdded:Connect(function(char)
-        task.wait(0.5)
-        createTag(char)
-    end)
+    
+    -- Broadcast our presence
+    if sayRequest then
+        task.spawn(function()
+            task.wait(2)
+            sayRequest:FireServer("!inertia", "All")
+        end)
+    end
 end
 -- <<< INERTIA NETWORK LOGIC <<<

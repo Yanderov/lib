@@ -179,6 +179,98 @@ local Cards = {}
 local busy = false
 local setLoading
 
+local readfileF = type(readfile) == "function" and readfile or nil
+local isfileF = type(isfile) == "function" and isfile or nil
+local listfilesF = type(listfiles) == "function" and listfiles or nil
+
+if not readfileF or not isfileF then
+	warn("INERTIA launcher: executor exposes no readfile/isfile — local-first disabled, GitHub only")
+end
+
+local loaderDir
+do
+	local src = (debug and debug.getinfo and debug.getinfo(1, "S") or {}).source
+	if type(src) == "string" and src:sub(1, 1) == "@" then
+		src = src:match("^(.-)[/\\][^/\\]*$")
+		if type(src) == "string" and #src > 0 then loaderDir = src end
+	end
+end
+
+local function localPayloadSource(payloadPath)
+	local names = { payloadPath .. ".lua", payloadPath .. ".txt" }
+
+	local function readAt(path)
+		if not readfileF then return nil end
+		local ok, data = pcall(readfileF, path)
+		if ok and type(data) == "string" and #data > 0 then return data end
+		return nil
+	end
+
+	local function existsAt(path)
+		if not isfileF then return readAt(path) ~= nil end
+		local ok, is = pcall(isfileF, path)
+		return ok and is == true
+	end
+
+	local dirs = { "inertia/", "scripts/", "loadstring/", "autosave/", "" }
+	if loaderDir then dirs[#dirs + 1] = loaderDir .. "/" end
+	for _, dir in ipairs(dirs) do
+		for _, name in ipairs(names) do
+			local path = dir .. name
+			if existsAt(path) then
+				local data = readAt(path)
+				if data then return data, path end
+			end
+		end
+	end
+
+	local devRoots = {
+		"C:\\Users\\sadhasdkfj\\Desktop\\script\\",
+	}
+	for _, root in ipairs(devRoots) do
+		for _, name in ipairs(names) do
+			local path = root .. name
+			if existsAt(path) then
+				local data = readAt(path)
+				if data then return data, path end
+			end
+		end
+	end
+
+	if listfilesF then
+		local queue, head = { "" }, 1
+		local depth = { [""] = 0 }
+		while head <= #queue do
+			local dir = queue[head]
+			head = head + 1
+			if depth[dir] < 6 then
+				local ok, items = pcall(listfilesF, dir)
+				if ok and type(items) == "table" then
+					for _, item in ipairs(items) do
+						if type(item) == "string" and item ~= "" then
+							local isDir = item:sub(-1) == "/" or item:sub(-1) == "\\"
+							if isDir then
+								depth[item] = depth[dir] + 1
+								queue[#queue + 1] = item
+							else
+								local leaf = item:match("[^/\\]+$")
+								for _, name in ipairs(names) do
+									if leaf == name then
+										local data = readAt(item)
+										if data then return data, item end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return nil, nil
+end
+
 local function launch(entry)
 	if busy then return end
 	busy = true
@@ -187,24 +279,40 @@ local function launch(entry)
 
 		_G.INERTIA_MOBILE = MOBILE
 
-		local sha = "main"
-		local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
-		if okApi and type(apiRes) == "string" then
-			local extracted = apiRes:match('"sha"%s*:%s*"([^"]+)"')
-			if extracted then sha = extracted end
+		local payloadPath = entry.file .. (MOBILE and "_mobile" or "")
+		local source, usedPath = localPayloadSource(payloadPath)
+
+		if source then
+			warn("INERTIA launcher: local source " .. tostring(usedPath))
+			setLoading(entry, "local · " .. tostring(usedPath and usedPath:match("[^/\\]+$") or payloadPath))
+		else
+			local sha = "main"
+			local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
+			if okApi and type(apiRes) == "string" then
+				local extracted = apiRes:match('"sha"%s*:%s*"([^"]+)"')
+				if extracted then sha = extracted end
+			end
+			local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".lua"
+			local ok, gSrc = pcall(function() return game:HttpGet(url) end)
+			if ok and type(gSrc) == "string" and #gSrc > 0 then
+				source = gSrc
+			else
+				url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".txt"
+				ok, gSrc = pcall(function() return game:HttpGet(url) end)
+				if ok and type(gSrc) == "string" and #gSrc > 0 then
+					source = gSrc
+				end
+			end
+			if source then
+				warn("INERTIA launcher: remote source " .. url)
+				setLoading(entry, "github · " .. payloadPath)
+			end
 		end
 
-		local payloadPath = entry.file .. (MOBILE and "_mobile" or "")
-		local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".lua"
-		local ok, source = pcall(function() return game:HttpGet(url) end)
-		if not ok or type(source) ~= "string" or #source == 0 then
-			url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".txt"
-			ok, source = pcall(function() return game:HttpGet(url) end)
-		end
-		if not ok or type(source) ~= "string" or #source == 0 then
+		if not source then
 			busy = false
-			setLoading(entry, "download failed", true)
-			warn("INERTIA launcher: " .. tostring(source))
+			setLoading(entry, "no source found", true)
+			warn("INERTIA launcher: no local file and no network payload for " .. payloadPath)
 			return
 		end
 		setLoading(entry, "starting")

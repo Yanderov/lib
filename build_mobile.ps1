@@ -14,7 +14,7 @@ $builds = @(
 )
 
 foreach ($build in $builds) {
-    $lines = Get-Content -LiteralPath $build.Source
+    $lines = Get-Content -LiteralPath $build.Source -Encoding UTF8
 
     $strict = @()
     if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '--!strict') {
