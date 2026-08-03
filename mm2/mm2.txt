@@ -2624,7 +2624,8 @@ S._BuildThemeWindow = function()
         mid.ZIndex = 4001
         Corner(mid, 8)
         Stroke(mid, T.Bd, 1, 0.4)
-        Pad(mid, 10, 10, 10, 10)
+
+        Pad(mid, 10, 10, 12, 12)
         local ml = Instance.new("UIListLayout")
         ml.Parent = mid
         ml.Padding = UDim.new(0, 5)
@@ -2705,6 +2706,8 @@ S._BuildThemeWindow = function()
         prev.ZIndex = 4001
         Corner(prev, 8)
         Stroke(prev, T.Bd2, 1, 0.3)
+
+        Pad(prev, 3, 3, 3, 3)
 
         local function box(parent, pos, size, role, z, corner)
             local f = Instance.new("Frame")
@@ -4259,6 +4262,56 @@ local function mkSection(parent, title, order)
     hdr.TextColor3 = T.Tx3; pcall(function() hdr:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
     hdr.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(hdr, title, title, true)
+
+    local chevron = Instance.new("TextLabel")
+    chevron.Name = "Chevron"
+    chevron.Parent = hdrRow
+    chevron.AnchorPoint = Vector2.new(1, 0.5)
+    chevron.Position = UDim2.new(1, -2, 0.5, 0)
+    chevron.Size = UDim2.fromOffset(14, 14)
+    chevron.BackgroundTransparency = 1
+    chevron.Font = FB
+    chevron.TextSize = 12
+    chevron.Text = "\u{25BE}"
+    chevron.TextColor3 = T.Tx4
+    pcall(function() chevron:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
+
+    local hit = Instance.new("TextButton")
+    hit.Name = "HeaderHit"
+    hit.Parent = hdrRow
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.AutoButtonColor = false
+    hit.Size = UDim2.fromScale(1, 1)
+    hit.ZIndex = (hdrRow.ZIndex or 1) + 2
+
+    local collapsed = false
+    local function applyCollapse()
+        chevron.Text = collapsed and "\u{25B8}" or "\u{25BE}"
+        for _, ch in ipairs(inner:GetChildren()) do
+            if ch ~= hdrRow and ch:IsA("GuiObject") then
+
+                if collapsed then
+                    if ch:GetAttribute("PreCollapseVisible") == nil then
+                        ch:SetAttribute("PreCollapseVisible", ch.Visible)
+                    end
+                    ch.Visible = false
+                else
+                    local want = ch:GetAttribute("PreCollapseVisible")
+                    ch.Visible = (want == nil) and true or want
+                    ch:SetAttribute("PreCollapseVisible", nil)
+                end
+            end
+        end
+    end
+    hit.MouseButton1Click:Connect(function()
+        SFX.Click()
+        collapsed = not collapsed
+        card:SetAttribute("InertiaCollapsed", collapsed)
+        applyCollapse()
+    end)
+    card:SetAttribute("InertiaCollapsible", true)
+
     return inner
 end
 local function mkToggle(parent, label, default, callback, order, configLabel)
