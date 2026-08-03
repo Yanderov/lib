@@ -128,6 +128,7 @@ local S = {
     KnifeSilentAimFOVEnabled = false,
     FastThrow = false, NoKnifeAnim = false,
     KnifeFlightSpeedControl = false, KnifeFlightSpeed = 100,
+    ThrowKnifeAura = false, ThrowAuraColor = "Cyan", ThrowAuraRate = 90,
     CustomShootSound = false, CustomShootSoundId = "",
     CustomMurdererWinSound = false, CustomMurdererWinSoundId = "rbxassetid://1837849285",
     CustomSheriffWinSound = false, CustomSheriffWinSoundId = "rbxassetid://1837849285",
@@ -7045,11 +7046,17 @@ do
         S.KnifeThrowWindup = (10 - v) / 10
         pcall(function() if S._ReapplyThrowSpeed then S._ReapplyThrowSpeed() end end)
     end, 3)
-    mkSlider(secKnifeThrow, "Knife Flight Speed", 20, 250, 100, function(v)
+
+    mkSlider(secKnifeThrow, "Knife Flight Speed", 20, 400, 100, function(v)
         S.KnifeFlightSpeedControl = true
         S.KnifeFlightSpeed = v
         pcall(function() if S._ReapplyKnifeFlightSpeed then S._ReapplyKnifeFlightSpeed() end end)
     end, 4)
+    mkToggle(secKnifeThrow, "Thrown Knife Aura", false, function(v) S.ThrowKnifeAura = v end, 5)
+    mkCycle(secKnifeThrow, "Aura Color",
+        { "Cyan", "Red", "Green", "Purple", "Gold", "White", "Pink" }, "Cyan",
+        function(v) S.ThrowAuraColor = v end, 6)
+    mkSlider(secKnifeThrow, "Aura Density", 5, 300, 90, function(v) S.ThrowAuraRate = v end, 7)
 
     local secMurder = mkSection(Pages.Combat, "Kill Suite", 5)
     secMurder.Parent:SetAttribute("ConfigSection", "Murderer Kill Suite")
@@ -18015,57 +18022,78 @@ do
     if LP.Character then task.defer(function() hookThrowAnimator(LP.Character) end) end
     tc(LP.CharacterAdded:Connect(function(ch) task.defer(function() hookThrowAnimator(ch) end) end))
 
-    local trackedProjectiles = {}
-    local projectileNames = { Knife = true, NormalKnife = true, ThrowingKnife = true }
-    local function isProjectileObject(obj)
-        if not obj or not obj.Parent or not projectileNames[obj.Name] then return false end
-        if LP.Character and obj:IsDescendantOf(LP.Character) then return false end
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        if bp and obj:IsDescendantOf(bp) then return false end
-        return obj:IsDescendantOf(workspace)
+    local CollSvc = game:GetService("CollectionService")
+
+    local function auraColor()
+        local name = S.ThrowAuraColor or "Cyan"
+        local map = {
+            Cyan = Color3.fromRGB(80, 220, 230), Red = Color3.fromRGB(255, 70, 70),
+            Green = Color3.fromRGB(90, 220, 120), Purple = Color3.fromRGB(180, 120, 255),
+            Gold = Color3.fromRGB(255, 205, 90), White = Color3.fromRGB(245, 245, 245),
+            Pink = Color3.fromRGB(255, 120, 200),
+        }
+        return map[name] or map.Cyan
     end
-    local function projectilePart(obj)
-        if not obj then return nil end
-        if obj:IsA("BasePart") then return obj end
-        return obj:FindFirstChild("Handle", true)
-            or obj:FindFirstChild("KnifeVisual", true)
-            or obj:FindFirstChildWhichIsA("BasePart", true)
-    end
-    local function registerProjectile(obj)
-        if isProjectileObject(obj) then trackedProjectiles[obj] = true end
-    end
-    local function scanProjectileAncestor(obj)
-        local cur = obj
-        for _ = 1, 4 do
-            if isProjectileObject(cur) then registerProjectile(cur); return end
-            cur = cur and cur.Parent
+
+    local function dressKnife(part)
+        if not (part and part:IsA("BasePart")) then return end
+
+        if S.KnifeFlightSpeedControl then
+            local speed = math.clamp(tonumber(S.KnifeFlightSpeed) or 100, 20, 400)
+            pcall(function() part:SetAttribute("ThrowSpeed", speed) end)
+        end
+
+        if S.ThrowKnifeAura and not part:FindFirstChild("InertiaThrowAura") then
+            local col = auraColor()
+            local a = Instance.new("Attachment")
+            a.Name = "InertiaThrowAura"
+            a.Parent = part
+
+            local em = Instance.new("ParticleEmitter")
+            em.Name = "InertiaThrowAuraFX"
+            em.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+            em.Color = ColorSequence.new(col)
+            em.Size = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 0),
+            })
+            em.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1),
+            })
+            em.Lifetime = NumberRange.new(0.25, 0.5)
+            em.Rate = math.clamp(tonumber(S.ThrowAuraRate) or 90, 5, 300)
+            em.Speed = NumberRange.new(0, 1)
+            em.SpreadAngle = Vector2.new(180, 180)
+            em.LightEmission = 0.65
+            em.LightInfluence = 0
+
+            em.LockedToPart = true
+            em.Parent = a
         end
     end
-    local function applyKnifeFlightSpeed(obj)
-        if not S.KnifeFlightSpeedControl or not isProjectileObject(obj) then return end
-        local part = projectilePart(obj)
-        if not part then return end
-        local velocity = part.AssemblyLinearVelocity
-        local speed = math.clamp(tonumber(S.KnifeFlightSpeed) or 100, 20, 250)
-        if velocity.Magnitude > 1 then
-            pcall(function() part.AssemblyLinearVelocity = velocity.Unit * speed end)
-        end
-    end
-    S._ReapplyKnifeFlightSpeed = function()
-        for _, obj in ipairs(workspace:GetChildren()) do registerProjectile(obj) end
-        for obj in pairs(trackedProjectiles) do applyKnifeFlightSpeed(obj) end
-    end
-    tc(workspace.DescendantAdded:Connect(scanProjectileAncestor))
-    tc(RunService.Stepped:Connect(function()
-        for obj in pairs(trackedProjectiles) do
-            if isProjectileObject(obj) then
-                applyKnifeFlightSpeed(obj)
-            else
-                trackedProjectiles[obj] = nil
+
+    local function onThrown(obj)
+        if not (S.KnifeFlightSpeedControl or S.ThrowKnifeAura) then return end
+        task.spawn(function()
+            for _ = 1, 30 do
+                if not obj.Parent then return end
+                local vis = obj:FindFirstChild("KnifeVisual")
+                if vis then
+                    dressKnife(vis)
+
+                    task.wait(0.05)
+                    if vis.Parent then dressKnife(vis) end
+                    return
+                end
+                task.wait(0.03)
             end
-        end
-    end))
-    S._ReapplyKnifeFlightSpeed()
+        end)
+    end
+
+    tc(CollSvc:GetInstanceAddedSignal("ThrowingKnife"):Connect(onThrown))
+    for _, obj in ipairs(CollSvc:GetTagged("ThrowingKnife")) do onThrown(obj) end
+    S._ReapplyKnifeFlightSpeed = function()
+        for _, obj in ipairs(CollSvc:GetTagged("ThrowingKnife")) do onThrown(obj) end
+    end
 end
 
 do
