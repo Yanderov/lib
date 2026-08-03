@@ -1763,11 +1763,11 @@ local function applySearch()
             if bar then bar.Visible = true end
         end
         if SearchEmptyLbl then SearchEmptyLbl.Visible = false end
-        if S._UpdateCombatSubtabs then S._UpdateCombatSubtabs() end
-        if S._UpdateMiscSubtabs then S._UpdateMiscSubtabs() end
-        if S._UpdateTeleportSubtabs then S._UpdateTeleportSubtabs() end
-        if S._UpdateVisualsSubtabs then S._UpdateVisualsSubtabs() end
-        if S._UpdatePlayerSubtabs then S._UpdatePlayerSubtabs() end
+
+        for _, fn in ipairs({ "_UpdateCombatSubtabs", "_UpdateMiscSubtabs", "_UpdateTeleportSubtabs",
+                              "_UpdateVisualsSubtabs", "_UpdatePlayerSubtabs", "_UpdateMotionSubtabs" }) do
+            if type(S[fn]) == "function" then pcall(S[fn]) end
+        end
         if S._UpdateMotionSubtabs then S._UpdateMotionSubtabs() end
     else
 
@@ -18028,8 +18028,10 @@ do
 
     S._MurdererKillAll = function()
         task.spawn(function()
-            local knife = equipKnife()
-            if not knife then
+
+            local c = LP.Character
+            local bp = LP:FindFirstChildOfClass("Backpack")
+            if not ((c and c:FindFirstChild("Knife")) or (bp and bp:FindFirstChild("Knife"))) then
                 Notify("Murderer", "Knife not found", 3)
                 return
             end
