@@ -1777,6 +1777,7 @@ local function applySearch()
                               "_UpdateVisualsSubtabs", "_UpdatePlayerSubtabs", "_UpdateMotionSubtabs" }) do
             if type(S[fn]) == "function" then pcall(S[fn]) end
         end
+        for _, fn in ipairs(S._CollapseHooks or {}) do pcall(fn) end
         if S._UpdateMotionSubtabs then S._UpdateMotionSubtabs() end
     else
 
@@ -4358,6 +4359,16 @@ local function mkSection(parent, title, order)
         setCollapsed(not collapsed)
     end)
     card:SetAttribute("InertiaCollapsible", true)
+
+    S._CollapseHooks = S._CollapseHooks or {}
+    table.insert(S._CollapseHooks, function()
+        if not collapsed then return end
+        for _, ch in ipairs(inner:GetChildren()) do
+            if ch ~= hdrRow and ch:IsA("GuiObject") then ch.Visible = false end
+        end
+        inner.AutomaticSize = Enum.AutomaticSize.None
+        inner.Size = UDim2.new(1, 0, 0, HEADER_H)
+    end)
 
     return inner
 end
@@ -7418,6 +7429,15 @@ end, 6)
         end
     end
     S._UpdateVisualsSubtabs = updateVisualsSubTabs
+    do
+
+        local _inner = S._UpdateVisualsSubtabs
+        S._UpdateVisualsSubtabs = function(...)
+            local r = table.pack(pcall(_inner, ...))
+            for _, h in ipairs(S._CollapseHooks or {}) do pcall(h) end
+            return table.unpack(r, 2, r.n)
+        end
+    end
 
     espBtn.MouseButton1Click:Connect(function()
         SFX.Click()
@@ -7677,6 +7697,15 @@ do
         secSurvival.Parent.Visible = isSurvivors
     end
     S._UpdateCombatSubtabs = updateSubTabs
+    do
+
+        local _inner = S._UpdateCombatSubtabs
+        S._UpdateCombatSubtabs = function(...)
+            local r = table.pack(pcall(_inner, ...))
+            for _, h in ipairs(S._CollapseHooks or {}) do pcall(h) end
+            return table.unpack(r, 2, r.n)
+        end
+    end
 
     sheriffBtn.MouseButton1Click:Connect(function()
         SFX.Click()
@@ -8230,6 +8259,15 @@ do
         for _, s in ipairs(motionTargetsSections) do if s and s.Parent then s.Parent.Visible = isTargets end end
     end
     S._UpdateMotionSubtabs = updateMotionSubTabs
+    do
+
+        local _inner = S._UpdateMotionSubtabs
+        S._UpdateMotionSubtabs = function(...)
+            local r = table.pack(pcall(_inner, ...))
+            for _, h in ipairs(S._CollapseHooks or {}) do pcall(h) end
+            return table.unpack(r, 2, r.n)
+        end
+    end
     moveBtn.MouseButton1Click:Connect(function()
         SFX.Click()
         activeMotionSubTab = "Movement"
@@ -8281,6 +8319,15 @@ do
         end
     end
     S._UpdateMiscSubtabs = updateMiscSubTabs
+    do
+
+        local _inner = S._UpdateMiscSubtabs
+        S._UpdateMiscSubtabs = function(...)
+            local r = table.pack(pcall(_inner, ...))
+            for _, h in ipairs(S._CollapseHooks or {}) do pcall(h) end
+            return table.unpack(r, 2, r.n)
+        end
+    end
     protectionBtn.MouseButton1Click:Connect(function() SFX.Click(); activeMiscSubTab = "Protection"; updateMiscSubTabs() end)
     utilityBtn.MouseButton1Click:Connect(function() SFX.Click(); activeMiscSubTab = "Utility"; updateMiscSubTabs() end)
     musicBtn.MouseButton1Click:Connect(function() SFX.Click(); activeMiscSubTab = "Music"; updateMiscSubTabs() end)
@@ -9265,6 +9312,15 @@ do
         if sec and sec.Parent then sec.Parent.Visible = (activeTpSubTab == "Autofarm") end
     end
     S._UpdateTeleportSubtabs = updateTpSubTabs
+    do
+
+        local _inner = S._UpdateTeleportSubtabs
+        S._UpdateTeleportSubtabs = function(...)
+            local r = table.pack(pcall(_inner, ...))
+            for _, h in ipairs(S._CollapseHooks or {}) do pcall(h) end
+            return table.unpack(r, 2, r.n)
+        end
+    end
     teleportBtn.MouseButton1Click:Connect(function() SFX.Click(); activeTpSubTab = "Teleport"; updateTpSubTabs() end)
     autofarmBtn.MouseButton1Click:Connect(function() SFX.Click(); activeTpSubTab = "Autofarm"; updateTpSubTabs() end)
 
@@ -12924,6 +12980,9 @@ local function loadConfig(name)
     if type(applyTheme) == "function" then
         pcall(applyTheme, (S.SelectedTheme and Themes[S.SelectedTheme]) and S.SelectedTheme or "Default")
     end
+
+    if type(S._UpdateTextSizes) == "function" then pcall(S._UpdateTextSizes) end
+    if type(S._UpdateLanguage) == "function" then pcall(S._UpdateLanguage) end
     if S.UIFont and S._ApplyUIFont then pcall(S._ApplyUIFont, S.UIFont) end
     if type(S._RefreshVFXWings) == "function" then pcall(S._RefreshVFXWings) end
 
@@ -16139,6 +16198,15 @@ do
     end
 
     S._UpdatePlayerSubtabs = updatePlayerSubTabs
+    do
+
+        local _inner = S._UpdatePlayerSubtabs
+        S._UpdatePlayerSubtabs = function(...)
+            local r = table.pack(pcall(_inner, ...))
+            for _, h in ipairs(S._CollapseHooks or {}) do pcall(h) end
+            return table.unpack(r, 2, r.n)
+        end
+    end
     PlayerTabs.animBtn.MouseButton1Click:Connect(function()
         SFX.Click()
         PlayerTabs.active = "Animations"
@@ -19412,7 +19480,9 @@ do
 end
 
 do
-    local secDesync = mkSection(Pages.Motion, "Desync", 5)
+
+    local secDesync = mkSection(Pages.Misc, "Desync", 2.5)
+    if S._RegisterMiscSection then pcall(S._RegisterMiscSection, secDesync, "Protection") end
 
     if S._RegisterMotionMovementSection then pcall(S._RegisterMotionMovementSection, secDesync) end
     local lastCF, lastVel, lastAng, applied = nil, nil, nil, false
