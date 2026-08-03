@@ -124,9 +124,7 @@ local S = {
     KnifeSilentAimFOVEnabled = false,
     FastThrow = false, NoKnifeAnim = false,
     KnifeFlightSpeedControl = false, KnifeFlightSpeed = 100,
-    CustomKillSound = false, CustomKillSoundId = "rbxassetid://4590662766",
     CustomShootSound = false, CustomShootSoundId = "",
-    CustomKnifeSound = false, CustomKnifeKillSoundId = "rbxassetid://9120386446",
     CustomMurdererWinSound = false, CustomMurdererWinSoundId = "rbxassetid://1837849285",
     CustomSheriffWinSound = false, CustomSheriffWinSoundId = "rbxassetid://1837849285",
     AmbientMusic = false, AmbientMusicId = "rbxassetid://1843323335", AmbientMusicVol = 0.4,
@@ -18213,40 +18211,8 @@ do
         end)
     end))
 
-    task.spawn(function()
-        local ok, ws = pcall(function()
-            return game:GetService("ReplicatedStorage")
-                :WaitForChild("ClientServices", 10)
-                :WaitForChild("WeaponService", 10)
-        end)
-        if not (ok and ws) then return end
-        local gf = ws:FindFirstChild("GunFired")
-        if not gf then return end
-        tc(gf.OnClientEvent:Connect(function(_, _, _, hitPart)
-            if not S.CustomKillSound or not hitPart then return end
-            local mdl = hitPart:FindFirstAncestorWhichIsA("Model")
-            if mdl and Players:GetPlayerFromCharacter(mdl) then
-                playOnce(S.CustomKillSoundId or "rbxassetid://4590662766", 0.7)
-            end
-        end))
-    end)
-
-    tc(Players.PlayerAdded:Connect(function(p)
-        p.CharacterAdded:Connect(function(ch)
-            local hum = ch:WaitForChild("Humanoid", 10)
-            if not hum then return end
-            hum.Died:Connect(function()
-                if not S.CustomKnifeSound then return end
-                local hasKnifeObj = false
-                for _, v in ipairs(workspace:GetChildren()) do
-                    if v.Name:lower():find("knife") then hasKnifeObj = true; break end
-                end
-                if hasKnifeObj then
-                    playOnce(S.CustomKnifeKillSoundId or "rbxassetid://9120386446", 0.7)
-                end
-            end)
-        end)
-    end))
+    S.CustomKillSound, S.CustomKillSoundId = nil, nil
+    S.CustomKnifeSound, S.CustomKnifeKillSoundId = nil, nil
 
     task.spawn(function()
         local ok, gp = pcall(function()
