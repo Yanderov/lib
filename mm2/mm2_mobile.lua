@@ -36,7 +36,8 @@ local S = {
     AutoKillSheriff = false, AutoKillNearest = false, ClickKill = false, KillAura = false, KillAuraRange = 18,
     ActiveShader = "None",
 
-    HubTag = false, HubTagAnnounce = false, HubTagShowSelf = true,
+    HubTag = nil, HubTagAnnounce = nil, HubTagShowSelf = nil,
+    FogEnabled = nil, Weather = nil, WeatherSound = nil, AmbientSound = nil,
     MGWidth = 2, MGStyle = "Accent", UIFont = "Gotham",
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
     HUD_Ping = false, HUD_Coords = false, NoEmoteStop = false, LoopEmote = false,
@@ -51,14 +52,6 @@ local S = {
     ItemChamsMode = "Highlight", ItemChamsColor = "White", ItemChamsRainbow = false,
     Saturation = 0, Contrast = 0, CamFOV = 70,
     SkyEnabled = false, SkyPreset = "Day", SkyTint = "Preset", SkyRainbow = false,
-    FogEnabled = false, FogColorName = "Gray", FogStart = 0, FogEnd = 500, FogRainbow = false,
-    FogMode = "Atmosphere", FogDensity = 40,
-    FogR = 150, FogG = 150, FogB = 158, FogRainbowSpeed = 100, FogRainbowSat = 55,
-    FogAuto = true, FogOffset = 20, FogGlare = 24, FogHaze = 40, FogDepth = 35,
-    Weather = "Off", WeatherIntensity = 60, WeatherWind = 30,
-    WeatherSound = false, WeatherSoundName = "Rain", WeatherSoundVolume = 40,
-    AmbientSound = false, AmbientSoundName = "Forest", AmbientSoundVolume = 30,
-    WeatherThunder = false,
     ShaderBrightness = 200, ShaderExposure = 4, ShaderBloom = 40, ShaderContrast = 12,
     ShaderSaturation = 18, ShaderCCBright = 0, ShaderTime = 14, ShaderBloomSize = 24,
     ShaderSunRays = 8, ShaderDOF = 0, ShaderBlur = 0, ShaderAtmo = 22,
@@ -121,6 +114,7 @@ local S = {
     PerkNoCooldown = false, PerkAutoUse = false,
     AntiAim = false, AntiAimKnifeOnly = true, AntiAimStrength = 320, AntiAimNearRange = 6,
     AntiCoin = false,
+    VoidResetAura = false, VoidResetAuraRange = 15, VoidResetRetries = 3, VoidResetDelay = 0.2,
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -130,7 +124,7 @@ local S = {
     KnifeSilentAimFOVEnabled = false,
     FastThrow = false, NoKnifeAnim = false,
     KnifeFlightSpeedControl = false, KnifeFlightSpeed = 100,
-    ThrowKnifeAura = false, ThrowAuraColor = "Cyan", ThrowAuraRate = 90,
+    ThrowKnifeAura = false, ThrowAuraRange = 12,
     CustomShootSound = false, CustomShootSoundId = "",
     CustomMurdererWinSound = false, CustomMurdererWinSoundId = "rbxassetid://1837849285",
     CustomSheriffWinSound = false, CustomSheriffWinSoundId = "rbxassetid://1837849285",
@@ -7054,11 +7048,8 @@ do
         S.KnifeFlightSpeed = v
         pcall(function() if S._ReapplyKnifeFlightSpeed then S._ReapplyKnifeFlightSpeed() end end)
     end, 4)
-    mkToggle(secKnifeThrow, "Thrown Knife Aura", false, function(v) S.ThrowKnifeAura = v end, 5)
-    mkCycle(secKnifeThrow, "Aura Color",
-        { "Cyan", "Red", "Green", "Purple", "Gold", "White", "Pink" }, "Cyan",
-        function(v) S.ThrowAuraColor = v end, 6)
-    mkSlider(secKnifeThrow, "Aura Density", 5, 300, 90, function(v) S.ThrowAuraRate = v end, 7)
+    mkToggle(secKnifeThrow, "Thrown Knife Kill Aura", false, function(v) S.ThrowKnifeAura = v end, 5)
+    mkSlider(secKnifeThrow, "Throw Aura Range", 1, 60, 12, function(v) S.ThrowAuraRange = v end, 6)
 
     local secMurder = mkSection(Pages.Combat, "Kill Suite", 5)
     secMurder.Parent:SetAttribute("ConfigSection", "Murderer Kill Suite")
@@ -18026,17 +18017,6 @@ do
 
     local CollSvc = game:GetService("CollectionService")
 
-    local function auraColor()
-        local name = S.ThrowAuraColor or "Cyan"
-        local map = {
-            Cyan = Color3.fromRGB(80, 220, 230), Red = Color3.fromRGB(255, 70, 70),
-            Green = Color3.fromRGB(90, 220, 120), Purple = Color3.fromRGB(180, 120, 255),
-            Gold = Color3.fromRGB(255, 205, 90), White = Color3.fromRGB(245, 245, 245),
-            Pink = Color3.fromRGB(255, 120, 200),
-        }
-        return map[name] or map.Cyan
-    end
-
     local function dressKnife(part)
         if not (part and part:IsA("BasePart")) then return end
 
@@ -18045,31 +18025,28 @@ do
             pcall(function() part:SetAttribute("ThrowSpeed", speed) end)
         end
 
-        if S.ThrowKnifeAura and not part:FindFirstChild("InertiaThrowAura") then
-            local col = auraColor()
-            local a = Instance.new("Attachment")
-            a.Name = "InertiaThrowAura"
-            a.Parent = part
+        if S.ThrowKnifeAura and not part:GetAttribute("InertiaAuraArmed") then
 
-            local em = Instance.new("ParticleEmitter")
-            em.Name = "InertiaThrowAuraFX"
-            em.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-            em.Color = ColorSequence.new(col)
-            em.Size = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 0),
-            })
-            em.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1),
-            })
-            em.Lifetime = NumberRange.new(0.25, 0.5)
-            em.Rate = math.clamp(tonumber(S.ThrowAuraRate) or 90, 5, 300)
-            em.Speed = NumberRange.new(0, 1)
-            em.SpreadAngle = Vector2.new(180, 180)
-            em.LightEmission = 0.65
-            em.LightInfluence = 0
+            pcall(function() part:SetAttribute("InertiaAuraArmed", true) end)
+            task.spawn(function()
+                local hit = {}
+                while part.Parent and S.ThrowKnifeAura do
+                    local range = math.clamp(tonumber(S.ThrowAuraRange) or 12, 1, 60)
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LP and not hit[p] and not isWhitelisted(p) and p.Character then
+                            local r = p.Character:FindFirstChild("HumanoidRootPart")
+                            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                            if r and hum and hum.Health > 0
+                                and (r.Position - part.Position).Magnitude <= range then
 
-            em.LockedToPart = true
-            em.Parent = a
+                                hit[p] = true
+                                if S._KillInstant then pcall(S._KillInstant, p) end
+                            end
+                        end
+                    end
+                    RunService.Heartbeat:Wait()
+                end
+            end)
         end
     end
 
@@ -18154,6 +18131,8 @@ do
         return true
     end
     S._MurdererKill = murdererKill
+
+    S._KillInstant = killInstant
     local function nearestPlayer()
         local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return nil end
@@ -19329,30 +19308,6 @@ do
     mkToggle(secView, "Custom FOV", false, function(v) S.CustomFOV = v end, 1)
     mkSlider(secView, "FOV", 20, 120, 70, function(v) S.FOVValue = v end, 2)
 
-    local secFog = mkSection(Pages.Visuals, "Custom Fog", 6)
-    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secFog) end
-    local function repaintFog() if S._ApplyEnvironment then pcall(S._ApplyEnvironment) end end
-    mkToggle(secFog, "Fog", false, function(v) S.FogEnabled = v; repaintFog() end, 1)
-    mkCycle(secFog, "Fog Mode", { "Atmosphere", "Classic" }, "Atmosphere", function(v) S.FogMode = v; repaintFog() end, 2)
-    mkCycle(secFog, "Fog Color",
-        { "Gray", "White", "Black", "Blue", "Purple", "Pink", "Cyan", "Orange", "Green", "Red", "Custom" },
-        "Gray", function(v) S.FogColorName = v; repaintFog() end, 3)
-    mkSlider(secFog, "Custom Red", 0, 255, 150, function(v) S.FogR = v; repaintFog() end, 3.1)
-    mkSlider(secFog, "Custom Green", 0, 255, 150, function(v) S.FogG = v; repaintFog() end, 3.2)
-    mkSlider(secFog, "Custom Blue", 0, 255, 158, function(v) S.FogB = v; repaintFog() end, 3.3)
-    mkToggle(secFog, "Fog Rainbow", false, function(v) S.FogRainbow = v; repaintFog() end, 4)
-    mkSlider(secFog, "Rainbow Speed (%)", 5, 500, 100, function(v) S.FogRainbowSpeed = v; repaintFog() end, 4.1)
-    mkSlider(secFog, "Rainbow Saturation (%)", 0, 100, 55, function(v) S.FogRainbowSat = v; repaintFog() end, 4.2)
-    mkSlider(secFog, "Fog Density (%)", 2, 95, 40, function(v) S.FogDensity = v; repaintFog() end, 5)
-
-    mkToggle(secFog, "Auto Tuning", true, function(v) S.FogAuto = v; repaintFog() end, 5.1)
-    mkSlider(secFog, "Offset", 0, 100, 20, function(v) S.FogOffset = v; repaintFog() end, 5.2)
-    mkSlider(secFog, "Glare", 0, 100, 24, function(v) S.FogGlare = v; repaintFog() end, 5.3)
-    mkSlider(secFog, "Haze", 0, 100, 40, function(v) S.FogHaze = v; repaintFog() end, 5.4)
-    mkSlider(secFog, "Depth Falloff", 0, 100, 35, function(v) S.FogDepth = v; repaintFog() end, 5.5)
-    mkSlider(secFog, "Fog Start (Classic)", 0, 1000, 0, function(v) S.FogStart = v; repaintFog() end, 6)
-    mkSlider(secFog, "Fog End (Classic)", 50, 2000, 500, function(v) S.FogEnd = v; repaintFog() end, 7)
-
     do
         local a = game:GetService("Lighting"):FindFirstChild("InertiaAtmosphere")
         if a then a:Destroy() end
@@ -19376,422 +19331,6 @@ do
     end))
     mkToggle(secJump, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 1)
 
-end
-
-do
-    local BEACON = "::inertia::"
-    local REANNOUNCE = 90
-    local tags = {}
-    local known = {}
-
-    local function dropTag(plr)
-        local tag = tags[plr]
-        if tag then pcall(function() tag:Destroy() end) end
-        tags[plr] = nil
-    end
-
-    local function makeTag(plr)
-        if not S.HubTag or not plr or not plr.Parent then return end
-        local char = plr.Character
-        local head = char and char:FindFirstChild("Head")
-        if not head then return end
-        local existing = tags[plr]
-
-        if existing and existing.Parent == head then return end
-        dropTag(plr)
-
-        local bb = Instance.new("BillboardGui")
-        bb.Name = "InertiaHubTag"
-        bb.Adornee = head
-        bb.AlwaysOnTop = true
-        bb.Size = UDim2.fromOffset(132, 20)
-        bb.StudsOffset = Vector3.new(0, 3.4, 0)
-        bb.MaxDistance = 250
-        bb.Parent = head
-
-        local lbl = Instance.new("TextLabel")
-        lbl.BackgroundTransparency = 1
-        lbl.Size = UDim2.fromScale(1, 1)
-        lbl.Font = FM
-        lbl.TextSize = 13
-        lbl.Text = "INERTIA"
-        lbl.TextColor3 = T.Accent
-        lbl.TextStrokeTransparency = 0.4
-        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Accent") end)
-        lbl.Parent = bb
-        tags[plr] = bb
-    end
-
-    local function clearAll()
-        for plr in pairs(tags) do dropTag(plr) end
-    end
-
-    local function refreshAll()
-        if not S.HubTag then clearAll() return end
-        for plr in pairs(known) do
-            if plr.Parent then makeTag(plr) else known[plr] = nil dropTag(plr) end
-        end
-        if S.HubTagShowSelf ~= false then makeTag(LP) end
-    end
-    S._RefreshHubTags = refreshAll
-
-    local function markUser(plr)
-        if not plr or known[plr] then return end
-        known[plr] = true
-        if plr ~= LP then
-            Notify("Hub", plr.Name .. " is running the hub", 3)
-        end
-        makeTag(plr)
-    end
-
-    known[LP] = true
-
-    local function announce()
-        if not S.HubTag or not S.HubTagAnnounce then return end
-        pcall(function()
-            local tcs = game:GetService("TextChatService")
-            local chans = tcs and tcs:FindFirstChild("TextChannels")
-            local general = chans and (chans:FindFirstChild("RBXGeneral") or chans:FindFirstChildWhichIsA("TextChannel"))
-            if general then
-                general:SendAsync(BEACON)
-            else
-                local remote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
-                if remote then remote:FireServer(BEACON, "All") end
-            end
-        end)
-    end
-
-    local function onMessage(senderPlayer, text)
-        if not senderPlayer or type(text) ~= "string" then return end
-        if not text:find(BEACON, 1, true) then return end
-        markUser(senderPlayer)
-    end
-
-    pcall(function()
-        local tcs = game:GetService("TextChatService")
-        if tcs.ChatVersion == Enum.ChatVersion.TextChatService then
-            tc(tcs.MessageReceived:Connect(function(msg)
-                if S.Destroyed or not S.HubTag then return end
-                local src = msg.TextSource
-                if not src then return end
-                onMessage(Players:GetPlayerByUserId(src.UserId), msg.Text)
-            end))
-        else
-            local events = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-            local filtered = events and events:FindFirstChild("OnMessageDoneFiltering")
-            if filtered then
-                tc(filtered.OnClientEvent:Connect(function(data)
-                    if S.Destroyed or not S.HubTag or not data then return end
-                    onMessage(Players:FindFirstChild(tostring(data.FromSpeaker or "")), data.Message)
-                end))
-            end
-        end
-    end)
-
-    tc(Players.PlayerRemoving:Connect(function(plr)
-        known[plr] = nil
-        dropTag(plr)
-    end))
-
-    tc(Players.PlayerAdded:Connect(function(plr)
-        tc(plr.CharacterAdded:Connect(function()
-            task.delay(1, function() if known[plr] then makeTag(plr) end end)
-        end))
-    end))
-    for _, plr in ipairs(Players:GetPlayers()) do
-        tc(plr.CharacterAdded:Connect(function()
-            task.delay(1, function() if known[plr] then makeTag(plr) end end)
-        end))
-    end
-
-    task.spawn(function()
-
-        task.wait(6)
-        while S.Gui and S.Gui.Parent do
-            if S.HubTag and S.HubTagAnnounce then announce() end
-            task.wait(REANNOUNCE)
-        end
-    end)
-
-    local secHub = mkSection(Pages.Visuals, "Hub Presence", 14)
-    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secHub) end
-    mkToggle(secHub, "Hub Tag (chat beacon)", false, function(v)
-        S.HubTag = v
-        refreshAll()
-        if v then announce() end
-    end, 1)
-    mkToggle(secHub, "Announce Me", false, function(v)
-        S.HubTagAnnounce = v
-        if v then announce() end
-    end, 2)
-    mkToggle(secHub, "Tag Myself", true, function(v)
-        S.HubTagShowSelf = v
-        refreshAll()
-    end, 3)
-    mkAction(secHub, "Re-announce Now", function()
-        announce()
-        Notify("Hub", "Presence broadcast sent", 2)
-    end, 4)
-
-    task.delay(2, refreshAll)
-end
-
-do
-    local Lighting2 = game:GetService("Lighting")
-    local SPARK = "rbxasset://textures/particles/sparkles_main.dds"
-    local SMOKE = "rbxasset://textures/particles/smoke_main.dds"
-
-    local function ns2(...)
-        local pts, a = {}, { ... }
-        for i = 1, #a, 2 do pts[#pts + 1] = NumberSequenceKeypoint.new(a[i], a[i + 1]) end
-        return NumberSequence.new(pts)
-    end
-
-    local WEATHER = {
-        Rain = {
-            tex = SPARK, color = Color3.fromRGB(170, 195, 225), rate = 700,
-            size = ns2(0, 0.09, 1, 0.09), tr = ns2(0, 0.35, 0.9, 0.4, 1, 1),
-            life = { 0.85, 1.05 }, speed = { 95, 115 }, accel = Vector3.new(0, -190, 0),
-            spread = 3, squash = ns2(0, -9, 1, -9), le = 0.15, drag = 0, slab = 140, height = 60,
-        },
-        Snow = {
-            tex = SPARK, color = Color3.fromRGB(248, 250, 255), rate = 260,
-            size = ns2(0, 0.3, 1, 0.28), tr = ns2(0, 0.15, 0.85, 0.2, 1, 1),
-            life = { 5.5, 7 }, speed = { 7, 13 }, accel = Vector3.new(0, -11, 0),
-            spread = 24, rotsp = { -45, 45 }, le = 0.4, drag = 1.6, slab = 130, height = 50,
-        },
-        Storm = {
-            tex = SPARK, color = Color3.fromRGB(150, 172, 205), rate = 1200,
-            size = ns2(0, 0.11, 1, 0.11), tr = ns2(0, 0.28, 0.9, 0.35, 1, 1),
-            life = { 0.7, 0.9 }, speed = { 130, 160 }, accel = Vector3.new(0, -240, 0),
-            spread = 5, squash = ns2(0, -12, 1, -12), le = 0.1, drag = 0, slab = 150, height = 65,
-            thunder = true,
-        },
-        Ash = {
-            tex = SMOKE, color = Color3.fromRGB(96, 92, 90), rate = 150,
-            size = ns2(0, 0.45, 1, 0.2), tr = ns2(0, 0.5, 0.7, 0.6, 1, 1),
-            life = { 6, 9 }, speed = { 3, 7 }, accel = Vector3.new(0, -3.5, 0),
-            spread = 40, rotsp = { -25, 25 }, le = 0, drag = 1.2, slab = 120, height = 45,
-        },
-        Embers = {
-            tex = SPARK, color = Color3.fromRGB(255, 150, 60), rate = 90,
-            size = ns2(0, 0.16, 1, 0.04), tr = ns2(0, 0.1, 0.6, 0.35, 1, 1),
-            life = { 4, 7 }, speed = { 2, 6 }, accel = Vector3.new(0, 3.5, 0),
-            spread = 55, rotsp = { -80, 80 }, le = 1, drag = 1.4, slab = 100, height = 12,
-        },
-        Blossom = {
-            tex = SPARK, color = Color3.fromRGB(255, 178, 210), rate = 120,
-            size = ns2(0, 0.34, 1, 0.3), tr = ns2(0, 0.12, 0.85, 0.25, 1, 1),
-            life = { 6, 9 }, speed = { 4, 9 }, accel = Vector3.new(0, -7, 0),
-            spread = 32, rotsp = { -110, 110 }, le = 0.25, drag = 1.8, slab = 130, height = 50,
-        },
-        Fireflies = {
-            tex = SPARK, color = Color3.fromRGB(190, 255, 120), rate = 55,
-            size = ns2(0, 0.14, 0.5, 0.2, 1, 0.14), tr = ns2(0, 1, 0.25, 0.15, 0.75, 0.15, 1, 1),
-            life = { 5, 8 }, speed = { 1, 3 }, accel = Vector3.new(0, 0.4, 0),
-            spread = 180, rotsp = { -30, 30 }, le = 1, drag = 2.2, slab = 90, height = 14,
-        },
-        Sandstorm = {
-            tex = SMOKE, color = Color3.fromRGB(214, 184, 128), rate = 400,
-            size = ns2(0, 1.6, 1, 3.2), tr = ns2(0, 0.72, 0.6, 0.78, 1, 1),
-            life = { 2.2, 3.4 }, speed = { 55, 85 }, accel = Vector3.new(0, -6, 0),
-            spread = 22, rotsp = { -40, 40 }, le = 0, drag = 0.6, slab = 150, height = 26,
-            sideways = true,
-        },
-    }
-    local WEATHER_NAMES = { "Off", "Rain", "Snow", "Storm", "Ash", "Embers", "Blossom", "Fireflies", "Sandstorm" }
-
-    local SOUNDS = {
-        Rain      = 9112854440,
-        Downpour  = 5410086218,
-        Storm     = 1848354536,
-        Wind      = 1836160504,
-        Gale      = 1837879082,
-        Forest    = 9046863579,
-    }
-    local SOUND_NAMES = { "Rain", "Downpour", "Storm", "Wind", "Gale", "Forest" }
-    local THUNDER_ID = 5801257793
-
-    local rig, emitter, conn, thunderTask
-    local wSound, aSound
-
-    local function teardownParticles()
-        if conn then pcall(function() conn:Disconnect() end) conn = nil end
-        if rig then pcall(function() rig:Destroy() end) rig = nil end
-        emitter = nil
-    end
-
-    local function buildParticles()
-        teardownParticles()
-        local def = WEATHER[S.Weather]
-        if not def then return end
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-
-        rig = Instance.new("Part")
-        rig.Name = "InertiaWeather"
-        rig.Anchored = true
-        rig.CanCollide = false
-        rig.CanQuery = false
-        rig.CanTouch = false
-        rig.CastShadow = false
-        rig.Transparency = 1
-        rig.Size = Vector3.new(def.slab, 1, def.slab)
-        rig.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, def.height, 0))
-        rig.Parent = workspace
-
-        local intensity = math.clamp(tonumber(S.WeatherIntensity) or 60, 1, 100) / 100
-        emitter = Instance.new("ParticleEmitter")
-        emitter.Name = "InertiaWeather"
-        emitter.Texture = def.tex
-        emitter.Color = ColorSequence.new(def.color)
-        emitter.Size = def.size
-        emitter.Transparency = def.tr
-        emitter.Lifetime = NumberRange.new(def.life[1], def.life[2])
-        emitter.Speed = NumberRange.new(def.speed[1], def.speed[2])
-        emitter.SpreadAngle = Vector2.new(def.spread, def.spread)
-        emitter.Rate = math.max(1, def.rate * intensity)
-        emitter.Drag = def.drag or 0
-        emitter.LightEmission = def.le or 0
-        emitter.LightInfluence = 0
-        emitter.LockedToPart = false
-        emitter.EmissionDirection = def.sideways and Enum.NormalId.Front or Enum.NormalId.Bottom
-        if def.rotsp then emitter.RotSpeed = NumberRange.new(def.rotsp[1], def.rotsp[2]) end
-
-        if def.squash then pcall(function() emitter.Squash = def.squash end) end
-        if def.squash then emitter.Orientation = Enum.ParticleOrientation.VelocityParallel end
-        emitter.Parent = rig
-
-        local wind = math.clamp(tonumber(S.WeatherWind) or 30, 0, 100) / 100
-        conn = RunService.Heartbeat:Connect(function()
-            if not rig or not rig.Parent then return end
-            local c = workspace.CurrentCamera
-            if not c then return end
-            local pos = c.CFrame.Position + Vector3.new(0, def.height, 0)
-            rig.CFrame = CFrame.new(pos)
-            if wind > 0.01 and emitter then
-                local right = c.CFrame.RightVector
-                emitter.Acceleration = def.accel + right * (wind * 55)
-            elseif emitter then
-                emitter.Acceleration = def.accel
-            end
-        end)
-    end
-
-    local function stopSound(s)
-        if s then pcall(function() s:Stop() s:Destroy() end) end
-        return nil
-    end
-
-    local function makeLoop(id, volume)
-        local s = Instance.new("Sound")
-        s.Name = "InertiaEnvSound"
-        s.SoundId = "rbxassetid://" .. id
-        s.Looped = true
-        s.Volume = math.clamp(volume / 100, 0, 1)
-
-        s.Parent = game:GetService("SoundService")
-
-        pcall(function() s:SetAttribute("InertiaOwned", true) end)
-        s:Play()
-        return s
-    end
-
-    local function refreshWeatherSound()
-        wSound = stopSound(wSound)
-        if not S.WeatherSound then return end
-        local id = SOUNDS[S.WeatherSoundName] or SOUNDS.Rain
-        wSound = makeLoop(id, tonumber(S.WeatherSoundVolume) or 40)
-    end
-
-    local function refreshAmbientSound()
-        aSound = stopSound(aSound)
-        if not S.AmbientSound then return end
-        local id = SOUNDS[S.AmbientSoundName] or SOUNDS.Forest
-        aSound = makeLoop(id, tonumber(S.AmbientSoundVolume) or 30)
-    end
-
-    local function refreshAll()
-        buildParticles()
-        refreshWeatherSound()
-        refreshAmbientSound()
-    end
-    S._RefreshWeather = refreshAll
-
-    task.spawn(function()
-        while S.Gui and S.Gui.Parent do
-            if S.WeatherThunder and (S.Weather == "Storm" or S.Weather == "Rain") then
-                task.wait(math.random(70, 220) / 10)
-                if S.WeatherThunder then
-                    pcall(function()
-                        local s = Instance.new("Sound")
-                        s.Name = "InertiaEnvSound"
-                        s.SoundId = "rbxassetid://" .. THUNDER_ID
-                        s.Volume = math.clamp((tonumber(S.WeatherSoundVolume) or 40) / 100, 0, 1)
-                        s.Parent = game:GetService("SoundService")
-                        pcall(function() s:SetAttribute("InertiaOwned", true) end)
-                        s:Play()
-                        game:GetService("Debris"):AddItem(s, 6)
-                        local before = Lighting2.Brightness
-                        Lighting2.Brightness = before + 3
-                        task.wait(0.08)
-                        Lighting2.Brightness = before
-                        task.wait(0.06)
-                        Lighting2.Brightness = before + 1.6
-                        task.wait(0.07)
-                        Lighting2.Brightness = before
-                    end)
-                end
-            else
-                task.wait(1)
-            end
-        end
-    end)
-
-    local secWeather = mkSection(Pages.Visuals, "Environment", 5)
-    if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secWeather) end
-    mkCycle(secWeather, "Weather", WEATHER_NAMES, "Off", function(v)
-        S.Weather = v
-        buildParticles()
-    end, 1)
-    mkSlider(secWeather, "Intensity (%)", 1, 100, 60, function(v)
-        S.WeatherIntensity = v
-        buildParticles()
-    end, 2)
-    mkSlider(secWeather, "Wind (%)", 0, 100, 30, function(v)
-        S.WeatherWind = v
-        buildParticles()
-    end, 3)
-
-    mkToggle(secWeather, "Weather Sound", false, function(v) S.WeatherSound = v; refreshWeatherSound() end, 4)
-    mkCycle(secWeather, "Weather Sound Track", SOUND_NAMES, "Rain", function(v)
-        S.WeatherSoundName = v
-        refreshWeatherSound()
-    end, 5)
-    mkSlider(secWeather, "Weather Volume (%)", 0, 100, 40, function(v)
-        S.WeatherSoundVolume = v
-        if wSound then wSound.Volume = math.clamp(v / 100, 0, 1) end
-    end, 6)
-    mkToggle(secWeather, "Thunder", false, function(v) S.WeatherThunder = v end, 7)
-
-    mkToggle(secWeather, "Ambient Sound", false, function(v) S.AmbientSound = v; refreshAmbientSound() end, 8)
-    mkCycle(secWeather, "Ambient Track", SOUND_NAMES, "Forest", function(v)
-        S.AmbientSoundName = v
-        refreshAmbientSound()
-    end, 9)
-    mkSlider(secWeather, "Ambient Volume (%)", 0, 100, 30, function(v)
-        S.AmbientSoundVolume = v
-        if aSound then aSound.Volume = math.clamp(v / 100, 0, 1) end
-    end, 10)
-
-    SG.Destroying:Connect(function()
-        teardownParticles()
-        stopSound(wSound)
-        stopSound(aSound)
-    end)
-
-    task.delay(3, function() pcall(refreshAll) end)
 end
 
 do
@@ -20277,6 +19816,225 @@ do
             mkToggle(sec, "Anti-Coin", false, function(v) S.AntiCoin = v refresh() end, 4)
         end)
     end
+end
+
+do
+    local MAX_CONCURRENT = 6
+    local RESET_DURATION = 0.35
+    local active = {}
+
+    local function countActive()
+        local n = 0
+        for _ in pairs(active) do n += 1 end
+        return n
+    end
+
+    local function touchPair(a, b)
+        pcall(function()
+            for _ = 1, 3 do
+                firetouchinterest(a, b, 0)
+                firetouchinterest(a, b, 1)
+            end
+        end)
+    end
+
+    local function restoreSelf(char, savedCF, oldHeight)
+        pcall(function() workspace.FallenPartsDestroyHeight = oldHeight end)
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not (hum and hrp) then return end
+        if savedCF then hrp.CFrame = savedCF end
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        if hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
+    end
+
+    local voidReset
+    voidReset = function(target, retry)
+        if not target or target == LP then return end
+        if isWhitelisted(target) then return end
+        if active[target.UserId] then return end
+        retry = retry or 0
+
+        if countActive() >= MAX_CONCURRENT then
+            task.delay(0.05 * (retry + 1), function() voidReset(target, retry) end)
+            return
+        end
+
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = hum and hum.RootPart
+        local tChar = target.Character
+        if not (char and hum and hrp and tChar) then return end
+        local tRoot = tChar:FindFirstChild("HumanoidRootPart")
+        if not tRoot then return end
+        local tHead = tChar:FindFirstChild("Head")
+
+        local touchParts = {}
+        for _, name in ipairs({ "HumanoidRootPart", "Head", "UpperTorso", "Torso" }) do
+            local p = tChar:FindFirstChild(name)
+            if p then table.insert(touchParts, p) end
+        end
+        if #touchParts == 0 then
+            for _, p in ipairs(tChar:GetChildren()) do
+                if p:IsA("BasePart") then table.insert(touchParts, p) end
+            end
+        end
+
+        local savedCF = hrp.CFrame
+        local oldHeight = workspace.FallenPartsDestroyHeight
+        pcall(function() workspace.FallenPartsDestroyHeight = -math.huge end)
+        hum.PlatformStand = true
+
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bv.Velocity = Vector3.new(0, -200000, 0)
+        bv.Parent = hrp
+        local bg = Instance.new("BodyGyro")
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.P = 9e8
+        bg.Parent = hrp
+
+        local entry = { bv = bv, bg = bg, conn = nil }
+        active[target.UserId] = entry
+        local startedAt, done, frame = tick(), false, 0
+
+        local function cleanup(success)
+            if done then return end
+            done = true
+            active[target.UserId] = nil
+            if entry.conn then pcall(function() entry.conn:Disconnect() end) entry.conn = nil end
+            pcall(function() bv:Destroy() end)
+            pcall(function() bg:Destroy() end)
+            restoreSelf(char, savedCF, oldHeight)
+            if not success and retry < (tonumber(S.VoidResetRetries) or 3) then
+                task.delay(math.max(tonumber(S.VoidResetDelay) or 0.15, 0.05), function()
+                    if target.Parent and not isWhitelisted(target) then voidReset(target, retry + 1) end
+                end)
+            end
+        end
+
+        entry.conn = RunService.Heartbeat:Connect(function()
+            frame += 1
+            if not target.Character or not tRoot.Parent then cleanup(true) return end
+            if tick() - startedAt >= RESET_DURATION then cleanup(false) return end
+            if not char.Parent or not hrp.Parent then cleanup(true) return end
+
+            local headPos = (tHead and tHead.Parent and tHead.Position)
+                or (tRoot.Position + Vector3.new(0, 2.5, 0))
+            hrp.CFrame = CFrame.new(headPos)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, -200000, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(15000, 15000, 15000)
+
+            if frame % 2 == 1 then
+                for _ = 1, 5 do
+                    for _, part in ipairs(touchParts) do touchPair(hrp, part) end
+                end
+            else
+                for _ = 1, 3 do
+                    touchPair(hrp, tRoot)
+                    if tHead then touchPair(hrp, tHead) end
+                end
+            end
+
+            pcall(sethiddenproperty, hrp, "PhysicsRepRootPart", tRoot)
+            if hum.Health < hum.MaxHealth * 0.5 then
+                pcall(function() hum.Health = hum.MaxHealth end)
+            end
+        end)
+    end
+    S._VoidReset = voidReset
+
+    local function available()
+        return type(firetouchinterest) == "function" and type(sethiddenproperty) == "function"
+    end
+
+    local secVoid = mkSection(Pages.Motion, "Void Reset", 9)
+    if S._RegisterMotionTargetsSection then pcall(S._RegisterMotionTargetsSection, secVoid) end
+
+    if not available() then
+        mkAction(secVoid, "Executor lacks firetouchinterest", function()
+            Notify("Void Reset", "Needs firetouchinterest + sethiddenproperty", 4)
+        end, 1)
+    else
+        mkAction(secVoid, "Reset Murderer", function()
+            local c = S._GetMurdererChar and S._GetMurdererChar()
+            local p = c and Players:GetPlayerFromCharacter(c)
+            if p then voidReset(p) else Notify("Void Reset", "No murderer found", 3) end
+        end, 1)
+        mkAction(secVoid, "Reset Sheriff (steal gun)", function()
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LP and not isWhitelisted(p) then
+                    local ch, bp = p.Character, p:FindFirstChildOfClass("Backpack")
+                    if (ch and ch:FindFirstChild("Gun")) or (bp and bp:FindFirstChild("Gun")) then
+                        voidReset(p)
+                        return
+                    end
+                end
+            end
+            Notify("Void Reset", "Nobody is holding a gun", 3)
+        end, 2)
+        mkAction(secVoid, "Reset All", function()
+            local n = 0
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LP and not isWhitelisted(p) then task.spawn(voidReset, p) n += 1 end
+            end
+            Notify("Void Reset", n > 0 and ("Resetting " .. n) or "No targets", 3)
+        end, 3)
+
+        mkAction(secVoid, "Reset Selected Targets", function()
+            local n = 0
+            for name in pairs(S.ManualTargets or {}) do
+                local p = Players:FindFirstChild(name)
+                if p and p ~= LP and not isWhitelisted(p) then task.spawn(voidReset, p) n += 1 end
+            end
+            Notify("Void Reset", n > 0 and ("Resetting " .. n) or "No targets selected", 3)
+        end, 4)
+        mkToggle(secVoid, "Reset Aura", false, function(v) S.VoidResetAura = v end, 5)
+        mkSlider(secVoid, "Aura Studs", 5, 50, 15, function(v) S.VoidResetAuraRange = v end, 6)
+        mkSlider(secVoid, "Max Retries", 0, 5, 3, function(v) S.VoidResetRetries = v end, 7)
+        mkSlider(secVoid, "Retry Delay (x0.1s)", 1, 10, 2, function(v) S.VoidResetDelay = v * 0.1 end, 8)
+
+        task.spawn(function()
+            while S.Gui and S.Gui.Parent do
+                if S.VoidResetAura then
+                    pcall(function()
+                        local c = LP.Character
+                        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                        local range = tonumber(S.VoidResetAuraRange) or 15
+                        if hrp then
+                            for _, p in ipairs(Players:GetPlayers()) do
+                                if p ~= LP and not isWhitelisted(p) and p.Character then
+                                    local r = p.Character:FindFirstChild("HumanoidRootPart")
+                                    if r and (r.Position - hrp.Position).Magnitude <= range then
+                                        task.spawn(voidReset, p)
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                    task.wait(0.4)
+                else
+                    task.wait(1)
+                end
+            end
+        end)
+    end
+
+    SG.Destroying:Connect(function()
+        for _, e in pairs(active) do
+            if e.conn then pcall(function() e.conn:Disconnect() end) end
+            pcall(function() e.bv:Destroy() end)
+            pcall(function() e.bg:Destroy() end)
+        end
+        table.clear(active)
+    end)
 end
 
 task.spawn(function()
