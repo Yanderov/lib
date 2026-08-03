@@ -4286,29 +4286,71 @@ local function mkSection(parent, title, order)
     hit.Size = UDim2.fromScale(1, 1)
     hit.ZIndex = (hdrRow.ZIndex or 1) + 2
 
-    local collapsed = false
+    local collapsed, busy = false, false
+    local HEADER_H = 18
 
     local function setCollapsed(on)
+        if busy then return end
         collapsed = on
+        busy = true
         card:SetAttribute("InertiaCollapsed", on)
+        card.ClipsDescendants = true
         TweenService:Create(chevron, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             { Rotation = on and 0 or 90 }):Play()
-        for _, ch in ipairs(inner:GetChildren()) do
-            if ch ~= hdrRow and ch:IsA("GuiObject") then
-                if on then
 
-                    if ch:GetAttribute("PreCollapseVisible") == nil then
-                        ch:SetAttribute("PreCollapseVisible", ch.Visible)
+        local function rows(visible)
+            for _, ch in ipairs(inner:GetChildren()) do
+                if ch ~= hdrRow and ch:IsA("GuiObject") then
+                    if not visible then
+
+                        if ch:GetAttribute("PreCollapseVisible") == nil then
+                            ch:SetAttribute("PreCollapseVisible", ch.Visible)
+                        end
+                        ch.Visible = false
+                    else
+                        local want = ch:GetAttribute("PreCollapseVisible")
+                        ch.Visible = (want == nil) and true or want
+                        ch:SetAttribute("PreCollapseVisible", nil)
                     end
-                    ch.Visible = false
-                else
-                    local want = ch:GetAttribute("PreCollapseVisible")
-                    ch.Visible = (want == nil) and true or want
-                    ch:SetAttribute("PreCollapseVisible", nil)
                 end
             end
         end
-        if S._QueuePageLayout then pcall(S._QueuePageLayout) end
+
+        local function finish()
+            inner.AutomaticSize = Enum.AutomaticSize.Y
+            inner.Size = UDim2.new(1, 0, 0, 0)
+            card.ClipsDescendants = false
+            busy = false
+            if S._QueuePageLayout then pcall(S._QueuePageLayout) end
+        end
+
+        if on then
+            local full = inner.AbsoluteSize.Y
+            inner.AutomaticSize = Enum.AutomaticSize.None
+            inner.Size = UDim2.new(1, 0, 0, full)
+            rows(false)
+            local tw = TweenService:Create(inner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                { Size = UDim2.new(1, 0, 0, HEADER_H) })
+            tw.Completed:Connect(function()
+                card.ClipsDescendants = false
+                busy = false
+                if S._QueuePageLayout then pcall(S._QueuePageLayout) end
+            end)
+            tw:Play()
+        else
+            rows(true)
+            inner.AutomaticSize = Enum.AutomaticSize.Y
+
+            task.defer(function()
+                local full = inner.AbsoluteSize.Y
+                inner.AutomaticSize = Enum.AutomaticSize.None
+                inner.Size = UDim2.new(1, 0, 0, HEADER_H)
+                local tw = TweenService:Create(inner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    { Size = UDim2.new(1, 0, 0, full) })
+                tw.Completed:Connect(finish)
+                tw:Play()
+            end)
+        end
     end
 
     hit.MouseButton1Click:Connect(function()
