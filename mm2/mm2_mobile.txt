@@ -119,6 +119,7 @@ local S = {
     GunTargetMode = "Murderer", GunAimPart = "Torso", GunPredictMode = "Off",
     PerkNoCooldown = false, PerkAutoUse = false,
     AntiAim = false, AntiAimKnifeOnly = true, AntiAimStrength = 320, AntiAimNearRange = 6,
+    AntiCoin = false,
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -20169,4 +20170,82 @@ do
     end, 1, "Unlock All Knife Effects (Visual)")
 
     mkToggle(sec, "Synthetic FX Fallback", false, function(v) S.KnifeFXFallback = v end, 2)
+end
+
+do
+    local conn, restoreConn = nil, nil
+    local savedCF, applied = nil, false
+
+    local COIN_RADIUS = 3.2
+
+    local function nearestCoin(pos)
+        local container = workspace:FindFirstChild("CoinContainer", true)
+        local best, bestD
+        local list = container and container:GetChildren() or nil
+        if not list then return nil end
+        for _, c in ipairs(list) do
+            if c:IsA("BasePart") and c.CanTouch then
+                local d = (c.Position - pos).Magnitude
+                if d < COIN_RADIUS and (not bestD or d < bestD) then bestD, best = d, c end
+            end
+        end
+        return best, bestD
+    end
+
+    local function step()
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local coin, dist = nearestCoin(hrp.Position)
+        if not coin then return end
+
+        local away = (hrp.Position - coin.Position)
+        away = Vector3.new(away.X, 0, away.Z)
+        if away.Magnitude < 0.05 then away = hrp.CFrame.RightVector end
+        local push = away.Unit * ((COIN_RADIUS - (dist or 0)) + 0.6)
+
+        savedCF = hrp.CFrame
+        applied = true
+        hrp.CFrame = savedCF + push
+    end
+
+    local function restore()
+        if not applied then return end
+        applied = false
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp and savedCF then hrp.CFrame = savedCF end
+        savedCF = nil
+    end
+
+    local function refresh()
+        if S.AntiCoin and not conn then
+            conn = RunService.Heartbeat:Connect(function() pcall(step) end)
+            restoreConn = "InertiaAntiCoinRestore_" .. tostring(math.random(1, 1e9))
+            RunService:BindToRenderStep(restoreConn, Enum.RenderPriority.First.Value - 1, function()
+                pcall(restore)
+            end)
+        elseif not S.AntiCoin and conn then
+            conn:Disconnect()
+            conn = nil
+            if restoreConn then
+                pcall(function() RunService:UnbindFromRenderStep(restoreConn) end)
+                restoreConn = nil
+            end
+            restore()
+        end
+    end
+    S._RefreshAntiCoin = refresh
+
+    SG.Destroying:Connect(function()
+        if conn then pcall(function() conn:Disconnect() end) conn = nil end
+        if restoreConn then pcall(function() RunService:UnbindFromRenderStep(restoreConn) end) end
+        restore()
+    end)
+
+    if S._AddAntiAimControls then
+        S._AddAntiAimControls(function(sec)
+            mkToggle(sec, "Anti-Coin", false, function(v) S.AntiCoin = v refresh() end, 4)
+        end)
+    end
 end
