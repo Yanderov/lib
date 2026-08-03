@@ -10384,8 +10384,57 @@ task.defer(fitPinnedEmotesHUD)
 
 do
 
-    local mg = mkDragHUD("Motion Graph", UDim2.new(0, 10, 0, 590), UDim2.fromOffset(216, 96), 858)
-    local plot = mg.content
+    local f = Instance.new("Frame")
+    f.Name = "HUD_Motion Graph"
+    f.Parent = SG
+    f.Active = true
+    f.BackgroundTransparency = 1
+    f:SetAttribute("HUDChromeFree", true)
+    f:SetAttribute("HUDRestTransparency", 1)
+    f.BorderSizePixel = 0
+    f.Position = UDim2.new(0, 10, 0, 590)
+    f.Size = UDim2.fromOffset(220, 60)
+    f.Visible = false
+    f.ZIndex = 858
+
+    local mgGrip = Instance.new("Frame")
+    mgGrip.Name = "Grip"
+    mgGrip.Parent = f
+    mgGrip.Position = UDim2.new(0, 0, 0, 0)
+    mgGrip.Size = UDim2.new(0, 34, 0, 12)
+    mgGrip.BackgroundColor3 = T.Elev
+    pcall(function() mgGrip:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    mgGrip.BackgroundTransparency = 0.35
+    mgGrip.BorderSizePixel = 0
+    mgGrip.ZIndex = 860
+    Corner(mgGrip, 5)
+    do
+        local d = Instance.new("Frame")
+        d.Parent = mgGrip
+        d.AnchorPoint = Vector2.new(0.5, 0.5)
+        d.Position = UDim2.new(0.5, 0, 0.5, 0)
+        d.Size = UDim2.new(0, 14, 0, 2)
+        d.BackgroundColor3 = T.Tx3
+        pcall(function() d:SetAttribute("ThemeColorRole_BackgroundColor3", "Tx3") end)
+        d.BorderSizePixel = 0
+        d.ZIndex = 861
+        Corner(d, 1)
+        mgGrip.MouseEnter:Connect(function() mgGrip.BackgroundTransparency = 0.1 end)
+        mgGrip.MouseLeave:Connect(function() mgGrip.BackgroundTransparency = 0.35 end)
+    end
+
+    local plot = Instance.new("Frame")
+    plot.Name = "Plot"
+    plot.Parent = f
+    plot.BackgroundTransparency = 1
+    plot.BorderSizePixel = 0
+    plot.Position = UDim2.new(0, 0, 0, 16)
+    plot.Size = UDim2.new(1, 0, 1, -16)
+    plot.ZIndex = 858
+
+    attachHUDDrag(f, mgGrip)
+    HUDEls["Motion Graph"] = { frame = f, content = plot }
+    local mg = HUDEls["Motion Graph"]
     local SAMPLES = 48
     local hist = table.create(SAMPLES, 0)
     local segs = {}
@@ -10401,21 +10450,11 @@ do
         Corner(s, 1)
         segs[i] = s
     end
-    local base = Instance.new("Frame")
-    base.BorderSizePixel = 0
-    base.BackgroundColor3 = T.Bd2
-    pcall(function() base:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd2") end)
-    base.BackgroundTransparency = 0.5
-    base.AnchorPoint = Vector2.new(0, 1)
-    base.Position = UDim2.new(0, 0, 1, 0)
-    base.Size = UDim2.new(1, 0, 0, 1)
-    base.ZIndex = 859
-    base.Parent = plot
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
     lbl.AnchorPoint = Vector2.new(1, 0)
-    lbl.Position = UDim2.new(1, 0, 0, 0)
-    lbl.Size = UDim2.new(0, 62, 0, 14)
+    lbl.Position = UDim2.new(0, 0, 0, -15)
+    lbl.Size = UDim2.new(1, 0, 0, 12)
     lbl.Font = FM
     lbl.TextSize = 11
     lbl.TextColor3 = T.Tx2
@@ -10440,7 +10479,15 @@ do
         hist[SAMPLES] = v
 
         maxSpeed = math.max(40, maxSpeed * 0.98, v * 1.1)
-        lbl.Text = string.format("%d studs/s", math.floor(v + 0.5))
+
+        local sum, peak = 0, 0
+        for i = 1, SAMPLES do
+            local s = hist[i]
+            sum += s
+            if s > peak then peak = s end
+        end
+        lbl.Text = string.format("%d  ·  peak %d  ·  avg %d",
+            math.floor(v + 0.5), math.floor(peak + 0.5), math.floor(sum / SAMPLES + 0.5))
         local w, h = plot.AbsoluteSize.X, plot.AbsoluteSize.Y
         if w <= 0 or h <= 0 then return end
         local function pt(i)
