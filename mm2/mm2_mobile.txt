@@ -1,7 +1,25 @@
 _G.INERTIA_MOBILE = true
-if _G.MM2_Visuals_Script then
-    pcall(function() _G.MM2_Visuals_Script:Destroy() end)
+
+do
+    local prev = _G.MM2_Visuals_Script
+    if type(prev) == "table" then
+        pcall(function() if type(prev._Teardown) == "function" then prev._Teardown() end end)
+        pcall(function() prev.Gui:Destroy() end)
+    end
     _G.MM2_Visuals_Script = nil
+
+    local hosts = { game:GetService("CoreGui") }
+    if gethui then table.insert(hosts, gethui()) end
+    local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then table.insert(hosts, pg) end
+    for _, host in ipairs(hosts) do
+        for _, g in ipairs(host:GetChildren()) do
+            if g:IsA("ScreenGui") and (g.Name == "Inertia" or g.Name == "InertiaESP") then
+                pcall(function() g:Destroy() end)
+            end
+        end
+    end
+    pcall(function() game:GetService("UserInputService").MouseIconEnabled = true end)
 end
 
 pcall(function()
@@ -1093,6 +1111,12 @@ do
     end
 end
 S.Gui = SG
+
+S._Teardown = function()
+    pcall(function() UIS.MouseIconEnabled = true end)
+    pcall(function() Players.LocalPlayer:GetMouse().Icon = "" end)
+    if type(S._ClearShaderEffects) == "function" then pcall(S._ClearShaderEffects) end
+end
 tc(SG.DescendantAdded:Connect(function(obj)
 
     if not S._UIBuildReady then return end
@@ -11101,6 +11125,7 @@ local function clearShaderEffects()
     S._ultraFX = nil
 end
 
+S._ClearShaderEffects = clearShaderEffects
 clearShaderEffects()
 
 local applyAtmo
@@ -12566,6 +12591,14 @@ end
 
 S._BuildConfig = buildConfig
 S._ConfigControls = ConfigControls
+
+task.spawn(function()
+    while S.Gui and S.Gui.Parent do
+        task.wait(2)
+        pcall(writeAutoConfig)
+    end
+end)
+
 S._RequestAutoSave = function()
     if not FILE_OK or applyingConfig or autoSaveQueued then return end
     autoSaveQueued = true
@@ -19941,6 +19974,104 @@ do
         pcall(function() profileData = require(RS.Modules.ProfileData) end)
     end)
 
+    local MESH_CACHE_FILE = "MM2_Configs/_skin_mesh_cache.json"
+    local Http = game:GetService("HttpService")
+    local meshCache, originalMesh = {}, {}
+
+    local function loadMeshCache()
+        pcall(function()
+            if isfile and isfile(MESH_CACHE_FILE) then
+                local t = Http:JSONDecode(readfile(MESH_CACHE_FILE))
+                if type(t) == "table" then meshCache = t end
+            end
+        end)
+    end
+
+    local saveQueued = false
+    local function saveMeshCache()
+        if saveQueued then return end
+        saveQueued = true
+        task.delay(2, function()
+            saveQueued = false
+            pcall(function() writefile(MESH_CACHE_FILE, Http:JSONEncode(meshCache)) end)
+        end)
+    end
+
+    local function readHandleMesh(tool)
+        local h = tool and tool:FindFirstChild("Handle")
+        if not h then return nil end
+        local m = h:FindFirstChildWhichIsA("SpecialMesh")
+        if m then
+            return { MeshId = m.MeshId, TextureId = m.TextureId,
+                     Scale = { m.Scale.X, m.Scale.Y, m.Scale.Z },
+                     Offset = { m.Offset.X, m.Offset.Y, m.Offset.Z } }
+        end
+        if h:IsA("MeshPart") and h.MeshId ~= "" then
+            return { MeshId = h.MeshId, TextureId = h.TextureID }
+        end
+        return nil
+    end
+
+    task.spawn(function()
+        loadMeshCache()
+        while S.Gui and S.Gui.Parent do
+            pcall(function()
+                for _, p in ipairs(Players:GetPlayers()) do
+                    local gear = GearCache[p.Name]
+                    local char = p.Character
+                    if gear and char then
+                        for _, t in ipairs(char:GetChildren()) do
+                            if t:IsA("Tool") and (t.Name == "Gun" or t.Name == "Knife") then
+                                local key = gear[t.Name]
+                                local ck = t.Name .. "|" .. tostring(key)
+                                if key and not meshCache[ck] then
+                                    local data = readHandleMesh(t)
+                                    if data and data.MeshId and data.MeshId ~= "" then
+                                        meshCache[ck] = data
+                                        saveMeshCache()
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(3)
+        end
+    end)
+
+    local function myTool(kind)
+        local c = LP.Character
+        local bp = LP:FindFirstChild("Backpack")
+        return (c and c:FindFirstChild(kind)) or (bp and bp:FindFirstChild(kind))
+    end
+
+    local function applyVisual(kind, key)
+        local data = meshCache[kind .. "|" .. tostring(key)]
+        if not data then return false, "never seen" end
+        local tool = myTool(kind)
+        if not tool then return false, "no " .. kind:lower() .. " in hand" end
+        local h = tool:FindFirstChild("Handle")
+        if not h then return false, "tool has no handle" end
+        local m = h:FindFirstChildWhichIsA("SpecialMesh")
+        if not m then
+            m = Instance.new("SpecialMesh")
+            m.Name = "InertiaSkinMesh"
+            m.MeshType = Enum.MeshType.FileMesh
+            m.Parent = h
+        elseif originalMesh[kind] == nil then
+            originalMesh[kind] = { MeshId = m.MeshId, TextureId = m.TextureId, Scale = m.Scale, Offset = m.Offset }
+        end
+        m.MeshType = Enum.MeshType.FileMesh
+        m.MeshId = data.MeshId
+        m.TextureId = data.TextureId or ""
+        if data.Scale then m.Scale = Vector3.new(table.unpack(data.Scale)) end
+        if data.Offset then m.Offset = Vector3.new(table.unpack(data.Offset)) end
+        return true
+    end
+
+    S._ApplySkinVisual = applyVisual
+
     local win, grid, tabBtns, searchBox
     local activeKind = "Gun"
 
@@ -20010,8 +20141,15 @@ do
 
                 tile.MouseButton1Click:Connect(function()
                     SFX.Click()
+
+                    local vok, why = applyVisual(e.kind, e.id)
                     if not isOwned then
-                        Notify("Skins", e.name .. " is not in your inventory - the server will not equip it", 4)
+                        if vok then
+                            Notify("Skins", e.name .. " applied (visual - you do not own it)", 3)
+                        else
+                            Notify("Skins", e.name .. " not owned and mesh " .. tostring(why)
+                                .. " - it is learned the first time anyone is seen holding it", 5)
+                        end
                         return
                     end
                     local ev = equipRemote()
