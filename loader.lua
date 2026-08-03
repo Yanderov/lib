@@ -19,6 +19,34 @@ pcall(function() if gethui then parentGui = gethui() end end)
 if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
 destroyOld(parentGui)
 
+local TELEMETRY_BASE = "https://inertiahub.xyz"
+local executorName = "Unknown"
+pcall(function()
+    if identifyexecutor then executorName = tostring(identifyexecutor())
+    elseif syn then executorName = "Synapse" end
+end)
+
+local function reportTelemetry(gameName)
+    task.spawn(function()
+        pcall(function()
+            local req = (syn and syn.request) or http_request or request or (http and http.request)
+            if not (req and LocalPlayer) then return end
+            req({
+                Url = TELEMETRY_BASE .. "/api/v1/telemetry/ping",
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = game:GetService("HttpService"):JSONEncode({
+                    userId = tostring(LocalPlayer.UserId),
+                    game = gameName,
+                    executor = executorName,
+                    placeId = tostring(game.PlaceId),
+                    timestamp = os.time(),
+                }),
+            })
+        end)
+    end)
+end
+
 local T = {
 	BG = Color3.fromRGB(6, 6, 7),
 	Card = Color3.fromRGB(13, 13, 15),
@@ -186,6 +214,8 @@ local function launch(entry)
 	task.defer(function()
 
 		_G.INERTIA_MOBILE = MOBILE
+
+		reportTelemetry(entry.name)
 
 		local sha = "main"
 		local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
