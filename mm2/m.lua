@@ -836,9 +836,7 @@ if not (readfile and isfile and isfile("MM2_Configs/_autoload.json")) then
     S.SelectedTheme = "Default"
     S.GuiTransparency = 0
     S.HudTransparency = 0
-
     Themes.Custom = {}
-    for k, v in pairs(Themes.Default) do Themes.Custom[k] = v end
 end
 pcall(function()
     if readfile and isfile and isfile("MM2_Configs/_autoload.json") then
@@ -2199,8 +2197,7 @@ for idx, tName in ipairs(themeNames) do
     pDot.AnchorPoint = Vector2.new(1, 0.5)
     pDot.Position = UDim2.new(1, -8, 0.5, 0)
     pDot.Size = UDim2.fromOffset(10, 10)
-
-    pDot.BackgroundColor3 = (Themes[tName] and Themes[tName].Accent) or T.Accent
+    pDot.BackgroundColor3 = Themes[tName].Accent
     pDot.BorderSizePixel = 0
     pDot.ZIndex = 1003
     Corner(pDot, 9999)
