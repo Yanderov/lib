@@ -57,6 +57,8 @@ local S = {
     UnlockAllKnifeEffects = false, KnifeFXFallback = false,
     FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel Aura",
     VFXWingScale = 100, VFXFootAura = true, VFXWingLight = false, VFXDensity = 70, VFXGlow = 35,
+    VFXWingEffect = "Angel Aura", VFXWingPower = 70, VFXWingHeight = 0, VFXWingBack = 0,
+    VFXBloom = 100, VFXAssetFX = false,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
     KnifePredictMode = "Normal",
@@ -6621,11 +6623,17 @@ end, 6)
         local function sanitize(container, data)
             data = data or {}
             local tint = data.tint
+
+            local keepAssetFX = S.VFXAssetFX == true
             for _, obj in ipairs(container:GetDescendants()) do
                 if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
                     pcall(function() obj:Destroy() end)
                 elseif obj:IsA("Humanoid") or obj:IsA("Animator") or obj:IsA("Animation") or obj:IsA("HumanoidDescription") then
                     pcall(function() obj:Destroy() end)
+                elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+                    or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles")
+                    or obj:IsA("Light") then
+                    if not keepAssetFX then pcall(function() obj:Destroy() end) end
                 elseif obj:IsA("BasePart") then
                     prepPart(obj, false)
                     if tint then pcall(function() obj.Color = tint end) end
@@ -6787,7 +6795,8 @@ end, 6)
             local carrier = Instance.new("Part")
             carrier.Name = "InertiaWingFXCarrier"
             carrier.Size = Vector3.new(0.05, 0.05, 0.05)
-            carrier.CFrame = boundsCF
+
+            carrier.CFrame = CFrame.new(boundsCF.Position) * (root.CFrame - root.CFrame.Position)
             prepPart(carrier, true)
             carrier.Parent = model
 
@@ -6800,13 +6809,15 @@ end, 6)
 
             local horizontal = math.clamp(boundsSize.X * 0.3, 0.68, 1.45)
             local vertical = math.clamp(boundsSize.Y * 0.28, 0.55, 1.25)
+
+            local back = 0.55 + (math.clamp(tonumber(S.VFXWingBack) or 0, -150, 150) / 150) * 0.9
             local slotFrames = {
-                Center = CFrame.new(0, 0.05, -0.03),
-                Left = CFrame.new(-horizontal * 0.62, 0.08, 0),
-                Right = CFrame.new(horizontal * 0.62, 0.08, 0),
-                OuterLeft = CFrame.new(-horizontal, -0.02, 0),
-                OuterRight = CFrame.new(horizontal, -0.02, 0),
-                Top = CFrame.new(0, vertical, 0),
+                Center = CFrame.new(0, 0.05, back),
+                Left = CFrame.new(-horizontal * 0.62, 0.08, back),
+                Right = CFrame.new(horizontal * 0.62, 0.08, back),
+                OuterLeft = CFrame.new(-horizontal, -0.02, back),
+                OuterRight = CFrame.new(horizontal, -0.02, back),
+                Top = CFrame.new(0, vertical, back),
             }
             local attachments = {}
             for slot, frame in pairs(slotFrames) do
@@ -6818,6 +6829,8 @@ end, 6)
             end
 
             local power = math.clamp(tonumber(S.VFXWingPower) or 70, 10, 100) / 100
+
+            local bloom = math.clamp(tonumber(S.VFXBloom) or 100, 0, 200) / 100
             local wingScale = math.clamp(tonumber(S.VFXWingScale) or 100, 10, 200) / 100
             local sizeScale = (preset.sizeScale or 1)
                 * math.clamp(wingScale, 0.35, 1.65)
@@ -6843,9 +6856,9 @@ end, 6)
                     emitter.SpreadAngle = def.spread or Vector2.new(0, 0)
                     emitter.Acceleration = def.acceleration or Vector3.new(0, 0, 0)
                     emitter.Drag = def.drag or 0
-                    emitter.LightEmission = math.clamp(def.lightEmission or 0.35, 0, 1)
+                    emitter.LightEmission = math.clamp((def.lightEmission or 0.35) * bloom, 0, 1)
                     emitter.LightInfluence = 0
-                    emitter.Brightness = math.clamp((def.brightness or 1) * (0.55 + power * 0.65), 0, 5)
+                    emitter.Brightness = math.clamp((def.brightness or 1) * (0.55 + power * 0.65) * bloom, 0, 5)
                     emitter.LockedToPart = true
                     emitter.VelocityInheritance = 0
                     emitter.ZOffset = 0.05
@@ -6871,7 +6884,7 @@ end, 6)
                 beam.Width1 = width
                 beam.Segments = MOBILE and 4 or 8
                 beam.FaceCamera = def.faceCamera == true
-                beam.LightEmission = 0.85
+                beam.LightEmission = math.clamp(0.85 * bloom, 0, 1)
                 beam.LightInfluence = 0
                 beam.Parent = from
             end
@@ -6880,7 +6893,7 @@ end, 6)
                 local light = Instance.new("PointLight")
                 light.Name = "InertiaWingFX_Light"
                 light.Color = preset.light.color or Color3.new(1, 1, 1)
-                light.Brightness = math.clamp((preset.light.brightness or 1) * power, 0, MOBILE and 1.6 or 3)
+                light.Brightness = math.clamp((preset.light.brightness or 1) * power * bloom, 0, MOBILE and 1.6 or 3)
                 light.Range = math.clamp((preset.light.range or 6) * math.sqrt(power), 2, MOBILE and 6 or 9)
                 light.Shadows = false
                 light.Parent = carrier
@@ -6936,6 +6949,8 @@ end, 6)
         mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
         mkCycle(secWings, "VFX Wing Effect", wingEffectNames, "Angel Aura", function(v) S.VFXWingEffect = v; rebuild() end, 8.05)
         mkSlider(secWings, "Wing Effect Power", 10, 100, 70, function(v) S.VFXWingPower = v; rebuild() end, 8.08)
+        mkSlider(secWings, "Wing Bloom", 0, 200, 100, function(v) S.VFXBloom = v; rebuild() end, 8.09)
+        mkToggle(secWings, "Keep Asset FX", false, function(v) S.VFXAssetFX = v; rebuild() end, 8.095)
 
         mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
         mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
