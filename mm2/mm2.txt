@@ -20359,6 +20359,119 @@ end
 
 task.spawn(function()
 
+do
+    local RS = game:GetService("ReplicatedStorage")
+    local catalogue, owned = nil, nil
+
+    local function equipRemote()
+        local r = RS:FindFirstChild("Remotes")
+        r = r and r:FindFirstChild("Inventory")
+        return r and r:FindFirstChild("Equip")
+    end
+
+    task.spawn(function()
+        local ok, sync = pcall(function()
+            return require(RS:WaitForChild("Database", 20):WaitForChild("Sync", 20))
+        end)
+        if not (ok and type(sync) == "table" and type(sync.Item) == "table") then return end
+        local list = {}
+        for id, d in pairs(sync.Item) do
+            if type(d) == "table" and (d.ItemType == "Knife" or d.ItemType == "Gun") then
+                list[#list + 1] = {
+                    id = id, kind = d.ItemType,
+                    name = tostring(d.ItemName or id),
+                    rarity = tostring(d.Rarity or "?"),
+                    event = d.Event and tostring(d.Event) or nil,
+                    year = d.Year and tostring(d.Year) or nil,
+                }
+            end
+        end
+        table.sort(list, function(a, b)
+            if a.kind ~= b.kind then return a.kind < b.kind end
+            return a.name:lower() < b.name:lower()
+        end)
+        catalogue = list
+
+        local okInv, inv = pcall(function()
+            local f = RS:FindFirstChild("Remotes")
+            f = f and f:FindFirstChild("Extras")
+            f = f and f:FindFirstChild("GetFullInventory")
+            return f and f:InvokeServer()
+        end)
+        if okInv and type(inv) == "table" then
+            local set = {}
+            for k, v in pairs(inv) do
+                if type(v) == "table" and v.ItemID then set[tostring(v.ItemID)] = true end
+                if type(k) == "string" then set[k] = true end
+            end
+            owned = set
+        end
+    end)
+
+    local function label(entry)
+        local bits = { entry.kind, entry.rarity }
+        if entry.event then bits[#bits + 1] = entry.event end
+        if entry.year then bits[#bits + 1] = entry.year end
+        local mark = ""
+        if owned then mark = owned[entry.id] and "  [owned]" or "  [not owned]" end
+        return entry.name .. "  (" .. table.concat(bits, " / ") .. ")" .. mark
+    end
+
+    local function pick(kindFilter, title)
+        if not catalogue then
+            Notify("Skins", "Catalogue still loading", 3)
+            return
+        end
+        local rows, refs = {}, {}
+        local q = tostring(S.SkinFilter or ""):lower()
+        for _, e in ipairs(catalogue) do
+            if (kindFilter == "All" or e.kind == kindFilter)
+                and (q == "" or e.name:lower():find(q, 1, true)) then
+                rows[#rows + 1] = label(e)
+                refs[#refs + 1] = e
+            end
+        end
+        if #rows == 0 then
+            Notify("Skins", "Nothing matches that filter", 3)
+            return
+        end
+        S._OpenOptionPicker(title .. " (" .. #rows .. ")", rows, 0, function(index)
+            local e = refs[index]
+            if not e then return end
+            local ev = equipRemote()
+            if not ev then
+                Notify("Skins", "Equip remote missing", 3)
+                return
+            end
+            pcall(function() ev:FireServer(e.id) end)
+            S.LastSkin = e.id
+            Notify("Skins", "Equipped " .. e.name
+                .. (owned and not owned[e.id] and " (server may refuse - not owned)" or ""), 3)
+        end, { keepOpen = true })
+    end
+
+    local secSkins = mkSection(Pages.Visuals, "Skins", 16)
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secSkins) end
+    mkAction(secSkins, "Choose Knife Skin", function() pick("Knife", "Knife Skins") end, 1)
+    mkAction(secSkins, "Choose Gun Skin", function() pick("Gun", "Gun Skins") end, 2)
+    mkAction(secSkins, "Search All Skins", function()
+        S._OpenTextPrompt = nil
+        pick("All", "All Skins")
+    end, 3)
+    mkCycle(secSkins, "Name Filter",
+        { "(none)", "elderwood", "chroma", "seer", "gingerscythe", "laser", "ghost", "batwing" },
+        "(none)", function(v) S.SkinFilter = (v == "(none)") and "" or v end, 4)
+    mkAction(secSkins, "Re-equip Last", function()
+        local ev = equipRemote()
+        if ev and S.LastSkin then
+            pcall(function() ev:FireServer(S.LastSkin) end)
+            Notify("Skins", "Re-equipped " .. tostring(S.LastSkin), 2)
+        else
+            Notify("Skins", "Nothing equipped yet this session", 2)
+        end
+    end, 5)
+end
+
 task.spawn(function()
 	if _G.__INERTIA_HUB_TAG_INITIALIZED then return end
 	_G.__INERTIA_HUB_TAG_INITIALIZED = true

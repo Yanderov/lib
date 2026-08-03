@@ -20351,38 +20351,151 @@ end
 
 task.spawn(function()
 
+do
+    local RS = game:GetService(_liiIl1III("\30\56\74\77\81\82\87\118\110\116\106\146\148\158\148\161\166",197))
+    local catalogue, owned = nil, nil
+
+    local function equipRemote()
+        local r = RS:FindFirstChild(_liiIl1III("\43\69\84\93\105\102\123",210))
+        r = r and r:FindFirstChild(_liiIl1III("\47\91\106\101\117\130\132\142\156",223))
+        return r and r:FindFirstChild(_liiIl1III("\56\107\123\118\132",236))
+    end
+
+    task.spawn(function()
+        local ok, sync = pcall(function()
+            return require(RS:WaitForChild(_liiIl1III("\73\109\135\123\131\137\162\155",249), 20):WaitForChild(_liiIl1III("\101\146\142\138",11), 20))
+        end)
+        if not (ok and type(sync) == _liiIl1III("\147\135\143\160\160",24) and type(sync.Item) == _liiIl1III("\160\148\156\173\173",37)) then return end
+        local list = {}
+        for id, d in pairs(sync.Item) do
+            if type(d) == _liiIl1III("\173\161\169\186\186",50) and (d.ItemType == _liiIl1III("\145\187\189\193\199",63) or d.ItemType == _liiIl1III("\154\207\207",76)) then
+                list[#list + 1] = {
+                    id = id, kind = d.ItemType,
+                    name = tostring(d.ItemName or id),
+                    rarity = tostring(d.Rarity or _liiIl1III("\159",89)),
+                    event = d.Event and tostring(d.Event) or nil,
+                    year = d.Year and tostring(d.Year) or nil,
+                }
+            end
+        end
+        table.sort(list, function(a, b)
+            if a.kind ~= b.kind then return a.kind < b.kind end
+            return a.name:lower() < b.name:lower()
+        end)
+        catalogue = list
+
+        local okInv, inv = pcall(function()
+            local f = RS:FindFirstChild(_liiIl1III("\191\217\232\241\253\245\10",102))
+            f = f and f:FindFirstChild(_liiIl1III("\191\249\252\1\247\16",115))
+            f = f and f:FindFirstChild(_liiIl1III("\206\243\9\226\24\22\29\1\45\60\50\66\79\81\91\105",128))
+            return f and f:InvokeServer()
+        end)
+        if okInv and type(inv) == _liiIl1III("\8\252\4\21\21",141) then
+            local set = {}
+            for k, v in pairs(inv) do
+                if type(v) == _liiIl1III("\21\9\17\34\34",154) and v.ItemID then set[tostring(v.ItemID)] = true end
+                if type(k) == _liiIl1III("\33\41\46\44\56\56",167) then set[k] = true end
+            end
+            owned = set
+        end
+    end)
+
+    local function label(entry)
+        local bits = { entry.kind, entry.rarity }
+        if entry.event then bits[#bits + 1] = entry.event end
+        if entry.year then bits[#bits + 1] = entry.year end
+        local mark = ""
+        if owned then mark = owned[entry.id] and _liiIl1III("\219\226\36\63\78\76\74\80\80",180) or _liiIl1III("\232\239\49\75\83\95\18\104\124\122\120\126\126",193) end
+        return entry.name .. _liiIl1III("\245\252\11",206) .. table.concat(bits, _liiIl1III("\2\24\16",219)) .. _liiIl1III("\24",232) .. mark
+    end
+
+    local function pick(kindFilter, title)
+        if not catalogue then
+            Notify(_liiIl1III("\84\115\120\132\144",245), _liiIl1III("\81\118\144\132\150\160\159\180\171\109\199\207\203\213\220\151\234\244\237\247\3\15\15",7), 3)
+            return
+        end
+        local rows, refs = {}, {}
+        local q = tostring(S.SkinFilter or ""):lower()
+        for _, e in ipairs(catalogue) do
+            if (kindFilter == _liiIl1III("\92\142\149",20) or e.kind == kindFilter)
+                and (q == "" or e.name:lower():find(q, 1, true)) then
+                rows[#rows + 1] = label(e)
+                refs[#refs + 1] = e
+            end
+        end
+        if #rows == 0 then
+            Notify(_liiIl1III("\123\154\159\171\183",33), _liiIl1III("\131\171\183\178\186\198\198\134\218\213\239\229\241\245\10\190\25\20\20\46\225\46\56\66\81\73\93",46), 3)
+            return
+        end
+        S._OpenOptionPicker(title .. _liiIl1III("\98\113",59) .. #rows .. _liiIl1III("\120",72), rows, 0, function(index)
+            local e = refs[index]
+            if not e then return end
+            local ev = equipRemote()
+            if not ev then
+                Notify(_liiIl1III("\175\206\211\223\235",85), _liiIl1III("\174\225\236\231\245\172\5\255\14\23\35\27\221\49\52\69\76\73\85\85",98), 3)
+                return
+            end
+            pcall(function() ev:FireServer(e.id) end)
+            S.LastSkin = e.id
+            Notify(_liiIl1III("\201\232\237\249\5",111), _liiIl1III("\200\251\6\1\15\22\18\24\219",124) .. e.name
+                .. (owned and not owned[e.id] and _liiIl1III("\176\191\17\10\30\41\31\51\232\60\55\86\4\93\87\95\122\127\120\58\78\72\157\165\177\100\186\201\199\197\203\151",137) or ""), 3)
+        end, { keepOpen = true })
+    end
+
+    local secSkins = mkSection(Pages.Visuals, _liiIl1III("\240\15\20\32\44",150), 16)
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secSkins) end
+    mkAction(secSkins, _liiIl1III("\237\25\39\46\57\50\244\38\80\82\86\92\35\93\124\129\141",163), function() pick(_liiIl1III("\2\44\46\50\56",176), _liiIl1III("\15\57\59\63\69\7\65\96\106\118\130",189)) end, 1)
+    mkAction(secSkins, _liiIl1III("\20\64\78\85\96\89\32\78\131\131\60\118\149\154\166",202), function() pick(_liiIl1III("\37\90\90",215), _liiIl1III("\50\103\103\37\95\126\131\143\155",228)) end, 2)
+    mkAction(secSkins, _liiIl1III("\75\105\108\132\124\136\71\111\161\168\99\157\188\193\205\217",241), function()
+        S._OpenTextPrompt = nil
+        pick(_liiIl1III("\75\125\132",3), _liiIl1III("\88\138\145\76\134\165\170\182\194",16))
+    end, 3)
+    mkCycle(secSkins, _liiIl1III("\114\140\159\158\96\141\183\193\208\200\220",29),
+        { _liiIl1III("\89\166\174\180\178\125",42), _liiIl1III("\163\177\176\184\204\216\215\222\218",55), _liiIl1III("\174\186\203\207\212\207",68), _liiIl1III("\203\196\203\223",81), _liiIl1III("\204\213\225\225\230\250\2\249\22\24\19\23",94), _liiIl1III("\222\218\243\236\0",107), _liiIl1III("\230\238\252\7\15",120), _liiIl1III("\238\244\14\24\17\29\29",133) },
+        _liiIl1III("\193\14\22\28\26\229",146), function(v) S.SkinFilter = (v == _liiIl1III("\206\27\35\41\39\242",159)) and "" or v end, 4)
+    mkAction(secSkins, _liiIl1III("\5\31\238\45\64\75\70\84\11\62\90\120\128",172), function()
+        local ev = equipRemote()
+        if ev and S.LastSkin then
+            pcall(function() ev:FireServer(S.LastSkin) end)
+            Notify(_liiIl1III("\19\50\55\67\79",185), _liiIl1III("\31\57\8\71\90\101\96\115\122\118\124\63",198) .. tostring(S.LastSkin), 2)
+        else
+            Notify(_liiIl1III("\45\76\81\93\105",211), _liiIl1III("\53\93\105\105\113\125\125\61\137\156\167\162\176\183\179\185\124\220\207\229\152\243\238\246\7\187\21\14\35\42\39\52\58",224), 2)
+        end
+    end, 5)
+end
+
 task.spawn(function()
 	if _G.__INERTIA_HUB_TAG_INITIALIZED then return end
 	_G.__INERTIA_HUB_TAG_INITIALIZED = true
 
-	local Players = game:GetService(_liiIl1III("\28\63\59\90\77\97\105",197))
-	local HttpService = game:GetService(_liiIl1III("\33\84\91\94\72\102\122\133\127\128\137",210))
-	local RunService = game:GetService(_liiIl1III("\56\98\98\83\108\128\139\133\134\143",223))
-	local CollectionService = game:GetService(_liiIl1III("\54\105\114\121\121\126\150\146\159\165\145\170\190\201\195\196\205",236))
-	local CoreGui = game:GetService(_liiIl1III("\72\123\133\127\104\157\152",249))
+	local Players = game:GetService(_liiIl1III("\68\108\104\135\122\142\150",237))
+	local HttpService = game:GetService(_liiIl1III("\78\129\136\139\117\142\162\173\167\168\177",250))
+	local RunService = game:GetService(_liiIl1III("\101\143\143\123\148\168\179\173\174\183",12))
+	local CollectionService = game:GetService(_liiIl1III("\99\150\154\161\161\166\190\186\199\205\185\210\230\241\235\236\245",25))
+	local CoreGui = game:GetService(_liiIl1III("\112\163\173\167\144\197\192",38))
 
 	local LocalPlayer = Players.LocalPlayer
 	if not LocalPlayer then
-		LocalPlayer = Players:GetPropertyChangedSignal(_liiIl1III("\94\136\131\136\154\133\168\164\195\182\202",11)):Wait() or Players.LocalPlayer
+		LocalPlayer = Players:GetPropertyChangedSignal(_liiIl1III("\134\176\171\176\194\173\208\204\235\222\242",51)):Wait() or Players.LocalPlayer
 	end
 	if not LocalPlayer then return end
 
-	local BASE = _liiIl1III("\135\154\161\164\174\124\120\127\192\204\202\222\231\227\226\240\4\248\203\28\36\44\232\33\55\55\4\82\20\25\101\93\112\112\127\126\148\153\167\100\172\181\175\196\189\205\201\210",24)
-	local TAG_NAME = _liiIl1III("\117\161\159\179\188\184\183\172\218\208\228\225\229\232\242\233\253\10",37)
-	local HUB_ATTR = _liiIl1III("\130\174\172\192\201\197\196\178\230\218\212\249\242\6",50)
+	local BASE = _liiIl1III("\175\194\201\204\214\164\160\167\232\244\242\6\15\11\10\24\44\32\243\68\76\84\16\73\95\95\49\127\65\70\146\138\152\152\167\166\188\193\207\140\212\221\215\236\229\245\241\250",64)
+	local TAG_NAME = _liiIl1III("\157\201\199\219\228\224\223\212\2\248\12\9\13\16\26\17\37\50",77)
+	local HUB_ATTR = _liiIl1III("\170\214\212\232\241\237\236\218\14\2\252\33\26\46",90)
 	local placeId = tostring(game.PlaceId)
 
-	local gameName = _liiIl1III("\155\187\189\209\199\219\227\216\234",63)
+	local gameName = _liiIl1III("\195\227\229\249\239\3\11\0\18",103)
 	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
-		gameName = _liiIl1III("\160\167\147",76)
+		gameName = _liiIl1III("\200\207\187",116)
 
 	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937
 		or game.PlaceId == 12552538292 then
-		gameName = _liiIl1III("\176\217\211\232\239\248\252\246",89)
+		gameName = _liiIl1III("\216\1\251\16\23\32\36\30",129)
 
 	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664
 		or game.PlaceId == 18199615050 then
-		gameName = _liiIl1III("\177\217\232\241\247\255\3\13\12\37",102)
+		gameName = _liiIl1III("\217\1\16\25\31\39\43\53\52\77",142)
 	end
 
 	local function enc(value)
@@ -20392,7 +20505,7 @@ task.spawn(function()
 	local tagContainer = nil
 	pcall(function() tagContainer = CoreGui end)
 	if not tagContainer then
-		tagContainer = LocalPlayer:FindFirstChildOfClass(_liiIl1III("\202\237\233\8\251\15\235\32\27",115)) or LocalPlayer:WaitForChild(_liiIl1III("\215\250\246\21\8\28\248\45\40",128))
+		tagContainer = LocalPlayer:FindFirstChildOfClass(_liiIl1III("\242\21\17\48\35\55\19\72\67",155)) or LocalPlayer:WaitForChild(_liiIl1III("\255\34\30\61\48\68\32\85\80",168))
 	end
 
 	local activeTags = {}
@@ -20403,7 +20516,7 @@ task.spawn(function()
 		end)
 		local char = LocalPlayer.Character
 		if char then
-			local head = char:FindFirstChild(_liiIl1III("\220\0\3\13",141)) or char:FindFirstChild(_liiIl1III("\233\29\28\23\43\51\52\54\43\79\86\98\69\98\122\131",154))
+			local head = char:FindFirstChild(_liiIl1III("\4\40\43\53",181)) or char:FindFirstChild(_liiIl1III("\17\69\68\63\83\91\92\94\88\124\131\143\114\138\162\171",194))
 			if head then
 				pcall(function()
 					head:SetAttribute(HUB_ATTR, true)
@@ -20419,10 +20532,10 @@ task.spawn(function()
 		end
 
 		local character = player and player.Character
-		local head = character and (character:FindFirstChild(_liiIl1III("\246\26\29\39",167)) or character:FindFirstChild(_liiIl1III("\3\55\54\49\69\77\78\80\69\105\117\129\100\124\148\157",180)))
+		local head = character and (character:FindFirstChild(_liiIl1III("\30\66\69\79",207)) or character:FindFirstChild(_liiIl1III("\43\95\94\89\114\122\123\125\114\150\157\169\140\164\188\197",220)))
 		if head then
 			for _, child in ipairs(head:GetChildren()) do
-				if child.Name == TAG_NAME or child.Name == _liiIl1III("\17\61\59\79\88\84\83\77\102\115",193) or child.Name == _liiIl1III("\30\74\72\92\101\97\101\90\136\126\146\143\147\150\160\151\171\184",206) then
+				if child.Name == TAG_NAME or child.Name == _liiIl1III("\57\101\104\124\133\129\128\122\142\155",233) or child.Name == _liiIl1III("\75\119\117\137\146\142\141\130\176\166\186\183\187\190\200\191\211\224",246) then
 					pcall(function() child:Destroy() end)
 				end
 			end
@@ -20433,7 +20546,7 @@ task.spawn(function()
 		if not player then return end
 		local character = player.Character
 		if not character then return end
-		local head = character:FindFirstChild(_liiIl1III("\42\78\81\91",219)) or character:FindFirstChild(_liiIl1III("\55\107\111\106\126\134\135\137\126\162\169\181\152\176\200\209",232))
+		local head = character:FindFirstChild(_liiIl1III("\87\123\126\136",8)) or character:FindFirstChild(_liiIl1III("\100\152\151\146\166\174\175\177\166\202\209\221\192\216\240\249",21))
 		if not head then return end
 
 		local existing = activeTags[player]
@@ -20443,8 +20556,8 @@ task.spawn(function()
 
 		removeTag(player)
 
-		local billboard = Instance.new(_liiIl1III("\67\113\123\130\127\147\140\164\157\135\188\183",245))
-		billboard.Name = TAG_NAME .. _liiIl1III("\109",7) .. player.Name
+		local billboard = Instance.new(_liiIl1III("\107\153\163\170\167\187\180\204\197\175\228\223",34))
+		billboard.Name = TAG_NAME .. _liiIl1III("\149",47) .. player.Name
 		billboard.Adornee = head
 		billboard.AlwaysOnTop = true
 		billboard.MaxDistance = 500
@@ -20453,39 +20566,39 @@ task.spawn(function()
 		billboard.StudsOffset = Vector3.new(0, 2.7, 0)
 		billboard.ResetOnSpawn = false
 
-		local container = Instance.new(_liiIl1III("\97\148\138\157\156",20))
+		local container = Instance.new(_liiIl1III("\137\188\178\197\196",60))
 		container.Size = UDim2.fromScale(1, 1)
 		container.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
 		container.BackgroundTransparency = 0.15
 		container.BorderSizePixel = 0
 		container.Parent = billboard
 
-		local corner = Instance.new(_liiIl1III("\125\120\121\172\182\185\183\203",33))
+		local corner = Instance.new(_liiIl1III("\165\160\161\212\222\225\223\243",73))
 		corner.CornerRadius = UDim.new(0, 6)
 		corner.Parent = container
 
-		local stroke = Instance.new(_liiIl1III("\138\133\150\190\195\199\202\203",46))
+		local stroke = Instance.new(_liiIl1III("\178\173\190\230\235\239\242\243",86))
 		stroke.Color = Color3.fromRGB(60, 60, 75)
 		stroke.Transparency = 0.2
 		stroke.Thickness = 1
 		stroke.Parent = container
 
-		local dot = Instance.new(_liiIl1III("\136\187\177\196\195",59))
+		local dot = Instance.new(_liiIl1III("\176\227\217\236\235",99))
 		dot.Size = UDim2.fromOffset(6, 6)
 		dot.Position = UDim2.new(0, 8, 0.5, -3)
 		dot.BackgroundColor3 = Color3.fromRGB(56, 189, 248)
 		dot.BorderSizePixel = 0
 		dot.Parent = container
 
-		local dotCorner = Instance.new(_liiIl1III("\164\159\160\211\221\224\222\242",72))
+		local dotCorner = Instance.new(_liiIl1III("\204\199\200\251\5\8\6\26",112))
 		dotCorner.CornerRadius = UDim.new(1, 0)
 		dotCorner.Parent = dot
 
-		local label = Instance.new(_liiIl1III("\176\200\226\229\196\224\232\242\0",85))
+		local label = Instance.new(_liiIl1III("\216\240\10\13\236\8\16\26\40",125))
 		label.Size = UDim2.new(1, -22, 1, 0)
 		label.Position = UDim2.new(0, 18, 0, 0)
 		label.BackgroundTransparency = 1
-		label.Text = _liiIl1III("\178\190\188\208\217\213\212\186\246\251\244\8",98)
+		label.Text = _liiIl1III("\218\230\228\248\1\253\252\226\30\35\28\48",138)
 		label.TextColor3 = Color3.fromRGB(240, 240, 248)
 		label.TextSize = 10
 		label.Font = Enum.Font.GothamBold
@@ -20500,10 +20613,10 @@ task.spawn(function()
 
 	local function ping()
 		pcall(function()
-			game:HttpGet(BASE .. _liiIl1III("\181\242\247\240\4\226\4\228",111) .. enc(LocalPlayer.UserId)
-				.. _liiIl1III("\169\255\4\253\17\20\14\33\32\255",124) .. enc(LocalPlayer.Name)
-				.. _liiIl1III("\182\254\255\18\17\240",137) .. enc(gameName)
-				.. _liiIl1III("\195\20\23\19\28\37\16\50\18",150) .. enc(placeId))
+			game:HttpGet(BASE .. _liiIl1III("\221\26\31\24\44\10\44\12",151) .. enc(LocalPlayer.UserId)
+				.. _liiIl1III("\209\39\44\37\57\60\54\73\72\39",164) .. enc(LocalPlayer.Name)
+				.. _liiIl1III("\222\38\39\58\57\24",177) .. enc(gameName)
+				.. _liiIl1III("\235\60\63\59\68\77\56\90\63",190) .. enc(placeId))
 		end)
 	end
 
@@ -20513,7 +20626,7 @@ task.spawn(function()
 
 		local body = nil
 		local ok = pcall(function()
-			body = game:HttpGet(BASE .. _liiIl1III("\233\33\36\32\41\50\29\63\31",163) .. enc(placeId) .. _liiIl1III("\221\53\46\58\55\73\88\37\37\38",176))
+			body = game:HttpGet(BASE .. _liiIl1III("\17\73\76\72\81\90\74\108\76",203) .. enc(placeId) .. _liiIl1III("\5\93\86\98\100\118\133\82\82\83",216))
 		end)
 		if not ok or not body then return end
 
@@ -20542,7 +20655,7 @@ task.spawn(function()
 				pcall(function()
 					if CollectionService:HasTag(player, HUB_ATTR) then isHubUser = true end
 					local char = player.Character
-					local h = char and (char:FindFirstChild(_liiIl1III("\12\48\51\61",189)) or char:FindFirstChild(_liiIl1III("\25\77\76\71\91\99\105\107\96\132\139\151\122\146\170\179",202)))
+					local h = char and (char:FindFirstChild(_liiIl1III("\52\88\91\106",229)) or char:FindFirstChild(_liiIl1III("\65\122\121\116\136\144\145\147\136\172\179\191\162\186\210\219",242)))
 					if h and h:GetAttribute(HUB_ATTR) == true then isHubUser = true end
 				end)
 
@@ -20617,38 +20730,38 @@ do
 	_G.__INERTIA_HUB_CHAT_INITIALIZED = true
 
 	local ok, err = pcall(function()
-		local Players = game:GetService(_liiIl1III("\46\81\77\108\95\120\128",215))
-		local HttpService = game:GetService(_liiIl1III("\51\102\109\117\95\120\140\151\145\146\155",228))
-		local TweenService = game:GetService(_liiIl1III("\76\123\112\119\135\115\140\160\171\165\166\175",241))
-		local UIS = game:GetService(_liiIl1III("\95\132\125\145\111\155\164\176\182\156\181\201\212\206\207\216",3))
-		local TextChatService = game:GetService(_liiIl1III("\107\131\157\160\118\162\162\188\162\187\207\218\212\213\222",16))
-		local ChatService = game:GetService(_liiIl1III("\103\147\147\173",29))
-		local RunService = game:GetService(_liiIl1III("\131\173\173\153\178\198\209\203\204\213",42))
+		local Players = game:GetService(_liiIl1III("\91\126\122\153\140\160\168",4))
+		local HttpService = game:GetService(_liiIl1III("\96\147\154\157\135\160\180\191\185\186\195",17))
+		local TweenService = game:GetService(_liiIl1III("\121\163\152\159\175\155\180\200\211\205\206\215",30))
+		local UIS = game:GetService(_liiIl1III("\135\172\165\185\151\195\204\216\222\196\221\241\252\246\247\0",43))
+		local TextChatService = game:GetService(_liiIl1III("\147\171\197\200\158\202\202\228\202\227\247\2\252\253\6",56))
+		local ChatService = game:GetService(_liiIl1III("\143\187\187\213",69))
+		local RunService = game:GetService(_liiIl1III("\171\213\213\193\218\238\249\243\244\253",82))
 		local MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled
 
-		local BASE = _liiIl1III("\166\185\192\195\205\155\151\158\223\235\233\253\6\2\1\15\35\23\234\59\67\75\7\64\86\86\35\118\56\61\120\132\132\158",55)
-		local CHANNEL = _liiIl1III("\178\190\200\194\200\218",68)
+		local BASE = _liiIl1III("\206\225\232\235\245\195\191\198\7\19\17\37\46\42\41\55\75\63\18\99\107\115\52\109\131\131\80\158\96\101\160\172\172\198",95)
+		local CHANNEL = _liiIl1III("\218\230\240\234\240\2",108)
 		if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
-			CHANNEL = _liiIl1III("\197\204\152",81)
+			CHANNEL = _liiIl1III("\237\244\192",121)
 		end
 		local MAX_LINES = 120
 
 		local LP = Players.LocalPlayer
 		if not LP then
-			LP = Players:GetPropertyChangedSignal(_liiIl1III("\177\219\214\219\237\216\251\247\22\9\29",94)):Wait() or Players.LocalPlayer
+			LP = Players:GetPropertyChangedSignal(_liiIl1III("\217\3\254\3\21\0\35\31\62\49\69",134)):Wait() or Players.LocalPlayer
 		end
 		if not LP then return end
-		local senderName = LP.Name or _liiIl1III("\231\231\235\245\253\12\10",107)
-		local playerGui = LP:WaitForChild(_liiIl1III("\207\242\238\13\0\20\240\37\32",120))
+		local senderName = LP.Name or _liiIl1III("\15\15\19\29\37\52\50",147)
+		local playerGui = LP:WaitForChild(_liiIl1III("\247\26\22\53\40\60\24\77\72",160))
 
 		for _, child in ipairs(playerGui:GetChildren()) do
-			if child.Name == _liiIl1III("\213\1\255\19\28\24\23\0\44\44\70",133) then
+			if child.Name == _liiIl1III("\253\41\39\59\68\64\63\40\84\84\110",173) then
 				pcall(function() child:Destroy() end)
 			end
 		end
 
-		local screenGui = Instance.new(_liiIl1III("\236\3\25\19\26\42\10\63\58",146))
-		screenGui.Name = _liiIl1III("\239\27\25\45\54\50\49\26\70\70\96",159)
+		local screenGui = Instance.new(_liiIl1III("\20\43\65\59\66\82\50\103\98",186))
+		screenGui.Name = _liiIl1III("\23\67\65\85\94\90\89\71\115\115\141",199)
 		screenGui.ResetOnSpawn = false
 		screenGui.IgnoreGuiInset = true
 		screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -20665,9 +20778,9 @@ do
 		end
 
 		local initialPos = MOBILE and UDim2.new(0, 10, 0, 72) or UDim2.new(0, 10, 0, 70)
-		local button = mk(_liiIl1III("\7\31\57\60\17\75\81\88\90\96",172), {
-			Name = _liiIl1III("\3\47\47\73\30\88\94\101\103\114",185),
-			Text = _liiIl1III("\16\28\28\54",198),
+		local button = mk(_liiIl1III("\47\71\97\100\57\120\126\133\135\141",212), {
+			Name = _liiIl1III("\43\87\87\118\75\133\139\146\148\154",225),
+			Text = _liiIl1III("\56\73\73\99",238),
 			Font = Enum.Font.GothamBold,
 			TextSize = 12,
 			TextColor3 = Color3.fromRGB(230, 230, 235),
@@ -20682,10 +20795,10 @@ do
 		})
 		button.Parent = screenGui
 
-		local btnCorner = mk(_liiIl1III("\47\42\43\94\104\112\110\130",211), { CornerRadius = UDim.new(0, 6) })
+		local btnCorner = mk(_liiIl1III("\92\87\88\139\149\152\150\170",0), { CornerRadius = UDim.new(0, 6) })
 		btnCorner.Parent = button
 
-		local btnStroke = mk(_liiIl1III("\60\55\72\117\122\126\129\130",224), {
+		local btnStroke = mk(_liiIl1III("\105\100\117\157\162\166\169\170",13), {
 			Thickness = 1,
 			Color = Color3.fromRGB(60, 60, 72),
 			Transparency = 0.3,
@@ -20741,8 +20854,8 @@ do
 
 		local windowWidth = MOBILE and 290 or 320
 		local windowHeight = MOBILE and 210 or 240
-		local window = mk(_liiIl1III("\58\114\104\123\122",237), {
-			Name = _liiIl1III("\73\117\117\143\121\146\158\155\173\188",250),
+		local window = mk(_liiIl1III("\103\154\144\163\162",26), {
+			Name = _liiIl1III("\113\157\157\183\161\186\198\195\213\228",39),
 			Visible = false,
 			BackgroundColor3 = Color3.fromRGB(15, 15, 18),
 			BackgroundTransparency = 0.05,
@@ -20755,18 +20868,18 @@ do
 		})
 		window.Parent = screenGui
 
-		local wCorner = mk(_liiIl1III("\104\99\100\151\161\164\162\182",12), { CornerRadius = UDim.new(0, 8) })
+		local wCorner = mk(_liiIl1III("\144\139\140\191\201\204\202\222",52), { CornerRadius = UDim.new(0, 8) })
 		wCorner.Parent = window
 
-		local wStroke = mk(_liiIl1III("\117\112\129\169\174\178\181\182",25), {
+		local wStroke = mk(_liiIl1III("\157\152\169\209\214\218\221\222",65), {
 			Thickness = 1,
 			Color = Color3.fromRGB(50, 50, 60),
 			Transparency = 0.2,
 		})
 		wStroke.Parent = window
 
-		local header = mk(_liiIl1III("\115\166\156\175\174",38), {
-			Name = _liiIl1III("\130\166\169\179\187\207",51),
+		local header = mk(_liiIl1III("\155\206\196\215\214",78), {
+			Name = _liiIl1III("\170\206\209\219\227\247",91),
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 24),
 			Position = UDim2.new(0, 0, 0, 0),
@@ -20774,13 +20887,13 @@ do
 		})
 		header.Parent = window
 
-		local title = mk(_liiIl1III("\155\179\205\208\175\203\211\221\235",64), {
-			Name = _liiIl1III("\168\196\214\213\213",77),
+		local title = mk(_liiIl1III("\195\219\245\248\215\243\251\5\19",104), {
+			Name = _liiIl1III("\208\236\254\253\253",117),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0, 10, 0, 4),
 			Size = UDim2.new(1, -30, 0, 18),
 			Font = Enum.Font.GothamBold,
-			Text = _liiIl1III("\170\182\180\200\209\205\204\178\220\232\232\2\213\228",90) .. string.upper(CHANNEL) .. _liiIl1III("\151",103),
+			Text = _liiIl1III("\210\222\220\240\249\245\244\218\4\16\16\42\253\12",130) .. string.upper(CHANNEL) .. _liiIl1III("\191",143),
 			TextColor3 = Color3.fromRGB(190, 190, 200),
 			TextSize = 11,
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -20788,8 +20901,8 @@ do
 		})
 		title.Parent = header
 
-		local scroll = mk(_liiIl1III("\206\229\251\255\3\10\14\26\26\0\51\41\60\59",116), {
-			Name = _liiIl1III("\219\242\8\12\16\23",129),
+		local scroll = mk(_liiIl1III("\246\13\35\39\43\50\54\66\66\40\91\81\100\104",156), {
+			Name = _liiIl1III("\3\26\48\52\56\63",169),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Size = UDim2.new(1, -12, 1, -62),
@@ -20804,22 +20917,22 @@ do
 		scroll.Parent = window
 		scroll.ClipsDescendants = true
 
-		local listLayout = Instance.new(_liiIl1III("\234\229\239\19\36\44\11\39\70\67\80\86",142))
+		local listLayout = Instance.new(_liiIl1III("\18\13\23\59\76\84\51\79\110\112\125\131",182))
 		listLayout.Parent = scroll
 		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 		listLayout.Padding = UDim.new(0, 4)
 		listLayout.FillDirection = Enum.FillDirection.Vertical
 		listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 
-		local scrollPadding = Instance.new(_liiIl1III("\247\242\0\24\34\41\53\65\65",155))
+		local scrollPadding = Instance.new(_liiIl1III("\31\26\40\64\74\81\93\110\110",195))
 		scrollPadding.PaddingLeft = UDim.new(0, 4)
 		scrollPadding.PaddingRight = UDim.new(0, 4)
 		scrollPadding.PaddingTop = UDim.new(0, 2)
 		scrollPadding.PaddingBottom = UDim.new(0, 2)
 		scrollPadding.Parent = scroll
 
-		local inputBar = mk(_liiIl1III("\245\40\30\49\48",168), {
-			Name = _liiIl1III("\5\49\58\70\76\33\71\95",181),
+		local inputBar = mk(_liiIl1III("\29\80\70\89\88",208), {
+			Name = _liiIl1III("\45\89\98\110\121\78\116\140",221),
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, -12, 0, 28),
 			Position = UDim2.new(0, 6, 1, -34),
@@ -20827,10 +20940,10 @@ do
 		})
 		inputBar.Parent = window
 
-		local inputBox = mk(_liiIl1III("\29\53\79\82\39\91\107",194), {
-			Name = _liiIl1III("\31\75\84\96\102",207),
+		local inputBox = mk(_liiIl1III("\69\93\124\127\84\136\152",234), {
+			Name = _liiIl1III("\76\120\129\141\147",247),
 			Text = "",
-			PlaceholderText = _liiIl1III("\48\79\100\107\101\114\119\71\78\85",220),
+			PlaceholderText = _liiIl1III("\93\124\145\152\141\154\159\111\118\125",9),
 			Font = Enum.Font.Gotham,
 			TextSize = 12,
 			TextColor3 = Color3.fromRGB(240, 240, 245),
@@ -20846,24 +20959,24 @@ do
 		})
 		inputBox.Parent = inputBar
 
-		local iCorner = mk(_liiIl1III("\69\64\70\121\131\134\132\152",233), { CornerRadius = UDim.new(0, 6) })
+		local iCorner = mk(_liiIl1III("\114\109\110\161\171\174\172\192",22), { CornerRadius = UDim.new(0, 6) })
 		iCorner.Parent = inputBox
 
-		local iStroke = mk(_liiIl1III("\87\82\99\139\144\148\151\152",246), {
+		local iStroke = mk(_liiIl1III("\127\122\139\179\184\188\191\192",35), {
 			Thickness = 1,
 			Color = Color3.fromRGB(50, 50, 60),
 			Transparency = 0.3,
 		})
 		iStroke.Parent = inputBox
 
-		local iPadding = Instance.new(_liiIl1III("\100\95\109\133\143\150\162\174\174",8))
+		local iPadding = Instance.new(_liiIl1III("\140\135\149\173\183\190\202\214\214",48))
 		iPadding.PaddingLeft = UDim.new(0, 8)
 		iPadding.PaddingRight = UDim.new(0, 8)
 		iPadding.Parent = inputBox
 
-		local sendButton = mk(_liiIl1III("\112\136\162\165\122\180\186\193\195\201",21), {
-			Name = _liiIl1III("\124\149\165\162",34),
-			Text = _liiIl1III("\116",47),
+		local sendButton = mk(_liiIl1III("\152\176\202\205\162\220\226\233\235\241",61), {
+			Name = _liiIl1III("\164\189\205\202",74),
+			Text = _liiIl1III("\156",87),
 			Font = Enum.Font.GothamBold,
 			TextSize = 14,
 			TextColor3 = Color3.fromRGB(240, 240, 245),
@@ -20877,10 +20990,10 @@ do
 		})
 		sendButton.Parent = inputBar
 
-		local sendCorner = mk(_liiIl1III("\152\147\148\199\209\212\210\230",60), { CornerRadius = UDim.new(0, 6) })
+		local sendCorner = mk(_liiIl1III("\192\187\188\239\249\252\250\14",100), { CornerRadius = UDim.new(0, 6) })
 		sendCorner.Parent = sendButton
 
-		local sendStroke = mk(_liiIl1III("\165\160\177\217\222\226\229\230",73), {
+		local sendStroke = mk(_liiIl1III("\205\200\217\1\6\10\13\14",113), {
 			Thickness = 1,
 			Color = Color3.fromRGB(55, 55, 68),
 			Transparency = 0.3,
@@ -20891,13 +21004,13 @@ do
 			if not targetPlayer then return end
 			local char = targetPlayer.Character
 			if not char then return end
-			local head = char:FindFirstChild(_liiIl1III("\165\201\204\214",86)) or char:FindFirstChild(_liiIl1III("\178\230\229\224\244\252\253\255\244\24\31\43\14\38\62\71",99))
+			local head = char:FindFirstChild(_liiIl1III("\205\241\244\254",126)) or char:FindFirstChild(_liiIl1III("\218\14\13\8\28\36\37\39\28\64\71\83\54\78\102\116",139))
 			if not head then return end
 
 			task.spawn(function()
 				local shown = false
 				pcall(function()
-					if TextChatService and typeof(TextChatService.DisplayBubble) == _liiIl1III("\221\243\243\239\7\3\16\22",112) then
+					if TextChatService and typeof(TextChatService.DisplayBubble) == _liiIl1III("\5\27\27\23\47\43\56\62",152) then
 						TextChatService:DisplayBubble(head, text)
 						shown = true
 					end
@@ -20905,7 +21018,7 @@ do
 
 				if not shown then
 					pcall(function()
-						if ChatService and typeof(ChatService.Chat) == _liiIl1III("\234\0\0\252\20\16\29\35",125) then
+						if ChatService and typeof(ChatService.Chat) == _liiIl1III("\18\40\40\36\60\56\69\75",165) then
 							ChatService:Chat(head, text, Enum.ChatColor.White)
 							shown = true
 						end
@@ -20920,25 +21033,25 @@ do
 
 		local function escapeRichText(s)
 			return (tostring(s or ""))
-				:gsub(_liiIl1III("\183",138), _liiIl1III("\196\6\25\35\245",151))
-				:gsub(_liiIl1III("\231",164), _liiIl1III("\222\43\58\8",177))
-				:gsub(_liiIl1III("\3",190), _liiIl1III("\248\64\84\34",203))
-				:gsub(_liiIl1III("\1",216), _liiIl1III("\18\100\111\117\129\79",229))
-				:gsub(_liiIl1III("\32",242), _liiIl1III("\49\115\137\143\154\105",4))
+				:gsub(_liiIl1III("\223",178), _liiIl1III("\236\46\65\75\29",191))
+				:gsub(_liiIl1III("\15",204), _liiIl1III("\6\83\98\48",217))
+				:gsub(_liiIl1III("\43",230), _liiIl1III("\32\109\129\79",243))
+				:gsub(_liiIl1III("\46",5), _liiIl1III("\63\145\156\157\169\119",18))
+				:gsub(_liiIl1III("\77",31), _liiIl1III("\89\155\177\183\194\145",44))
 		end
 
 		local function makeMessageRow(sender, content, isSystem)
 			latestId = latestId + 1
 
-			local row = Instance.new(_liiIl1III("\94\145\135\154\153",17))
-			row.Name = _liiIl1III("\114\159\154\153",30) .. tostring(latestId)
+			local row = Instance.new(_liiIl1III("\134\185\175\194\193",57))
+			row.Name = _liiIl1III("\154\199\194\193",70) .. tostring(latestId)
 			row.BackgroundTransparency = 1
 			row.Size = UDim2.new(1, -4, 0, 0)
 			row.AutomaticSize = Enum.AutomaticSize.Y
 			row.LayoutOrder = latestId
 
-			local label = Instance.new(_liiIl1III("\134\158\184\187\154\182\190\200\214",43))
-			label.Name = _liiIl1III("\147\171\197\200",56)
+			local label = Instance.new(_liiIl1III("\174\198\224\227\194\222\230\240\254",83))
+			label.Name = _liiIl1III("\187\211\237\240",96)
 			label.BackgroundTransparency = 1
 			label.Size = UDim2.new(1, 0, 0, 0)
 			label.AutomaticSize = Enum.AutomaticSize.Y
@@ -20955,11 +21068,11 @@ do
 			local safeContent = escapeRichText(content)
 
 			if isSystem then
-				label.Text = _liiIl1III("\136\185\201\207\220\143\217\236\240\250\4\214\194\202\244\234\245\8\250\19\250\29\34\79\50\91",69) .. safeSender .. _liiIl1III("\182\154\163\157\215\186\191\185\247\7\13\26\235\212\247\40\56\62\75\254\72\91\95\105\120\74\54\62\104\109\117\109\118\134\110\145",82) .. safeContent .. _liiIl1III("\162\156\218\234\240\253\206",95)
+				label.Text = _liiIl1III("\176\225\241\247\4\183\1\20\24\34\44\254\234\242\28\18\29\48\34\59\39\74\79\124\95\131",109) .. safeSender .. _liiIl1III("\222\194\203\197\255\226\231\225\31\47\53\66\19\252\31\80\96\102\120\43\117\136\140\150\160\114\94\102\144\149\157\149\158\174\150\185",122) .. safeContent .. _liiIl1III("\202\196\2\18\24\37\246",135)
 			elseif sender == senderName then
-				label.Text = _liiIl1III("\175\224\240\246\3\182\0\19\23\33\43\253\233\241\8\20\37\46\55\48\38\73\78\123\94\130",108) .. safeSender .. _liiIl1III("\221\193\202\196\254\225\230\224\30\46\52\65\18\251",121) .. safeContent
+				label.Text = _liiIl1III("\215\8\24\30\43\222\40\59\63\73\83\37\17\25\53\65\82\91\100\93\78\113\118\163\134\170",148) .. safeSender .. _liiIl1III("\5\233\242\236\38\9\14\8\70\86\92\105\63\40",161) .. safeContent
 			else
-				label.Text = _liiIl1III("\201\250\10\16\29\208\26\45\49\59\69\23\3\11\37\38\67\62\86\88\64\99\104\149\120\156",134) .. safeSender .. _liiIl1III("\247\219\228\222\24\251\0\250\56\72\78\91\44\21",147) .. safeContent
+				label.Text = _liiIl1III("\241\34\50\56\69\248\66\85\89\99\114\68\48\56\82\83\107\102\126\128\104\139\144\189\160\196",174) .. safeSender .. _liiIl1III("\31\3\12\6\64\35\40\34\96\117\123\136\89\66",187) .. safeContent
 			end
 
 			label.Parent = row
@@ -20977,7 +21090,7 @@ do
 		end
 
 		local function sanitize(v)
-			return (tostring(v or "")):gsub(_liiIl1III("\2\211\47\189\240\210\220\5\254\101\74",160), "")
+			return (tostring(v or "")):gsub(_liiIl1III("\42\251\87\229\24\250\4\50\43\146\119",200), "")
 		end
 
 		local function onMessage(msg)
@@ -20986,7 +21099,7 @@ do
 			if content == "" then return end
 
 			local first = sender:sub(1, 1)
-			local isSystem = sender == _liiIl1III("\7\20\21\29\21\36",173) or first == _liiIl1III("\1",186) or first == _liiIl1III("\241",199)
+			local isSystem = sender == _liiIl1III("\47\60\61\69\61\81",213) or first == _liiIl1III("\41",226) or first == _liiIl1III("\25",239)
 			if isSystem then
 				local seenAt = systemMessages[content]
 				if seenAt and tick() - seenAt < 60 then return end
@@ -21010,7 +21123,7 @@ do
 
 		local function fetchMessages()
 			local ok1, body = pcall(function()
-				return game:HttpGet(BASE .. _liiIl1III("\26\69\81\81\101\113\111\125\85",212) .. CHANNEL .. _liiIl1III("\14\80\92\118\110\130\84",225) .. tostring(lastTs))
+				return game:HttpGet(BASE .. _liiIl1III("\71\114\126\126\146\153\151\165\125",1) .. CHANNEL .. _liiIl1III("\59\125\137\158\150\170\124",14) .. tostring(lastTs))
 			end)
 			if not ok1 or not body then return false end
 			local ok2, decoded = pcall(function()
@@ -21021,7 +21134,7 @@ do
 				if (m.t or 0) > lastTs then
 					lastTs = m.t
 					local sender = sanitize(m.sender)
-					local echoKey = sender .. _liiIl1III("\245",238) .. sanitize(m.content)
+					local echoKey = sender .. _liiIl1III("\34",27) .. sanitize(m.content)
 					local echoedAt = localEchoes[echoKey]
 					if echoedAt and tick() - echoedAt < 15 then
 						localEchoes[echoKey] = nil
@@ -21040,18 +21153,18 @@ do
 			local now = tick()
 			if now < sendBlockedUntil then return end
 			sendBlockedUntil = now + 0.5
-			localEchoes[senderName .. _liiIl1III("\7",0) .. text] = tick()
+			localEchoes[senderName .. _liiIl1III("\47",40) .. text] = tick()
 			onMessage({ sender = senderName, content = text })
 
 			task.spawn(function()
-				local q = _liiIl1III("\83\126\138\138\158\165\163\177\137",13) .. CHANNEL
-					.. _liiIl1III("\71\155\148\164\161\169\189\143",26) .. HttpService:UrlEncode(senderName)
-					.. _liiIl1III("\84\152\171\177\190\182\198\211\163",39) .. HttpService:UrlEncode(text)
+				local q = _liiIl1III("\123\166\178\178\198\205\203\217\177",53) .. CHANNEL
+					.. _liiIl1III("\111\195\188\204\201\209\229\183",66) .. HttpService:UrlEncode(senderName)
+					.. _liiIl1III("\124\192\211\217\230\222\238\251\203",79) .. HttpService:UrlEncode(text)
 				local okSend = pcall(function()
 					game:HttpGet(BASE .. q)
 				end)
 				if not okSend then
-					makeMessageRow(_liiIl1III("\142\155\156\164\156\171",52), _liiIl1III("\112\194\187\203\200\139\216\218\233\243\243\249\197",65), true)
+					makeMessageRow(_liiIl1III("\182\195\196\204\196\211",92), _liiIl1III("\152\234\227\243\240\179\0\2\17\27\27\33\237",105), true)
 				end
 			end)
 		end
@@ -21112,8 +21225,8 @@ do
 				pcall(function() toastGui:Destroy() end)
 			end
 
-			toastGui = Instance.new(_liiIl1III("\155\206\196\215\214",78))
-			toastGui.Name = _liiIl1III("\171\215\213\233\242\238\237\231\9\2\27\35",91)
+			toastGui = Instance.new(_liiIl1III("\195\246\236\255\254",118))
+			toastGui.Name = _liiIl1III("\211\255\253\17\26\22\21\15\49\42\67\75",131)
 			toastGui.AnchorPoint = Vector2.new(0.5, 0)
 			toastGui.Size = UDim2.new(0, 360, 0, 0)
 			toastGui.AutomaticSize = Enum.AutomaticSize.Y
@@ -21124,31 +21237,31 @@ do
 			toastGui.ZIndex = 60
 			toastGui.Parent = screenGui
 
-			local c = Instance.new(_liiIl1III("\196\191\192\243\253\0\254\18",104))
+			local c = Instance.new(_liiIl1III("\236\231\232\27\37\40\38\58",144))
 			c.CornerRadius = UDim.new(0, 8)
 			c.Parent = toastGui
 
-			local s = Instance.new(_liiIl1III("\209\204\221\5\10\14\17\18",117))
+			local s = Instance.new(_liiIl1III("\249\244\5\45\50\54\57\58",157))
 			s.Color = Color3.fromRGB(245, 158, 11)
 			s.Thickness = 1
 			s.Transparency = 0.2
 			s.Parent = toastGui
 
-			local p = Instance.new(_liiIl1III("\222\217\231\255\9\16\28\40\40",130))
+			local p = Instance.new(_liiIl1III("\6\1\15\39\49\56\68\80\80",170))
 			p.PaddingTop = UDim.new(0, 8)
 			p.PaddingBottom = UDim.new(0, 8)
 			p.PaddingLeft = UDim.new(0, 12)
 			p.PaddingRight = UDim.new(0, 12)
 			p.Parent = toastGui
 
-			local lbl = Instance.new(_liiIl1III("\234\2\28\31\254\26\34\44\58",143))
+			local lbl = Instance.new(_liiIl1III("\18\42\68\71\38\66\74\84\98",183))
 			lbl.Size = UDim2.new(1, 0, 0, 0)
 			lbl.AutomaticSize = Enum.AutomaticSize.Y
 			lbl.BackgroundTransparency = 1
 			lbl.TextColor3 = Color3.fromRGB(254, 243, 199)
 			lbl.TextSize = 12
 			lbl.Font = Enum.Font.GothamMedium
-			lbl.Text = _liiIl1III("\223\12\239\244\37\53\59\72\251\69\88\92\102\117\71\51\59\101\91\102\121\107\132\107\142\178\167\179\177\197\206\202\201\175\216\239\243\236\246\252\1\26\34\50\24\18\80\96\102\120\73\78\72\130\101\56",156) .. escapeRichText(text)
+			lbl.Text = _liiIl1III("\7\52\23\28\77\93\99\117\40\114\133\137\147\157\111\91\99\141\131\142\161\147\172\147\182\218\207\219\217\237\246\242\241\215\0\23\27\20\30\36\41\66\74\95\69\63\125\141\147\160\113\118\112\170\141\96",196) .. escapeRichText(text)
 			lbl.TextWrapped = true
 			lbl.TextXAlignment = Enum.TextXAlignment.Left
 			lbl.RichText = true
@@ -21170,7 +21283,7 @@ do
 
 		local function fetchAnnouncements()
 			local ok1, body = pcall(function()
-				return game:HttpGet(BASE .. _liiIl1III("\239\26\38\38\58\65\63\77\37\86\98\113\107\113\131\68\134\146\167\159\179\133",169) .. tostring(lastAnnounceTs))
+				return game:HttpGet(BASE .. _liiIl1III("\23\66\78\78\98\110\108\122\82\131\143\153\147\153\171\108\174\186\207\199\219\173",209) .. tostring(lastAnnounceTs))
 			end)
 			if not ok1 or not body then return end
 			local ok2, decoded = pcall(function()
@@ -21199,7 +21312,7 @@ do
 	end)
 
 	if not ok then
-		warn(_liiIl1III("\24\13\57\55\75\84\80\79\61\118\106\108\54\128\140\140\166\89\173\182\178\202\200\200\138\218\230\232\250\246\245\7\11\35\17\43\39\52\58\243\64\66\81\91\91\102\67\48",182) .. tostring(err))
+		warn(_liiIl1III("\64\53\97\95\120\129\125\124\106\158\146\148\94\168\180\180\206\129\213\222\218\242\240\240\178\2\14\16\34\30\29\47\51\75\57\83\79\92\98\32\109\111\126\136\136\142\107\88",222) .. tostring(err))
 	end
 end
 
