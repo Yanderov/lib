@@ -116,6 +116,7 @@ local S = {
     SheriffAntiDesync = false,
     ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
     ForceShootMode = "Target", WallbangMode = "Muzzle",
+    PerkNoCooldown = false, PerkAutoUse = false,
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -19816,4 +19817,99 @@ do
         mkSlider(secDraw, "Line Thickness", 1, 5, 1, function(v) S.DrawESPThickness = v end, 3)
     end
     task.delay(3, refresh)
+end
+
+do
+    local RS = game:GetService("ReplicatedStorage")
+
+    local function perkRemote()
+        local r = RS:FindFirstChild("Remotes")
+        r = r and r:FindFirstChild("Gameplay")
+        return r and r:FindFirstChild("ActivatePerk")
+    end
+
+    local perkData = nil
+    task.spawn(function()
+        local ok, sync = pcall(function()
+            return require(RS:WaitForChild("Database", 15):WaitForChild("Sync", 15))
+        end)
+        if ok and type(sync) == "table" then perkData = sync.Perks end
+    end)
+
+    local function equippedName()
+        return LP:GetAttribute("EquippedPerk") or "Footsteps"
+    end
+
+    local function equippedInfo()
+        local name = equippedName()
+        local d = perkData and perkData[name]
+        if not d then return name, nil end
+        return name, d
+    end
+
+    local function usePerk()
+        local ev = perkRemote()
+        if not ev then return false, "ActivatePerk remote missing" end
+        local name, d = equippedInfo()
+        if d and d.Active == false then
+            return false, name .. " is passive - nothing to activate"
+        end
+        local ok = pcall(function() ev:FireServer() end)
+        return ok, ok and ("Used " .. name) or "Server rejected it"
+    end
+    S._UsePerk = usePerk
+
+    local function clearCooldown()
+        for _, obj in ipairs(game:GetService("CollectionService"):GetTagged("Perk")) do
+            pcall(function()
+                if obj:GetAttribute("Cooldown") then obj:SetAttribute("Cooldown", 0) end
+                if obj:GetAttribute("Charges") then obj:SetAttribute("Charges", 99) end
+            end)
+        end
+    end
+
+    local secPerk = mkSection(Pages.Misc, "Perks", 10)
+    if S._RegisterMiscSection then pcall(S._RegisterMiscSection, secPerk, "Protection") end
+
+    mkAction(secPerk, "Use Perk", function()
+        local ok, msg = usePerk()
+        Notify("Perks", msg, ok and 2 or 3)
+    end, 1)
+
+    mkAction(secPerk, "Show Perk Info", function()
+        local name, d = equippedInfo()
+        if not d then
+            Notify("Perks", "Equipped: " .. name .. " (no data yet)", 3)
+            return
+        end
+        Notify("Perks", string.format("%s - %s | cd %s | active %s | charges %s",
+            name, d.Active and "activated" or "passive",
+            tostring(d.Cooldown or "-"), tostring(d.ActiveTime or "-"), tostring(d.Charges or "-")), 5)
+    end, 2)
+
+    mkToggle(secPerk, "No Perk Cooldown", false, function(v)
+        S.PerkNoCooldown = v
+        if v then clearCooldown() end
+    end, 3)
+
+    mkToggle(secPerk, "Auto Use Perk", false, function(v) S.PerkAutoUse = v end, 4)
+
+    task.spawn(function()
+        while S.Gui and S.Gui.Parent do
+            if S.PerkNoCooldown then pcall(clearCooldown) end
+            if S.PerkAutoUse then
+                local _, d = equippedInfo()
+                if d and d.Active ~= false then
+                    pcall(usePerk)
+
+                    local wait = S.PerkNoCooldown and 1 or math.max(tonumber(d.Cooldown) or 30, 1)
+                    task.wait(wait)
+                else
+                    task.wait(2)
+                end
+            else
+                task.wait(1)
+            end
+        end
+    end)
 end
