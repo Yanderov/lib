@@ -18,3 +18,4 @@ strip_comments.py
 PUBLISHING.md
 mm2/gh.lua
 mm2/m.lua
+obfuscate.py

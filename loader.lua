@@ -1,29 +1,30 @@
-local CoreGui = game:GetService("CoreGui")
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
+local _i1III1l11 do local c=string.char local b=string.byte _i1III1l11=function(s,k) local o={} for i=1,#s do o[i]=c(((b(s,i)-((k+i*7)%251))%256)) end return table.concat(o) end end
+local CoreGui = game:GetService(_i1III1l11("\1\52\62\56\33\86\81",183))
+local Players = game:GetService(_i1III1l11("\27\62\58\89\76\96\104",196))
+local TweenService = game:GetService(_i1III1l11("\44\86\75\82\98\83\108\128\139\133\134\143",209))
+local UserInputService = game:GetService(_i1III1l11("\58\95\88\108\79\123\132\144\150\124\149\169\180\174\175\184",222))
+local Workspace = game:GetService(_i1III1l11("\73\104\119\119\134\138\130\139\148",235))
 
 local LocalPlayer = Players.LocalPlayer
 
 local function destroyOld(parent)
 	if not parent then return end
-	local old = parent:FindFirstChild("GameLoaderUI")
+	local old = parent:FindFirstChild(_i1III1l11("\75\108\127\126\108\150\143\153\161\181\159\154",248))
 	if old then old:Destroy() end
 end
 destroyOld(CoreGui)
-if LocalPlayer then destroyOld(LocalPlayer:FindFirstChildOfClass("PlayerGui")) end
+if LocalPlayer then destroyOld(LocalPlayer:FindFirstChildOfClass(_i1III1l11("\97\132\128\159\146\166\130\183\178",10))) end
 
 local parentGui = CoreGui
 pcall(function() if gethui then parentGui = gethui() end end)
-if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
+if not parentGui then parentGui = LocalPlayer:WaitForChild(_i1III1l11("\110\145\141\172\159\179\143\196\191",23)) end
 destroyOld(parentGui)
 
-local TELEMETRY_BASE = "https://inertiahub.xyz"
-local executorName = "Unknown"
+local TELEMETRY_BASE = _i1III1l11("\147\166\173\176\186\136\132\139\204\216\214\234\243\239\238\252\16\4\215\40\48\56",36)
+local executorName = _i1III1l11("\141\173\177\187\195\210\208",49)
 pcall(function()
     if identifyexecutor then executorName = tostring(identifyexecutor())
-    elseif syn then executorName = "Synapse" end
+    elseif syn then executorName = _i1III1l11("\152\197\193\187\209\219\212",62) end
 end)
 
 local function reportTelemetry(gameName)
@@ -32,10 +33,10 @@ local function reportTelemetry(gameName)
             local req = (syn and syn.request) or http_request or request or (http and http.request)
             if not (req and LocalPlayer) then return end
             req({
-                Url = TELEMETRY_BASE .. "/api/v1/telemetry/ping",
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = game:GetService("HttpService"):JSONEncode({
+                Url = TELEMETRY_BASE .. _i1III1l11("\129\186\208\208\157\235\173\178\254\246\4\4\19\18\40\45\59\248\64\64\76\76",75),
+                Method = _i1III1l11("\175\181\192\200",88),
+                Headers = { [_i1III1l11("\175\226\232\245\237\253\10\202\248\36\34\30",101)] = _i1III1l11("\218\240\247\250\254\255\4\30\26\39\45\245\55\71\74\80",114) },
+                Body = game:GetService(_i1III1l11("\206\1\8\11\245\14\34\45\39\40\49",127)):JSONEncode({
                     userId = tostring(LocalPlayer.UserId),
                     game = gameName,
                     executor = executorName,
@@ -62,17 +63,17 @@ local T = {
 }
 
 local function gameIcon(id)
-	return "rbxthumb://type=GameIcon&id=" .. tostring(id) .. "&w=150&h=150"
+	return _i1III1l11("\5\252\25\28\23\43\42\38\5\1\8\84\96\94\90\62\79\112\131\130\109\142\161\167\102\176\178\146",140) .. tostring(id) .. _i1III1l11("\198\30\235\230\241\243\240\57\21\16\27\29",153)
 end
 
 local function corner(object, radius)
-	local value = Instance.new("UICorner")
+	local value = Instance.new(_i1III1l11("\2\253\254\49\59\62\60\80",166))
 	value.CornerRadius = UDim.new(0, radius or 10)
 	value.Parent = object
 	return value
 end
 local function stroke(object, transparency, color)
-	local value = Instance.new("UIStroke")
+	local value = Instance.new(_i1III1l11("\15\10\27\67\72\76\79\80",179))
 	value.Color = color or T.Border
 	value.Thickness = 1
 	value.Transparency = transparency or 0.45
@@ -81,7 +82,7 @@ local function stroke(object, transparency, color)
 	return value
 end
 local function text(parent, value, size, color, font)
-	local label = Instance.new("TextLabel")
+	local label = Instance.new(_i1III1l11("\27\51\77\80\47\75\83\93\112",192))
 	label.Parent = parent
 	label.BackgroundTransparency = 1
 	label.Text = value or ""
@@ -95,7 +96,7 @@ local function tween(object, time, props, style, dir)
 	return TweenService:Create(object, TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
 end
 local function grad(object, topColor, bottomColor, rotation)
-	local value = Instance.new("UIGradient")
+	local value = Instance.new(_i1III1l11("\41\36\41\91\81\91\108\111\127\140",205))
 	value.Color = ColorSequence.new(topColor, bottomColor)
 	value.Rotation = rotation or 90
 	value.Parent = object
@@ -103,25 +104,25 @@ local function grad(object, topColor, bottomColor, rotation)
 end
 
 local MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local REPO = "https://raw.githubusercontent.com/Yanderov/lib/refs/heads/main/"
+local REPO = _i1III1l11("\73\92\99\102\117\67\63\70\144\134\163\97\161\170\188\183\203\191\217\222\215\235\227\246\252\9\1\17\30\223\27\46\51\252\45\60\80\77\85\105\114\128\64\132\136\136\92\166\160\168\188\127\191\195\198\208\230\169\238\233\248\4\204",218)
 
 local Games = {
-	{ name = "Murder Mystery 2", desc = "Innocent, Sheriff, Murderer", icon = 66654135, file = "mm2/mm2" },
+	{ name = _i1III1l11("\59\106\115\108\116\136\61\113\164\165\173\165\185\199\117\142",231), desc = _i1III1l11("\73\117\124\132\127\136\152\165\100\95\153\181\185\205\203\207\214\163\158\210\1\5\254\6\26\20\40",244), icon = 66654135, file = _i1III1l11("\122\129\77\81\150\157\105",6) },
 
-	{ name = "Demonology", desc = "Co-op ghost hunting", icon = 6170143659, file = "demonology/demonology" },
-	{ name = "Pressure", desc = "Hadal Blacksite, deep-sea horror", icon = 4367208330, file = "pressure/pressure" },
+	{ name = _i1III1l11("\94\134\149\158\164\172\176\186\185\210",19), desc = _i1III1l11("\106\157\98\171\179\106\184\192\206\217\225\148\227\247\247\4\0\12\12",32), icon = 6170143659, file = _i1III1l11("\152\160\175\184\190\198\202\212\211\236\169\229\237\252\5\11\19\23\33\32\57",45) },
+	{ name = _i1III1l11("\145\186\180\201\208\217\221\215",58), desc = _i1III1l11("\150\182\192\196\214\145\186\235\231\240\255\14\11\29\21\227\222\41\49\56\74\14\91\84\87\34\113\127\137\144\148\158",71), icon = 4367208330, file = _i1III1l11("\203\212\206\227\234\243\247\241\194\10\19\13\34\41\50\54\48",84) },
 }
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "GameLoaderUI"
+local ScreenGui = Instance.new(_i1III1l11("\187\210\232\226\233\249\217\14\9",97))
+ScreenGui.Name = _i1III1l11("\188\221\240\239\221\7\0\10\18\38\16\11",110)
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 2147483646
 pcall(function() ScreenGui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets end)
 ScreenGui.Parent = parentGui
 
-local Main = Instance.new("Frame")
-Main.Name = "Main"
+local Main = Instance.new(_i1III1l11("\200\251\241\4\3",123))
+Main.Name = _i1III1l11("\220\247\6\18",136)
 Main.Parent = ScreenGui
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.Position = UDim2.fromScale(0.5, 0.52)
@@ -133,32 +134,32 @@ corner(Main, 16)
 stroke(Main, 0.3)
 grad(Main, Color3.fromRGB(11, 11, 13), Color3.fromRGB(4, 4, 5))
 
-local Scale = Instance.new("UIScale")
+local Scale = Instance.new(_i1III1l11("\241\236\253\20\25\43\43",149))
 Scale.Scale = 0.92
 Scale.Parent = Main
 
-local Header = Instance.new("Frame")
-Header.Name = "Header"
+local Header = Instance.new(_i1III1l11("\239\34\24\43\42",162))
+Header.Name = _i1III1l11("\254\34\37\47\55\75",175)
 Header.Parent = Main
 Header.BackgroundTransparency = 1
 Header.Active = true
 
-local Brand = text(Header, "INERTIA", 18, T.White, Enum.Font.GothamBold)
-local BrandSub = text(Header, "script launcher", 11, T.Faint)
+local Brand = text(Header, _i1III1l11("\12\24\22\42\51\47\46",188), 18, T.White, Enum.Font.GothamBold)
+local BrandSub = text(Header, _i1III1l11("\67\58\80\78\92\103\26\114\110\137\137\133\145\149\169",201), 11, T.Faint)
 
-local Close = Instance.new("TextButton")
+local Close = Instance.new(_i1III1l11("\49\73\99\102\59\122\128\135\137\143",214))
 Close.Parent = Header
 Close.AnchorPoint = Vector2.new(1, 0.5)
 Close.BackgroundColor3 = T.Elev
 Close.BorderSizePixel = 0
 Close.AutoButtonColor = false
-Close.Text = "×"
+Close.Text = _i1III1l11("\173\136",227)
 Close.TextColor3 = T.Dim
 Close.Font = Enum.Font.GothamMedium
 corner(Close, 9)
 local closeStroke = stroke(Close, 0.5)
 
-local Switch = Instance.new("Frame")
+local Switch = Instance.new(_i1III1l11("\61\117\107\126\125",240))
 Switch.Parent = Header
 Switch.AnchorPoint = Vector2.new(1, 0.5)
 Switch.BackgroundColor3 = T.Elev
@@ -166,7 +167,7 @@ Switch.BorderSizePixel = 0
 corner(Switch, 10)
 stroke(Switch, 0.55)
 
-local SwitchPill = Instance.new("Frame")
+local SwitchPill = Instance.new(_i1III1l11("\79\130\120\139\138",2))
 SwitchPill.Parent = Switch
 SwitchPill.BackgroundColor3 = T.Hover
 SwitchPill.BorderSizePixel = 0
@@ -176,7 +177,7 @@ corner(SwitchPill, 8)
 stroke(SwitchPill, 0.6)
 
 local function mkSwitchOption(label, isRight)
-	local button = Instance.new("TextButton")
+	local button = Instance.new(_i1III1l11("\106\130\156\159\116\174\180\187\189\195",15))
 	button.Parent = Switch
 	button.Size = UDim2.new(0.5, 0, 1, 0)
 	button.Position = isRight and UDim2.new(0.5, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
@@ -187,11 +188,11 @@ local function mkSwitchOption(label, isRight)
 	button.ZIndex = 2
 	return button
 end
-local PcOption = mkSwitchOption("PC", false)
-local MobileOption = mkSwitchOption("MOBILE", true)
+local PcOption = mkSwitchOption(_i1III1l11("\115\109",28), false)
+local MobileOption = mkSwitchOption(_i1III1l11("\125\134\128\142\152\152",41), true)
 
-local List = Instance.new("ScrollingFrame")
-List.Name = "Games"
+local List = Instance.new(_i1III1l11("\144\167\189\193\197\204\208\220\220\194\245\235\254\253",54))
+List.Name = _i1III1l11("\145\178\197\196\217",67)
 List.Parent = Main
 List.BackgroundTransparency = 1
 List.BorderSizePixel = 0
@@ -199,7 +200,7 @@ List.CanvasSize = UDim2.new()
 List.ScrollBarThickness = 0
 List.ScrollingEnabled = false
 
-local Layout = Instance.new("UIListLayout")
+local Layout = Instance.new(_i1III1l11("\172\167\177\213\230\238\205\233\8\5\18\24",80))
 Layout.Parent = List
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 
@@ -210,50 +211,50 @@ local setLoading
 local function launch(entry)
 	if busy then return end
 	busy = true
-	setLoading(entry, "downloading")
+	setLoading(entry, _i1III1l11("\200\218\233\231\236\246\239\249\5\17\17",93))
 	task.defer(function()
 
 		_G.INERTIA_MOBILE = MOBILE
 
 		reportTelemetry(entry.name)
 
-		local sha = "main"
-		local okApi, apiRes = pcall(function() return game:HttpGet("https://api.github.com/repos/Yanderov/lib/commits/main") end)
-		if okApi and type(apiRes) == "string" then
-			local extracted = apiRes:match('"sha"%s*:%s*"([^"]+)"')
+		local sha = _i1III1l11("\222\217\232\244",106)
+		local okApi, apiRes = pcall(function() return game:HttpGet(_i1III1l11("\230\249\0\3\13\219\215\222\23\45\45\249\57\66\84\79\99\87\47\107\126\131\76\150\144\162\168\179\118\167\182\202\199\207\227\231\245\181\249\253\253\209\12\31\36\43\46\64\70\9\78\73\88\100",119)) end)
+		if okApi and type(apiRes) == _i1III1l11("\254\6\11\9\21\21",132) then
+			local extracted = apiRes:match(_i1III1l11("\186\18\14\14\214\224\53\243\10\252\81\15\14\27\85\100\47\113\70\75\75",145))
 			if extracted then sha = extracted end
 		end
 
-		local payloadPath = entry.file .. (MOBILE and "_mobile" or "")
-		local url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".lua"
+		local payloadPath = entry.file .. (MOBILE and _i1III1l11("\4\25\34\28\42\52\52",158) or "")
+		local url = _i1III1l11("\26\45\52\55\65\15\11\18\92\82\111\50\114\123\141\136\156\144\170\175\168\188\180\199\205\218\210\226\239\176\236\255\4\205\254\13\33\30\38\58\62\76\12\80\84\84\40",171) .. sha .. _i1III1l11("\238",184) .. payloadPath .. _i1III1l11("\250\63\79\66",197)
 		local ok, source = pcall(function() return game:HttpGet(url) end)
-		if not ok or type(source) ~= "string" or #source == 0 then
-			url = "https://raw.githubusercontent.com/Yanderov/lib/" .. sha .. "/" .. payloadPath .. ".txt"
+		if not ok or type(source) ~= _i1III1l11("\76\84\89\87\99\104",210) or #source == 0 then
+			url = _i1III1l11("\78\97\104\112\122\72\68\75\149\139\168\102\166\175\193\188\208\196\222\227\220\240\232\251\1\14\6\22\35\228\32\51\56\1\50\65\85\82\90\115\119\133\69\137\141\141\97",223) .. sha .. _i1III1l11("\34",236) .. payloadPath .. _i1III1l11("\51\128\139\142",249)
 			ok, source = pcall(function() return game:HttpGet(url) end)
 		end
-		if not ok or type(source) ~= "string" or #source == 0 then
+		if not ok or type(source) ~= _i1III1l11("\133\141\146\144\156\156",11) or #source == 0 then
 			busy = false
-			setLoading(entry, "download failed", true)
-			warn("INERTIA launcher: " .. tostring(source))
+			setLoading(entry, _i1III1l11("\131\149\164\162\167\177\170\180\119\196\198\213\223\223\229",24), true)
+			warn(_i1III1l11("\117\129\127\147\156\152\151\125\208\204\231\231\227\239\243\7\214\195",37) .. tostring(source))
 			return
 		end
-		setLoading(entry, "starting")
+		setLoading(entry, _i1III1l11("\172\180\168\192\201\197\209\209",50))
 
 		local chunk, compileError = loadstring(source)
-		if type(chunk) ~= "function" then
+		if type(chunk) ~= _i1III1l11("\172\194\194\190\214\210\223\229",63) then
 			busy = false
-			setLoading(entry, "compile failed", true)
-			warn("INERTIA launcher: " .. entry.file .. " did not compile: " .. tostring(compileError))
+			setLoading(entry, _i1III1l11("\182\201\206\216\216\226\226\164\241\243\2\12\12\18",76), true)
+			warn(_i1III1l11("\169\181\179\199\208\204\203\177\4\0\27\27\23\35\39\59\10\247",89) .. entry.file .. _i1III1l11("\141\216\228\230\169\254\6\18\197\15\34\39\49\49\59\59\23\4",102) .. tostring(compileError))
 			return
 		end
 		local ran, err = pcall(chunk)
 		if not ran then
 			busy = false
-			setLoading(entry, "failed to start", true)
-			warn("INERTIA launcher: " .. entry.file .. " crashed: " .. tostring(err))
+			setLoading(entry, _i1III1l11("\224\226\241\251\251\1\196\31\33\217\51\59\47\71\80",115), true)
+			warn(_i1III1l11("\208\220\218\238\247\243\242\216\43\39\66\66\62\74\78\98\49\35",128) .. entry.file .. _i1III1l11("\180\254\20\10\35\31\35\41\6\243",141) .. tostring(err))
 			return
 		end
-		setLoading(entry, "ready")
+		setLoading(entry, _i1III1l11("\19\13\16\26\54",154))
 		task.wait(0.35)
 		if ScreenGui.Parent then
 			tween(Scale, 0.18, { Scale = 0.9 }):Play()
@@ -264,7 +265,7 @@ local function launch(entry)
 end
 
 for index, entry in ipairs(Games) do
-	local card = Instance.new("TextButton")
+	local card = Instance.new(_i1III1l11("\2\26\52\55\12\70\76\83\85\91",167))
 	card.Name = entry.name
 	card.Parent = List
 	card.LayoutOrder = index
@@ -276,8 +277,8 @@ for index, entry in ipairs(Games) do
 	local cardStroke = stroke(card, 0.5)
 	grad(card, Color3.fromRGB(18, 18, 21), Color3.fromRGB(11, 11, 13))
 
-	local icon = Instance.new("ImageLabel")
-	icon.Name = "Icon"
+	local icon = Instance.new(_i1III1l11("\4\47\42\55\60\42\70\78\88\102",180))
+	icon.Name = _i1III1l11("\17\50\69\75",193)
 	icon.Parent = card
 	icon.BackgroundColor3 = T.Elev
 	icon.BorderSizePixel = 0
@@ -287,21 +288,21 @@ for index, entry in ipairs(Games) do
 	stroke(icon, 0.55)
 
 	local name = text(card, entry.name, 14, T.Text, Enum.Font.GothamMedium)
-	name.Name = "Title"
+	name.Name = _i1III1l11("\41\69\87\86\86",206)
 	name.TextTruncate = Enum.TextTruncate.AtEnd
 
 	local desc = text(card, entry.desc, 11, T.Faint)
-	desc.Name = "Desc"
+	desc.Name = _i1III1l11("\38\78\99\90",219)
 	desc.TextTruncate = Enum.TextTruncate.AtEnd
 
-	local play = Instance.new("TextButton")
-	play.Name = "Play"
+	local play = Instance.new(_i1III1l11("\67\91\122\125\82\140\146\153\155\161",232))
+	play.Name = _i1III1l11("\81\116\112\143",245)
 	play.Parent = card
 	play.BackgroundColor3 = T.Elev
 	play.BorderSizePixel = 0
 	play.AutoButtonColor = false
 	play.Font = Enum.Font.GothamMedium
-	play.Text = "LAUNCH"
+	play.Text = _i1III1l11("\90\86\113\113\109\121",7)
 	play.TextColor3 = T.Text
 	corner(play, 10)
 	local playStroke = stroke(play, 0.5)
@@ -324,8 +325,8 @@ for index, entry in ipairs(Games) do
 	Cards[index] = { card = card, icon = icon, name = name, desc = desc, play = play, entry = entry }
 end
 
-local Overlay = Instance.new("Frame")
-Overlay.Name = "Loader"
+local Overlay = Instance.new(_i1III1l11("\97\148\138\157\156",20))
+Overlay.Name = _i1III1l11("\116\158\151\161\169\189",33)
 Overlay.Parent = Main
 Overlay.BackgroundColor3 = T.BG
 Overlay.BackgroundTransparency = 0.06
@@ -334,7 +335,7 @@ Overlay.Size = UDim2.fromScale(1, 1)
 Overlay.Visible = false
 Overlay.ZIndex = 40
 
-local OverlayIcon = Instance.new("ImageLabel")
+local OverlayIcon = Instance.new(_i1III1l11("\126\169\164\177\182\164\192\200\210\224",46))
 OverlayIcon.Parent = Overlay
 OverlayIcon.AnchorPoint = Vector2.new(0.5, 1)
 OverlayIcon.BackgroundColor3 = T.Elev
@@ -354,7 +355,7 @@ OverlayStatus.AnchorPoint = Vector2.new(0.5, 0)
 OverlayStatus.TextXAlignment = Enum.TextXAlignment.Center
 OverlayStatus.ZIndex = 41
 
-local Track = Instance.new("Frame")
+local Track = Instance.new(_i1III1l11("\136\187\177\196\195",59))
 Track.Parent = Overlay
 Track.AnchorPoint = Vector2.new(0.5, 0)
 Track.BackgroundColor3 = T.Elev
@@ -362,7 +363,7 @@ Track.BorderSizePixel = 0
 Track.ZIndex = 41
 corner(Track, 99)
 
-local Sweep = Instance.new("Frame")
+local Sweep = Instance.new(_i1III1l11("\149\200\190\209\208",72))
 Sweep.Parent = Track
 Sweep.BackgroundColor3 = T.White
 Sweep.BorderSizePixel = 0
@@ -508,10 +509,10 @@ refreshSwitch()
 
 do
 	local camera = Workspace.CurrentCamera
-	if camera then camera:GetPropertyChangedSignal("ViewportSize"):Connect(fit) end
-	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	if camera then camera:GetPropertyChangedSignal(_i1III1l11("\178\204\207\232\232\238\248\1\231\4\28\14",85)):Connect(fit) end
+	Workspace:GetPropertyChangedSignal(_i1III1l11("\172\229\233\240\234\250\7\221\2\21\20\40\30",98)):Connect(function()
 		local newCamera = Workspace.CurrentCamera
-		if newCamera then fit(); newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit) end
+		if newCamera then fit(); newCamera:GetPropertyChangedSignal(_i1III1l11("\204\230\233\2\2\8\18\27\1\30\54\40",111)):Connect(fit) end
 	end)
 end
 
