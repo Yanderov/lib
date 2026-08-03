@@ -31,11 +31,11 @@ local S = {
     AutoGrabGun = false, XrayOn = false, CamClip = false, NoCamLimit = false,
     AntiFling = false, AntiVoid = false, NoClip = false, AntiRagdoll = false,
     Fly = false, FlySpeed = 50, TouchFling = false, FlingDuration = 6,
-    PixelSurf = false, SurfSpeed = 60, SurfGravity = 80, SurfJumpPower = 50,
     AutoKillSheriff = false, AutoKillNearest = false, ClickKill = false, KillAura = false, KillAuraRange = 18,
     ActiveShader = "None",
 
     HubTag = nil, HubTagAnnounce = nil, HubTagShowSelf = nil,
+
     FogEnabled = nil, Weather = nil, WeatherSound = nil, AmbientSound = nil,
     MGWidth = 2, MGStyle = "Accent", UIFont = "Gotham",
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
@@ -50,12 +50,10 @@ local S = {
     GunDropChams = false,
     ItemChamsMode = "Highlight", ItemChamsColor = "White", ItemChamsRainbow = false,
     Saturation = 0, Contrast = 0, CamFOV = 70,
-    SkyEnabled = false, SkyPreset = "Day", SkyTint = "Preset", SkyRainbow = false,
     ShaderBrightness = 200, ShaderExposure = 4, ShaderBloom = 40, ShaderContrast = 12,
     ShaderSaturation = 18, ShaderCCBright = 0, ShaderTime = 14, ShaderBloomSize = 24,
     ShaderSunRays = 8, ShaderDOF = 0, ShaderBlur = 0, ShaderAtmo = 22,
     ShaderTint = "Neutral", ShaderShadows = true,
-    HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
     UnlockAllKnifeEffects = false, KnifeFXFallback = false,
     FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel Aura",
     VFXWingScale = 100, VFXFootAura = true, VFXWingLight = false, VFXDensity = 70, VFXGlow = 35,
@@ -65,7 +63,6 @@ local S = {
     NoBlackout = false,
 
     KillSoundMurderer = "Headshot", KillSoundVolume = 70,
-    DualWield = false,
     Crosshair = false, CustomCrosshair = false, CrosshairIndex = 1,
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
     FOVThickness = 2, FOVColor = "White", FOVRadius = 360,
@@ -90,7 +87,6 @@ local S = {
     AutofarmAvoidRadius = 60,
         FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
-    FakeLag = false, FakeLagLimit = 15,
     CrosshairShape = "Cross", CrosshairColor = "White", CrosshairSize = 12, CrosshairThickness = 2, CrosshairGap = 4, CrosshairRotation = 0,
     AutoGG = false, CustomGGText = "GG!", UseCustomGG = false,
     VoteFarmSlot = "1", VoteFarmCount = 5, AutoVote = false,
@@ -125,8 +121,6 @@ local S = {
     KnifeFlightSpeedControl = false, KnifeFlightSpeed = 100,
     ThrowKnifeAura = false, ThrowAuraRange = 12,
     CustomShootSound = false, CustomShootSoundId = "",
-    CustomMurdererWinSound = false, CustomMurdererWinSoundId = "rbxassetid://1837849285",
-    CustomSheriffWinSound = false, CustomSheriffWinSoundId = "rbxassetid://1837849285",
     AmbientMusic = false, AmbientMusicId = "rbxassetid://1843323335", AmbientMusicVol = 0.4,
     AIChatEnabled = false, AIChatAPIKey = "", AIChatTriggerMode = "Contextual", AIChatLiveMode = "Contextual", AIChatRespondToAll = false, AIChatCooldown = 10, AIChatPersonality = "Casual", AIChatTrollChance = 25, AIChatStyleRevision = 0,
     AIChatProvider = "DeepSeek",
@@ -13072,7 +13066,16 @@ local function loadConfig(name)
     end
 
     S.Freeze = false
-    for _, key in ipairs({ "FlyAnim", "FxAura", "FxAuraRainbow", "ThrowAura", "WalkFling" }) do
+
+    for _, key in ipairs({
+        "FlyAnim", "FxAura", "FxAuraRainbow", "ThrowAura", "WalkFling",
+        "CustomMurdererWinSound", "CustomMurdererWinSoundId",
+        "CustomSheriffWinSound", "CustomSheriffWinSoundId",
+        "SkyEnabled", "SkyRainbow", "SkyPreset", "SkyTint",
+        "HandShader", "HandShaderType", "HandTarget", "HandColor", "HandRainbow", "HandFill",
+        "FakeLag", "FakeLagLimit", "PixelSurf", "DualWield",
+        "Crosshair", "CrosshairShape", "CustomCrosshair",
+    }) do
         S[key] = nil
     end
 
