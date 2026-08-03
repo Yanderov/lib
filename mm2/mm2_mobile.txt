@@ -35,7 +35,8 @@ local S = {
     PixelSurf = false, SurfSpeed = 60, SurfGravity = 80, SurfJumpPower = 50,
     AutoKillSheriff = false, AutoKillNearest = false, ClickKill = false, KillAura = false, KillAuraRange = 18,
     ActiveShader = "None",
-    HubTag = true, HubTagAnnounce = true, HubTagShowSelf = true,
+
+    HubTag = false, HubTagAnnounce = false, HubTagShowSelf = true,
     MGWidth = 2, MGStyle = "Accent", UIFont = "Gotham",
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
     HUD_Ping = false, HUD_Coords = false, NoEmoteStop = false, LoopEmote = false,
@@ -19515,12 +19516,12 @@ do
 
     local secHub = mkSection(Pages.Visuals, "Hub Presence", 14)
     if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secHub) end
-    mkToggle(secHub, "Hub Tag", true, function(v)
+    mkToggle(secHub, "Hub Tag (chat beacon)", false, function(v)
         S.HubTag = v
         refreshAll()
         if v then announce() end
     end, 1)
-    mkToggle(secHub, "Announce Me", true, function(v)
+    mkToggle(secHub, "Announce Me", false, function(v)
         S.HubTagAnnounce = v
         if v then announce() end
     end, 2)
@@ -20277,3 +20278,855 @@ do
         end)
     end
 end
+
+task.spawn(function()
+
+task.spawn(function()
+	if _G.__INERTIA_HUB_TAG_INITIALIZED then return end
+	_G.__INERTIA_HUB_TAG_INITIALIZED = true
+
+	local Players = game:GetService("Players")
+	local HttpService = game:GetService("HttpService")
+	local RunService = game:GetService("RunService")
+	local CollectionService = game:GetService("CollectionService")
+	local CoreGui = game:GetService("CoreGui")
+
+	local LocalPlayer = Players.LocalPlayer
+	if not LocalPlayer then
+		LocalPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait() or Players.LocalPlayer
+	end
+	if not LocalPlayer then return end
+
+	local BASE = "https://inertiahub.xyz/api/v1/telemetry/presence"
+	local TAG_NAME = "InertiaOverheadTag"
+	local HUB_ATTR = "InertiaHubUser"
+	local placeId = tostring(game.PlaceId)
+
+	local gameName = "Universal"
+	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
+		gameName = "MM2"
+	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937 then
+		gameName = "Pressure"
+	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664 then
+		gameName = "Demonology"
+	end
+
+	local function enc(value)
+		return HttpService:UrlEncode(tostring(value or ""))
+	end
+
+	local tagContainer = nil
+	pcall(function() tagContainer = CoreGui end)
+	if not tagContainer then
+		tagContainer = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+	end
+
+	local activeTags = {}
+
+	local function markLocalCharacter()
+		pcall(function()
+			CollectionService:AddTag(LocalPlayer, HUB_ATTR)
+		end)
+		local char = LocalPlayer.Character
+		if char then
+			local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+			if head then
+				pcall(function()
+					head:SetAttribute(HUB_ATTR, true)
+				end)
+			end
+		end
+	end
+
+	local function removeTag(player)
+		if activeTags[player] then
+			pcall(function() activeTags[player]:Destroy() end)
+			activeTags[player] = nil
+		end
+
+		local character = player and player.Character
+		local head = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
+		if head then
+			for _, child in ipairs(head:GetChildren()) do
+				if child.Name == TAG_NAME or child.Name == "InertiaTag" or child.Name == "InertiaOverheadTag" then
+					pcall(function() child:Destroy() end)
+				end
+			end
+		end
+	end
+
+	local function addTag(player)
+		if not player then return end
+		local character = player.Character
+		if not character then return end
+		local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+		if not head then return end
+
+		local existing = activeTags[player]
+		if existing and existing.Parent and existing.Adornee == head then
+			return
+		end
+
+		removeTag(player)
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = TAG_NAME .. "_" .. player.Name
+		billboard.Adornee = head
+		billboard.AlwaysOnTop = true
+		billboard.MaxDistance = 500
+		billboard.LightInfluence = 0
+		billboard.Size = UDim2.fromOffset(124, 26)
+		billboard.StudsOffset = Vector3.new(0, 2.7, 0)
+		billboard.ResetOnSpawn = false
+
+		local container = Instance.new("Frame")
+		container.Size = UDim2.fromScale(1, 1)
+		container.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+		container.BackgroundTransparency = 0.15
+		container.BorderSizePixel = 0
+		container.Parent = billboard
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = container
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(60, 60, 75)
+		stroke.Transparency = 0.2
+		stroke.Thickness = 1
+		stroke.Parent = container
+
+		local dot = Instance.new("Frame")
+		dot.Size = UDim2.fromOffset(6, 6)
+		dot.Position = UDim2.new(0, 8, 0.5, -3)
+		dot.BackgroundColor3 = Color3.fromRGB(56, 189, 248)
+		dot.BorderSizePixel = 0
+		dot.Parent = container
+
+		local dotCorner = Instance.new("UICorner")
+		dotCorner.CornerRadius = UDim.new(1, 0)
+		dotCorner.Parent = dot
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, -22, 1, 0)
+		label.Position = UDim2.new(0, 18, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Text = "INERTIA USER"
+		label.TextColor3 = Color3.fromRGB(240, 240, 248)
+		label.TextSize = 10
+		label.Font = Enum.Font.GothamBold
+		label.TextXAlignment = Enum.TextXAlignment.Center
+		label.Parent = container
+
+		billboard.Parent = tagContainer or head
+		activeTags[player] = billboard
+	end
+
+	local activeUsers = {}
+
+	local function ping()
+		pcall(function()
+			game:HttpGet(BASE .. "?userId=" .. enc(LocalPlayer.UserId)
+				.. "&username=" .. enc(LocalPlayer.Name)
+				.. "&game=" .. enc(gameName)
+				.. "&placeId=" .. enc(placeId))
+		end)
+	end
+
+	local function refresh()
+
+		addTag(LocalPlayer)
+
+		local body = nil
+		local ok = pcall(function()
+			body = game:HttpGet(BASE .. "?placeId=" .. enc(placeId) .. "&window=60")
+		end)
+		if not ok or not body then return end
+
+		local decoded
+		if not pcall(function() decoded = HttpService:JSONDecode(body) end) then return end
+		local currentOnline = {}
+
+		currentOnline[LocalPlayer.UserId] = true
+
+		for _, row in ipairs(decoded.data or {}) do
+			local userId = tonumber(row.userId)
+			if userId then
+				currentOnline[userId] = true
+				local player = Players:GetPlayerByUserId(userId)
+				if player then
+					addTag(player)
+				end
+			end
+		end
+
+		activeUsers = currentOnline
+
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				local isHubUser = false
+				pcall(function()
+					if CollectionService:HasTag(player, HUB_ATTR) then isHubUser = true end
+					local char = player.Character
+					local h = char and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
+					if h and h:GetAttribute(HUB_ATTR) == true then isHubUser = true end
+				end)
+
+				if activeUsers[player.UserId] or isHubUser then
+					addTag(player)
+				else
+					removeTag(player)
+				end
+			end
+		end
+	end
+
+	local function watchPlayer(player)
+		player.CharacterAdded:Connect(function()
+			task.wait(0.6)
+			if player == LocalPlayer then
+				markLocalCharacter()
+				addTag(LocalPlayer)
+			elseif activeUsers[player.UserId] then
+				addTag(player)
+			end
+		end)
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		watchPlayer(player)
+	end
+	Players.PlayerAdded:Connect(function(p)
+		watchPlayer(p)
+		task.delay(1, refresh)
+	end)
+	Players.PlayerRemoving:Connect(removeTag)
+
+	markLocalCharacter()
+	addTag(LocalPlayer)
+	LocalPlayer.CharacterAdded:Connect(function()
+		task.wait(0.4)
+		markLocalCharacter()
+		addTag(LocalPlayer)
+	end)
+
+	task.spawn(function()
+		ping()
+		task.wait(0.5)
+		refresh()
+	end)
+
+	task.spawn(function()
+		while true do
+			task.wait(8)
+			ping()
+		end
+	end)
+
+	task.spawn(function()
+		while true do
+			task.wait(3.5)
+			pcall(refresh)
+			if LocalPlayer.Character then
+				addTag(LocalPlayer)
+			end
+		end
+	end)
+end)
+
+end)
+
+task.spawn(function()
+
+do
+	if _G.__INERTIA_HUB_CHAT_INITIALIZED then return end
+	_G.__INERTIA_HUB_CHAT_INITIALIZED = true
+
+	local ok, err = pcall(function()
+		local Players = game:GetService("Players")
+		local HttpService = game:GetService("HttpService")
+		local TweenService = game:GetService("TweenService")
+		local UIS = game:GetService("UserInputService")
+		local TextChatService = game:GetService("TextChatService")
+		local ChatService = game:GetService("Chat")
+		local RunService = game:GetService("RunService")
+		local MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled
+
+		local BASE = "https://inertiahub.xyz/api/v1/chat"
+		local CHANNEL = "global"
+		if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
+			CHANNEL = "mm2"
+		end
+		local MAX_LINES = 120
+
+		local LP = Players.LocalPlayer
+		if not LP then
+			LP = Players:GetPropertyChangedSignal("LocalPlayer"):Wait() or Players.LocalPlayer
+		end
+		if not LP then return end
+		local senderName = LP.Name or "unknown"
+		local playerGui = LP:WaitForChild("PlayerGui")
+
+		for _, child in ipairs(playerGui:GetChildren()) do
+			if child.Name == "InertiaChat" then
+				pcall(function() child:Destroy() end)
+			end
+		end
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Name = "InertiaChat"
+		screenGui.ResetOnSpawn = false
+		screenGui.IgnoreGuiInset = true
+		screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		screenGui.DisplayOrder = 100
+		pcall(function() screenGui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets end)
+		screenGui.Parent = playerGui
+
+		local function mk(className, props)
+			local inst = Instance.new(className)
+			for k, v in pairs(props or {}) do
+				inst[k] = v
+			end
+			return inst
+		end
+
+		local initialPos = MOBILE and UDim2.new(0, 10, 0, 72) or UDim2.new(0, 10, 0, 70)
+		local button = mk("TextButton", {
+			Name = "ChatButton",
+			Text = "CHAT",
+			Font = Enum.Font.GothamBold,
+			TextSize = 12,
+			TextColor3 = Color3.fromRGB(230, 230, 235),
+			BackgroundColor3 = Color3.fromRGB(18, 18, 22),
+			BackgroundTransparency = 0.15,
+			BorderSizePixel = 0,
+			Size = UDim2.new(0, 60, 0, 26),
+			Position = initialPos,
+			ZIndex = 20,
+			AutoButtonColor = false,
+			Active = true,
+		})
+		button.Parent = screenGui
+
+		local btnCorner = mk("UICorner", { CornerRadius = UDim.new(0, 6) })
+		btnCorner.Parent = button
+
+		local btnStroke = mk("UIStroke", {
+			Thickness = 1,
+			Color = Color3.fromRGB(60, 60, 72),
+			Transparency = 0.3,
+		})
+		btnStroke.Parent = button
+
+		local dragging = false
+		local dragStart = Vector2.new()
+		local startPos = UDim2.new()
+		local hasMoved = false
+
+		button.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				hasMoved = false
+				dragStart = Vector2.new(input.Position.X, input.Position.Y)
+				startPos = button.Position
+
+				local connMoved, connEnded
+				connMoved = UIS.InputChanged:Connect(function(moveInput)
+					if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
+						local delta = Vector2.new(moveInput.Position.X, moveInput.Position.Y) - dragStart
+						if delta.Magnitude > 6 then
+							hasMoved = true
+						end
+						if hasMoved then
+							local screenSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+							local newX = math.clamp(startPos.X.Offset + delta.X, 4, math.max(4, screenSize.X - button.AbsoluteSize.X - 4))
+							local newY = math.clamp(startPos.Y.Offset + delta.Y, 4, math.max(4, screenSize.Y - button.AbsoluteSize.Y - 4))
+							button.Position = UDim2.new(0, newX, 0, newY)
+						end
+					end
+				end)
+
+				connEnded = UIS.InputEnded:Connect(function(endInput)
+					if endInput.UserInputType == Enum.UserInputType.MouseButton1 or endInput.UserInputType == Enum.UserInputType.Touch then
+						dragging = false
+						if connMoved then connMoved:Disconnect() end
+						if connEnded then connEnded:Disconnect() end
+					end
+				end)
+			end
+		end)
+
+		button.MouseEnter:Connect(function()
+			TweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.05}):Play()
+			TweenService:Create(btnStroke, TweenInfo.new(0.1), {Transparency = 0.1}):Play()
+		end)
+		button.MouseLeave:Connect(function()
+			TweenService:Create(button, TweenInfo.new(0.15), {BackgroundTransparency = 0.15}):Play()
+			TweenService:Create(btnStroke, TweenInfo.new(0.15), {Transparency = 0.3}):Play()
+		end)
+
+		local windowWidth = MOBILE and 290 or 320
+		local windowHeight = MOBILE and 210 or 240
+		local window = mk("Frame", {
+			Name = "ChatWindow",
+			Visible = false,
+			BackgroundColor3 = Color3.fromRGB(15, 15, 18),
+			BackgroundTransparency = 0.05,
+			BorderSizePixel = 0,
+			Size = UDim2.new(0, windowWidth, 0, windowHeight),
+			Position = MOBILE and UDim2.new(0, 10, 0, 104) or UDim2.new(0, 10, 0, 104),
+			ZIndex = 15,
+			Active = true,
+			ClipsDescendants = true,
+		})
+		window.Parent = screenGui
+
+		local wCorner = mk("UICorner", { CornerRadius = UDim.new(0, 8) })
+		wCorner.Parent = window
+
+		local wStroke = mk("UIStroke", {
+			Thickness = 1,
+			Color = Color3.fromRGB(50, 50, 60),
+			Transparency = 0.2,
+		})
+		wStroke.Parent = window
+
+		local header = mk("Frame", {
+			Name = "Header",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 24),
+			Position = UDim2.new(0, 0, 0, 0),
+			ZIndex = 16,
+		})
+		header.Parent = window
+
+		local title = mk("TextLabel", {
+			Name = "Title",
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0, 10, 0, 4),
+			Size = UDim2.new(1, -30, 0, 18),
+			Font = Enum.Font.GothamBold,
+			Text = "INERTIA CHAT (" .. string.upper(CHANNEL) .. ")",
+			TextColor3 = Color3.fromRGB(190, 190, 200),
+			TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 16,
+		})
+		title.Parent = header
+
+		local scroll = mk("ScrollingFrame", {
+			Name = "Scroll",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -12, 1, -62),
+			Position = UDim2.new(0, 6, 0, 24),
+			ScrollBarThickness = 3,
+			ScrollBarImageColor3 = Color3.fromRGB(90, 90, 100),
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ScrollingDirection = Enum.ScrollingDirection.Y,
+			ZIndex = 16,
+		})
+		scroll.Parent = window
+		scroll.ClipsDescendants = true
+
+		local listLayout = Instance.new("UIListLayout")
+		listLayout.Parent = scroll
+		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		listLayout.Padding = UDim.new(0, 4)
+		listLayout.FillDirection = Enum.FillDirection.Vertical
+		listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+		local scrollPadding = Instance.new("UIPadding")
+		scrollPadding.PaddingLeft = UDim.new(0, 4)
+		scrollPadding.PaddingRight = UDim.new(0, 4)
+		scrollPadding.PaddingTop = UDim.new(0, 2)
+		scrollPadding.PaddingBottom = UDim.new(0, 2)
+		scrollPadding.Parent = scroll
+
+		local inputBar = mk("Frame", {
+			Name = "InputBar",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -12, 0, 28),
+			Position = UDim2.new(0, 6, 1, -34),
+			ZIndex = 16,
+		})
+		inputBar.Parent = window
+
+		local inputBox = mk("TextBox", {
+			Name = "Input",
+			Text = "",
+			PlaceholderText = "Message...",
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextColor3 = Color3.fromRGB(240, 240, 245),
+			PlaceholderColor3 = Color3.fromRGB(120, 120, 130),
+			BackgroundColor3 = Color3.fromRGB(22, 22, 26),
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			ClearTextOnFocus = false,
+			Size = UDim2.new(1, -38, 1, 0),
+			Position = UDim2.new(0, 0, 0, 0),
+			ZIndex = 17,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		inputBox.Parent = inputBar
+
+		local iCorner = mk("UICorner", { CornerRadius = UDim.new(0, 6) })
+		iCorner.Parent = inputBox
+
+		local iStroke = mk("UIStroke", {
+			Thickness = 1,
+			Color = Color3.fromRGB(50, 50, 60),
+			Transparency = 0.3,
+		})
+		iStroke.Parent = inputBox
+
+		local iPadding = Instance.new("UIPadding")
+		iPadding.PaddingLeft = UDim.new(0, 8)
+		iPadding.PaddingRight = UDim.new(0, 8)
+		iPadding.Parent = inputBox
+
+		local sendButton = mk("TextButton", {
+			Name = "Send",
+			Text = ">",
+			Font = Enum.Font.GothamBold,
+			TextSize = 14,
+			TextColor3 = Color3.fromRGB(240, 240, 245),
+			BackgroundColor3 = Color3.fromRGB(32, 32, 38),
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(0, 32, 1, 0),
+			Position = UDim2.new(1, -32, 0, 0),
+			AutoButtonColor = true,
+			ZIndex = 17,
+		})
+		sendButton.Parent = inputBar
+
+		local sendCorner = mk("UICorner", { CornerRadius = UDim.new(0, 6) })
+		sendCorner.Parent = sendButton
+
+		local sendStroke = mk("UIStroke", {
+			Thickness = 1,
+			Color = Color3.fromRGB(55, 55, 68),
+			Transparency = 0.3,
+		})
+		sendStroke.Parent = sendButton
+
+		local function showNativeBubble(targetPlayer, text)
+			if not targetPlayer then return end
+			local char = targetPlayer.Character
+			if not char then return end
+			local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+			if not head then return end
+
+			task.spawn(function()
+				local shown = false
+				pcall(function()
+					if TextChatService and typeof(TextChatService.DisplayBubble) == "function" then
+						TextChatService:DisplayBubble(head, text)
+						shown = true
+					end
+				end)
+
+				if not shown then
+					pcall(function()
+						if ChatService and typeof(ChatService.Chat) == "function" then
+							ChatService:Chat(head, text, Enum.ChatColor.White)
+							shown = true
+						end
+					end)
+				end
+			end)
+		end
+
+		local messageFrames = {}
+		local latestId = 0
+		local systemMessages = {}
+
+		local function escapeRichText(s)
+			return (tostring(s or ""))
+				:gsub("&", "&amp;")
+				:gsub("<", "&lt;")
+				:gsub(">", "&gt;")
+				:gsub('"', "&quot;")
+				:gsub("'", "&apos;")
+		end
+
+		local function makeMessageRow(sender, content, isSystem)
+			latestId = latestId + 1
+
+			local row = Instance.new("Frame")
+			row.Name = "Msg_" .. tostring(latestId)
+			row.BackgroundTransparency = 1
+			row.Size = UDim2.new(1, -4, 0, 0)
+			row.AutomaticSize = Enum.AutomaticSize.Y
+			row.LayoutOrder = latestId
+
+			local label = Instance.new("TextLabel")
+			label.Name = "Text"
+			label.BackgroundTransparency = 1
+			label.Size = UDim2.new(1, 0, 0, 0)
+			label.AutomaticSize = Enum.AutomaticSize.Y
+			label.Font = Enum.Font.GothamMedium
+			label.TextSize = 12
+			label.TextColor3 = Color3.fromRGB(230, 230, 235)
+			label.TextWrapped = true
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.TextYAlignment = Enum.TextYAlignment.Top
+			label.LineHeight = 1.15
+			label.RichText = true
+
+			local safeSender = escapeRichText(sender)
+			local safeContent = escapeRichText(content)
+
+			if isSystem then
+				label.Text = '<font color="#F59E0B"><b>[' .. safeSender .. ']:</b></font> <font color="#FDE68A">' .. safeContent .. '</font>'
+			elseif sender == senderName then
+				label.Text = '<font color="#38BDF8"><b>[' .. safeSender .. ']:</b></font> ' .. safeContent
+			else
+				label.Text = '<font color="#60A5FA"><b>[' .. safeSender .. ']:</b></font> ' .. safeContent
+			end
+
+			label.Parent = row
+			row.Parent = scroll
+
+			table.insert(messageFrames, row)
+			if #messageFrames > MAX_LINES then
+				local old = table.remove(messageFrames, 1)
+				pcall(function() old:Destroy() end)
+			end
+
+			task.defer(function()
+				scroll.CanvasPosition = Vector2.new(0, 999999)
+			end)
+		end
+
+		local function sanitize(v)
+			return (tostring(v or "")):gsub("[%z\1-\8\11-\31\127]", "")
+		end
+
+		local function onMessage(msg)
+			local sender = sanitize(msg.sender)
+			local content = sanitize(msg.content)
+			if content == "" then return end
+
+			local first = sender:sub(1, 1)
+			local isSystem = sender == "SYSTEM" or first == "@" or first == "#"
+			if isSystem then
+				local seenAt = systemMessages[content]
+				if seenAt and tick() - seenAt < 60 then return end
+				systemMessages[content] = tick()
+			end
+
+			if not isSystem then
+				local targetPlayer = Players:FindFirstChild(sender)
+				if targetPlayer then
+					showNativeBubble(targetPlayer, content)
+				end
+			end
+
+			makeMessageRow(sender, content, isSystem)
+		end
+
+		local lastTs = 0
+		local windowOpen = false
+		local localEchoes = {}
+		local sendBlockedUntil = 0
+
+		local function fetchMessages()
+			local ok1, body = pcall(function()
+				return game:HttpGet(BASE .. "?channel=" .. CHANNEL .. "&after=" .. tostring(lastTs))
+			end)
+			if not ok1 or not body then return false end
+			local ok2, decoded = pcall(function()
+				return HttpService:JSONDecode(body)
+			end)
+			if not ok2 or not decoded or not decoded.data then return false end
+			for _, m in ipairs(decoded.data) do
+				if (m.t or 0) > lastTs then
+					lastTs = m.t
+					local sender = sanitize(m.sender)
+					local echoKey = sender .. "\0" .. sanitize(m.content)
+					local echoedAt = localEchoes[echoKey]
+					if echoedAt and tick() - echoedAt < 15 then
+						localEchoes[echoKey] = nil
+					else
+						onMessage(m)
+					end
+				end
+			end
+			return true
+		end
+		task.defer(function() pcall(fetchMessages) end)
+
+		local function sendMessage(text)
+			text = sanitize(text)
+			if text == "" then return end
+			local now = tick()
+			if now < sendBlockedUntil then return end
+			sendBlockedUntil = now + 0.5
+			localEchoes[senderName .. "\0" .. text] = tick()
+			onMessage({ sender = senderName, content = text })
+
+			task.spawn(function()
+				local q = "?channel=" .. CHANNEL
+					.. "&sender=" .. HttpService:UrlEncode(senderName)
+					.. "&content=" .. HttpService:UrlEncode(text)
+				local okSend = pcall(function()
+					game:HttpGet(BASE .. q)
+				end)
+				if not okSend then
+					makeMessageRow("SYSTEM", "(send failed)", true)
+				end
+			end)
+		end
+
+		local function toggle()
+			if hasMoved then return end
+			windowOpen = not windowOpen
+			window.Visible = windowOpen
+			if windowOpen then
+				if not MOBILE then
+					task.defer(function() inputBox:CaptureFocus() end)
+				end
+				scroll.CanvasPosition = Vector2.new(0, 999999)
+			end
+		end
+
+		button.Activated:Connect(toggle)
+		sendButton.Activated:Connect(function()
+			sendMessage(inputBox.Text)
+			inputBox.Text = ""
+		end)
+
+		local function sendFocusedText()
+			if not inputBox:IsFocused() then return end
+			sendMessage(inputBox.Text)
+			inputBox.Text = ""
+		end
+
+		UIS.InputBegan:Connect(function(input, gp)
+			if gp then return end
+			if input.KeyCode == Enum.KeyCode.Return and windowOpen and inputBox:IsFocused() then
+				sendFocusedText()
+			end
+		end)
+
+		inputBox.FocusLost:Connect(function(enterReleased)
+			if enterReleased then
+				sendMessage(inputBox.Text)
+				inputBox.Text = ""
+			end
+		end)
+		pcall(function()
+			inputBox.ReturnPressedFromOnScreenKeyboard:Connect(sendFocusedText)
+		end)
+
+		task.spawn(function()
+			while true do
+				task.wait(2)
+				pcall(fetchMessages)
+			end
+		end)
+
+		local lastAnnounceTs = (os.time() * 1000) - 20000
+		local toastGui
+
+		local function showToast(text, duration)
+			if toastGui and toastGui.Parent then
+				pcall(function() toastGui:Destroy() end)
+			end
+
+			toastGui = Instance.new("Frame")
+			toastGui.Name = "InertiaToast"
+			toastGui.AnchorPoint = Vector2.new(0.5, 0)
+			toastGui.Size = UDim2.new(0, 360, 0, 0)
+			toastGui.AutomaticSize = Enum.AutomaticSize.Y
+			toastGui.Position = UDim2.new(0.5, 0, 0, 48)
+			toastGui.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+			toastGui.BackgroundTransparency = 0.05
+			toastGui.BorderSizePixel = 0
+			toastGui.ZIndex = 60
+			toastGui.Parent = screenGui
+
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, 8)
+			c.Parent = toastGui
+
+			local s = Instance.new("UIStroke")
+			s.Color = Color3.fromRGB(245, 158, 11)
+			s.Thickness = 1
+			s.Transparency = 0.2
+			s.Parent = toastGui
+
+			local p = Instance.new("UIPadding")
+			p.PaddingTop = UDim.new(0, 8)
+			p.PaddingBottom = UDim.new(0, 8)
+			p.PaddingLeft = UDim.new(0, 12)
+			p.PaddingRight = UDim.new(0, 12)
+			p.Parent = toastGui
+
+			local lbl = Instance.new("TextLabel")
+			lbl.Size = UDim2.new(1, 0, 0, 0)
+			lbl.AutomaticSize = Enum.AutomaticSize.Y
+			lbl.BackgroundTransparency = 1
+			lbl.TextColor3 = Color3.fromRGB(254, 243, 199)
+			lbl.TextSize = 12
+			lbl.Font = Enum.Font.GothamMedium
+			lbl.Text = "<b><font color=\"#F59E0B\">[INERTIA BROADCAST]</font></b>\n" .. escapeRichText(text)
+			lbl.TextWrapped = true
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.RichText = true
+			lbl.Parent = toastGui
+
+			local visibleFor = math.clamp(tonumber(duration) or 6, 3, 60)
+			task.delay(visibleFor, function()
+				if toastGui and toastGui.Parent then
+					local t1 = TweenService:Create(toastGui, TweenInfo.new(0.3), {BackgroundTransparency = 1})
+					local t2 = TweenService:Create(s, TweenInfo.new(0.3), {Transparency = 1})
+					t1:Play()
+					t2:Play()
+					task.delay(0.35, function()
+						pcall(function() toastGui:Destroy() end)
+					end)
+				end
+			end)
+		end
+
+		local function fetchAnnouncements()
+			local ok1, body = pcall(function()
+				return game:HttpGet(BASE .. "?channel=global&after=" .. tostring(lastAnnounceTs))
+			end)
+			if not ok1 or not body then return end
+			local ok2, decoded = pcall(function()
+				return HttpService:JSONDecode(body)
+			end)
+			if not ok2 or not decoded or not decoded.data then return end
+			for _, m in ipairs(decoded.data) do
+				if (m.t or 0) > lastAnnounceTs then
+					lastAnnounceTs = m.t
+					local content = sanitize(m.content)
+					if content ~= "" then
+						onMessage(m)
+						showToast(content, m.duration)
+					end
+				end
+			end
+		end
+		task.defer(function() pcall(fetchAnnouncements) end)
+
+		task.spawn(function()
+			while true do
+				task.wait(3.5)
+				pcall(fetchAnnouncements)
+			end
+		end)
+	end)
+
+	if not ok then
+		warn("[InertiaHub] chat module initialization failed: " .. tostring(err))
+	end
+end
+
+end)
