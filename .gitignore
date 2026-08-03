@@ -16,3 +16,5 @@ diff.txt
 __pycache__/
 strip_comments.py
 PUBLISHING.md
+mm2/gh.lua
+mm2/m.lua
