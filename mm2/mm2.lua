@@ -6116,252 +6116,723 @@ local secCustoms = mkSection(Pages.Visuals, "Custom Assets (GitHub)", 10)
 end, 6)
 
     do
-        local function ns(...)
-            local pts, a = {}, { ... }
-            for i = 1, #a, 2 do pts[#pts + 1] = NumberSequenceKeypoint.new(a[i], a[i + 1]) end
-            return NumberSequence.new(pts)
-        end
-        local function cs(...)
-            local pts, a = {}, { ... }
-            for i = 1, #a, 2 do pts[#pts + 1] = ColorSequenceKeypoint.new(a[i], a[i + 1]) end
-            return ColorSequence.new(pts)
-        end
-        local rgb = Color3.fromRGB
-        local PERP = Enum.ParticleOrientation.VelocityPerpendicular
+        local WHITE_VFX = Color3.fromRGB(245, 248, 255)
+        local BLACK_VFX = Color3.fromRGB(18, 18, 22)
+        local RED_VFX = Color3.fromRGB(255, 48, 42)
+        local DARK_RED_VFX = Color3.fromRGB(145, 0, 18)
+        local WINGS = {
+            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.25 },
+            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
+            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
+            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
+            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
+            ["Black 01 Classic"] = { id = "225736624", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 03 Floating"] = { id = "14891552293", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 04 Feather A"] = { id = "3751499926", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 05 Feather B"] = { id = "3751500005", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 06 Dark Clean"] = { id = "15245418264", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 07 Mesh"] = { id = "107079834769886", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 08 Metallic"] = { id = "104041918545936", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Black 09 Bone"] = { id = "15748206290", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
+            ["Red 01 Crimson"] = { id = "1190014189", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 02 Crimson Clean"] = { id = "758696741", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 03 Crimson Dark"] = { id = "8201815315", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
+            ["Red 04 Cartoon"] = { id = "117963462102223", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 05 Bat"] = { id = "59741192", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
+            ["Red 06 Galaxy"] = { id = "5606789346", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 07 Adurite"] = { id = "805964321", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 08 Adurite Alt"] = { id = "805985601", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+            ["Red 09 Spark Adurite"] = { id = "219863148", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
+        }
 
-        local TR_PULSE  = ns(0, 1, 0.502, 0, 1, 1)
-        local TR_GLOW   = ns(0, 0.294, 0.097, 0.181, 1, 0)
-        local TR_FEATH  = ns(0, 0, 0.698, 0, 1, 0.725)
-        local TR_SMOKE  = ns(0, 1, 0.115, 0, 0.871, 0, 1, 1)
-        local TR_ICE    = ns(0, 1, 0.169, 0.126, 0.518, 0, 0.89, 0.081, 1, 1)
-        local RED_BLACK = cs(0, rgb(170, 0, 0), 0.493, rgb(0, 0, 0), 1, rgb(170, 0, 0))
-        local ICE_COL   = cs(0, rgb(131, 238, 239), 0.562, rgb(108, 185, 249), 1, rgb(74, 140, 247))
-        local MAGIC_COL = cs(0, rgb(209, 116, 255), 1, rgb(209, 116, 255))
+        local wingNames = {}
+        do
+            local picks = {
+                { display = "Angel",       key = "White 02 Angel Rig" },
+                { display = "Demon",       key = "Red 05 Bat" },
+                { display = "Black Wings", key = "Black 01 Classic" },
+            }
+            for _, p in ipairs(picks) do
+                if WINGS[p.key] then WINGS[p.display] = WINGS[p.key] end
+                table.insert(wingNames, p.display)
+            end
+        end
 
-        local STYLES = {
+        local function wingNumberSequence(points)
+            local keypoints = {}
+            for i, point in ipairs(points) do
+                keypoints[i] = NumberSequenceKeypoint.new(point[1], point[2], point[3] or 0)
+            end
+            return NumberSequence.new(keypoints)
+        end
+        local function wingColorSequence(points)
+            local keypoints = {}
+            for i, point in ipairs(points) do
+                keypoints[i] = ColorSequenceKeypoint.new(point[1], point[2])
+            end
+            return ColorSequence.new(keypoints)
+        end
+        local PULSE_WING_FX = {
             ["Angel Aura"] = {
-                tint = rgb(255, 60, 235),
-                light = { c = rgb(246, 114, 255), b = 1.6, r = 9 },
-                wing = {
-
-                    { tex = 16503694665, col = cs(0, rgb(255, 32, 255), 1, rgb(255, 32, 255)),
-                      size = ns(0, 0.7, 1, 0.7), tr = TR_GLOW, rate = 14, life = { 0.5, 0.6 },
-                      speed = { 0.05, 0.05 }, spread = 130, rotsp = { 10, 10 }, z = -1, le = 1, br = 10 },
-                    { tex = 16503694665, col = cs(0, rgb(0, 0, 0), 1, rgb(0, 0, 0)),
-                      size = ns(0, 0.7, 1, 0.7), tr = TR_GLOW, rate = 14, life = { 0.5, 0.6 },
-                      speed = { 0.05, 0.05 }, spread = 130, rotsp = { 10, 10 }, z = -1, le = -2, br = 10 },
-
-                    { tex = 115361100558524, col = cs(0, rgb(198, 12, 173), 1, rgb(198, 12, 173)),
-                      size = ns(0, 0.3, 1, 0.3), tr = TR_FEATH, rate = 3, life = { 2, 2 },
-                      speed = { 2, 2 }, spread = 50, rot = { -50, -50 }, rotsp = { 100, 100 },
-                      z = 1, le = 1, br = 10, lock = false },
-                },
-                floor = {
-                    { tex = 82114954422305, col = cs(0, rgb(255, 39, 233), 1, rgb(255, 39, 233)),
-                      size = ns(0, 2, 1, 2), tr = TR_PULSE, rate = 3, life = { 2, 2 },
-                      speed = { 0.01, 0.01 }, ori = PERP, le = 1, br = 10 },
-                    { tex = 10365549270, col = cs(0, rgb(248, 107, 253), 1, rgb(248, 107, 253)),
-                      size = ns(0, 1, 1, 1), tr = ns(0, 0, 0.496, 0.5, 1, 0), rate = 2, life = { 1.5, 1.5 },
-                      speed = { 0.01, 0.01 }, rot = { 10, 10 }, rotsp = { 360, 360 }, ori = PERP, le = 1, br = 10 },
-                    { tex = 16509197144, col = cs(0, rgb(255, 56, 222), 1, rgb(255, 56, 222)),
-                      size = ns(0, 2.5, 1, 2.5), tr = ns(0, 0.005, 0.763, 0.536, 1, 1), rate = 1,
-                      life = { 1, 1 }, speed = { 0.01, 0.01 }, rot = { 50, 50 }, rotsp = { 120, 120 },
-                      ori = PERP, le = 1, br = 10 },
+                source = "PulseVFX_AngelAura.rbxm",
+                sizeScale = 1,
+                light = { color = Color3.fromRGB(246, 114, 255), brightness = 2.5, range = 6 },
+                particles = {
+                    {
+                        name = "Feathers", slots = { "Left", "Right" },
+                        texture = "rbxassetid://115361100558524", rate = 3,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(2),
+                        size = wingNumberSequence({ { 0, 0.30 }, { 0.72, 0.30 }, { 1, 0.18 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.58, 0.18 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(198, 12, 173)),
+                        rotation = NumberRange.new(-50), rotSpeed = NumberRange.new(100),
+                        spread = Vector2.new(50, 50), lightEmission = 1, brightness = 4,
+                    },
+                    {
+                        name = "Wing Glow", slots = { "Left", "Right" },
+                        texture = "rbxassetid://82114954422305", rate = 3,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(0.01),
+                        size = wingNumberSequence({ { 0, 1.8 }, { 0.5, 2.1 }, { 1, 2.25 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.16, 0.18 }, { 0.78, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(255, 39, 233)),
+                        lightEmission = 1, brightness = 4,
+                    },
+                    {
+                        name = "Halo", slot = "Center",
+                        texture = "rbxassetid://16509197144", rate = 1,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.01),
+                        size = wingNumberSequence({ { 0, 2.25 }, { 0.72, 2.55 }, { 1, 2.7 } }),
+                        transparency = wingNumberSequence({ { 0, 0.1 }, { 0.62, 0.22 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(255, 56, 222)),
+                        rotation = NumberRange.new(50), rotSpeed = NumberRange.new(120),
+                        lightEmission = 1, brightness = 4,
+                    },
                 },
             },
             ["Dracula"] = {
-                tint = rgb(200, 0, 0),
-                light = { c = rgb(255, 0, 0), b = 1.2, r = 8 },
-                wing = {
-                    { tex = 140086278326241, col = RED_BLACK, size = ns(0, 3, 1, 3), tr = TR_PULSE,
-                      rate = 3, life = { 2, 2 }, speed = { 0.01, 0.01 }, ori = PERP, le = 0, br = 10 },
-                },
-                floor = {
-                    { tex = 12758468376, col = RED_BLACK, size = ns(0, 1, 1, 1), tr = TR_SMOKE,
-                      rate = 8, life = { 2, 2 }, speed = { 25, 25 }, spread = 360,
-                      acc = Vector3.new(0, 10, 0), drag = 10, le = 1, br = 4 },
-
-                    { tex = 12800352088, col = cs(0, rgb(170, 0, 0), 1, rgb(0, 0, 0)),
-                      size = ns(0, 0.5, 1, 0.7), tr = TR_SMOKE, rate = 10, life = { 1.75, 1.75 },
-                      speed = { 25, 25 }, spread = 360, acc = Vector3.new(0, 10, 0), drag = 10,
-                      rot = { 180, 180 }, rotsp = { 360, 360 }, le = 0, br = 10 },
+                source = "PulseVFX_Dracula.rbxm",
+                sizeScale = 0.9,
+                light = { color = Color3.fromRGB(255, 18, 28), brightness = 2, range = 6 },
+                particles = {
+                    {
+                        name = "Blood Wings", slots = { "Left", "Right" },
+                        texture = "rbxassetid://140086278326241", rate = 3,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(0.01),
+                        size = wingNumberSequence({ { 0, 2.6 }, { 0.5, 3 }, { 1, 3.15 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.18 }, { 0.78, 0.38 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 0, 0)),
+                        lightEmission = 0.35, brightness = 3,
+                    },
+                    {
+                        name = "Red Spiral", slot = "Center",
+                        texture = "rbxassetid://12758468376", rate = 6,
+                        lifetime = NumberRange.new(2), speed = NumberRange.new(9, 14),
+                        size = wingNumberSequence({ { 0, 0.55 }, { 0.45, 1 }, { 1, 0.2 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.08 }, { 0.72, 0.38 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 0, 0)),
+                        rotation = NumberRange.new(0, 180), rotSpeed = NumberRange.new(120, 260),
+                        spread = Vector2.new(180, 180), lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Bats", slot = "Top",
+                        texture = "rbxassetid://12800352088", rate = 8,
+                        lifetime = NumberRange.new(1.4, 1.8), speed = NumberRange.new(8, 13),
+                        size = wingNumberSequence({ { 0, 0.45 }, { 0.65, 0.7 }, { 1, 0.55 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.08, 0 }, { 0.72, 0.15 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(170, 0, 0) },
+                            { 1, Color3.fromRGB(0, 0, 0) },
+                        }),
+                        rotation = NumberRange.new(180), rotSpeed = NumberRange.new(180, 360),
+                        spread = Vector2.new(180, 180), lightEmission = 0.2, brightness = 2,
+                    },
                 },
             },
             ["Frozen Bloom"] = {
-                tint = rgb(108, 185, 249),
-                light = { c = rgb(131, 238, 239), b = 1.4, r = 9 },
-                wing = {
-                    { tex = 16879659749, col = ICE_COL, size = ns(0, 0.45, 1, 0.487), tr = TR_ICE,
-                      rate = 15, life = { 1, 2.4 }, speed = { 5, 10 }, spread = 40, drag = 3,
-                      acc = Vector3.new(0, -5, 0), rot = { -180, 165 }, rotsp = { -130, 140 },
-                      z = -1, le = 0, br = 4.6 },
-                    { tex = 18671876469, col = ICE_COL, size = ns(0, 0.26, 1, 0.282), tr = TR_ICE,
-                      rate = 15, life = { 1, 2.4 }, speed = { 3, 6 }, spread = 40, drag = 3,
-                      acc = Vector3.new(0, -3, 0), rot = { -180, 165 }, rotsp = { -130, 140 },
-                      z = -1, le = 0, br = 4.6 },
-                    { tex = 12872162107, col = ICE_COL, size = ns(0, 0.13, 1, 0.156),
-                      tr = ns(0, 1, 0.04, 0, 0.454, 0.05, 0.771, 0.281, 1, 1), rate = 15,
-                      life = { 0.5, 1.2 }, speed = { 5, 14 }, spread = 180, drag = 6,
-                      acc = Vector3.new(0, 7, 0), rot = { -180, 180 }, rotsp = { -360, 360 },
-                      dir = Enum.NormalId.Top, le = 0, br = 4.6 },
-                },
-                floor = {
-                    { tex = 14919880888, col = cs(0, rgb(108, 185, 249), 1, rgb(108, 185, 249)),
-                      size = ns(0, 0, 0.091, 1.469, 0.235, 2.881, 1, 4.633),
-                      tr = ns(0, 1, 0.064, 0.556, 0.164, 0.456, 0.504, 0.337, 0.827, 0.644, 1, 1),
-                      rate = 4, life = { 0.5, 1 }, speed = { 0.071, 0.071 }, rot = { -180, 180 },
-                      z = -2, le = 1, br = 5 },
-                    { tex = 13992197350, col = ICE_COL, size = ns(0, 1.478, 1, 5.033), tr = ns(0, 0, 1, 1),
-                      rate = 3, life = { 0.5, 1 }, speed = { 0.001, 0.001 }, rot = { -1000, 1000 },
-                      ori = PERP, le = 0, br = 15 },
-                    { tex = 76951334461630, col = ICE_COL, size = ns(0, 1.019, 0.282, 1.948, 1, 3.624),
-                      tr = ns(0, 0, 0.355, 0.087, 0.515, 0.269, 1, 1), rate = 3, life = { 1, 2 },
-                      speed = { 0.005, 0.005 }, rot = { -180, 180 }, ori = PERP, le = 0, br = 15 },
+                source = "PulseVFX_FrozenBloom.rbxm",
+                sizeScale = 0.9,
+                light = { color = Color3.fromRGB(112, 205, 255), brightness = 2.2, range = 7 },
+                particles = {
+                    {
+                        name = "Bloom", slot = "Center",
+                        texture = "rbxassetid://14919880888", rate = 4,
+                        lifetime = NumberRange.new(0.5, 1), speed = NumberRange.new(0.07),
+                        size = wingNumberSequence({ { 0, 0 }, { 0.2, 1.4 }, { 0.62, 3.8 }, { 1, 4.63 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.1, 0.05 }, { 0.68, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(108, 185, 249)),
+                        rotation = NumberRange.new(-180, 180), lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Ice Shards A", slot = "Left",
+                        texture = "rbxassetid://16879659749", rate = 13,
+                        lifetime = NumberRange.new(1, 2.4), speed = NumberRange.new(4.9, 9.9),
+                        size = wingNumberSequence({ { 0, 0.45, 0.15 }, { 1, 0.49, 0.22 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.1, 0 }, { 0.72, 0.2 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 0.55, Color3.fromRGB(89, 188, 249) },
+                            { 1, Color3.fromRGB(74, 140, 247) },
+                        }),
+                        rotation = NumberRange.new(-180, 165), rotSpeed = NumberRange.new(-130, 140),
+                        spread = Vector2.new(40, 40), brightness = 3,
+                    },
+                    {
+                        name = "Ice Shards B", slot = "Right",
+                        texture = "rbxassetid://18671876469", rate = 13,
+                        lifetime = NumberRange.new(1, 2.4), speed = NumberRange.new(2.8, 5.8),
+                        size = wingNumberSequence({ { 0, 0.26, 0.09 }, { 1, 0.28, 0.13 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.1, 0 }, { 0.72, 0.2 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 0.55, Color3.fromRGB(89, 188, 249) },
+                            { 1, Color3.fromRGB(74, 140, 247) },
+                        }),
+                        rotation = NumberRange.new(-180, 165), rotSpeed = NumberRange.new(-130, 140),
+                        spread = Vector2.new(40, 40), brightness = 3,
+                    },
+                    {
+                        name = "Stars", slot = "Top",
+                        texture = "rbxassetid://12872162107", rate = 12,
+                        lifetime = NumberRange.new(0.5, 1.2), speed = NumberRange.new(5.2, 13.8),
+                        size = wingNumberSequence({ { 0, 0.13, 0.05 }, { 1, 0.16, 0.15 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.08, 0 }, { 0.72, 0.3 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 1, Color3.fromRGB(74, 140, 247) },
+                        }),
+                        rotation = NumberRange.new(-180, 180), rotSpeed = NumberRange.new(-360, 360),
+                        spread = Vector2.new(180, 180), brightness = 3,
+                    },
+                    {
+                        name = "Ice Wave", slot = "Center",
+                        texture = "rbxassetid://13992197350", rate = 3,
+                        lifetime = NumberRange.new(0.5, 1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 1.48 }, { 1, 5.03 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.55, 0.35 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 1, Color3.fromRGB(108, 185, 249) },
+                        }),
+                        rotation = NumberRange.new(-180, 180), lightEmission = 0.8, brightness = 4,
+                    },
+                    {
+                        name = "Snow Glyphs", slots = { "OuterLeft", "OuterRight" },
+                        texture = "rbxassetid://76951334461630", rate = 2,
+                        lifetime = NumberRange.new(1, 2), speed = NumberRange.new(0.006),
+                        size = wingNumberSequence({ { 0, 1.02 }, { 0.55, 2.1 }, { 1, 3.62 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.62, 0.35 }, { 1, 1 } }),
+                        color = wingColorSequence({
+                            { 0, Color3.fromRGB(131, 238, 239) },
+                            { 1, Color3.fromRGB(108, 185, 249) },
+                        }),
+                        rotation = NumberRange.new(-180, 180), lightEmission = 0.8, brightness = 4,
+                    },
                 },
             },
             ["Magic Aura"] = {
-                tint = rgb(209, 116, 255),
-                light = { c = rgb(209, 116, 255), b = 1.5, r = 9 },
-                wing = {
-                    { tex = 12781812529, col = MAGIC_COL, size = ns(0, 2.4, 1, 2.4), tr = ns(0, 0.5, 1, 0.5),
-                      rate = 3, life = { 1.6, 1.6 }, speed = { 0.01, 0.01 }, ori = PERP, le = 1, br = 5 },
-                    { tex = 3029306948, col = MAGIC_COL, size = ns(0, 1.6, 1, 1.6),
-                      tr = ns(0, 0, 0.701, 0, 1, 1), rate = 4, life = { 1.2, 1.2 },
-                      speed = { 0.01, 0.01 }, ori = PERP, le = 1, br = 5 },
+                source = "PulseVFX_MagicAura.rbxm",
+                sizeScale = 0.78,
+                light = { color = Color3.fromRGB(209, 116, 255), brightness = 2.4, range = 7 },
+                particles = {
+                    {
+                        name = "Magic Ring A", slot = "Center",
+                        texture = "rbxassetid://16956569427", rate = 1.5,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 0 }, { 1, 3.16 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.1 }, { 0.75, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Magic Ring B", slot = "Left",
+                        texture = "rbxassetid://14591895021", rate = 1.5,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 4.2 }, { 1, 4.2 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.2 }, { 0.7, 0.42 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        lightEmission = 1, brightness = 3,
+                    },
+                    {
+                        name = "Magic Ring C", slot = "Right",
+                        texture = "rbxassetid://16956497860", rate = 1.5,
+                        lifetime = NumberRange.new(1), speed = NumberRange.new(0.001),
+                        size = wingNumberSequence({ { 0, 3.5 }, { 1, 3.5 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.18 }, { 0.72, 0.4 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        lightEmission = 1, brightness = 3,
+                    },
                 },
-                floor = {
-                    { tex = 16956569427, col = MAGIC_COL, size = ns(0, 0, 1, 3.155),
-                      tr = ns(0, 1, 0.293, 0, 0.497, 0, 0.701, 0, 1, 1), rate = 1.5, life = { 1, 1 },
-                      speed = { 0.001, 0.001 }, ori = PERP, le = 1, br = 5 },
-                    { tex = 14591895021, col = MAGIC_COL, size = ns(0, 4.2, 1, 4.2), tr = TR_PULSE,
-                      rate = 1.5, life = { 1, 1 }, speed = { 0.001, 0.001 }, ori = PERP, le = 1, br = 5 },
-                    { tex = 16956497860, col = MAGIC_COL, size = ns(0, 3.5, 1, 3.5), tr = TR_PULSE,
-                      rate = 1.5, life = { 1, 1 }, speed = { 0.001, 0.001 }, ori = PERP, le = 1, br = 5 },
+                beams = {
+                    {
+                        name = "Magic Ribbon A", from = "OuterLeft", to = "Top",
+                        texture = "rbxassetid://12781812529", width = 2.5,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = NumberSequence.new(0.5), faceCamera = false,
+                    },
+                    {
+                        name = "Magic Ribbon B", from = "Top", to = "OuterRight",
+                        texture = "rbxassetid://12781812529", width = 2.5,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = NumberSequence.new(0.5), faceCamera = false,
+                    },
+                    {
+                        name = "Magic Ray A", from = "OuterLeft", to = "Center",
+                        texture = "rbxassetid://3029306948", width = 1.1,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                    {
+                        name = "Magic Ray B", from = "Center", to = "OuterRight",
+                        texture = "rbxassetid://3029306948", width = 1.1,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                    {
+                        name = "Magic Ray C", from = "Left", to = "Top",
+                        texture = "rbxassetid://3029306948", width = 0.9,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                    {
+                        name = "Magic Ray D", from = "Top", to = "Right",
+                        texture = "rbxassetid://3029306948", width = 0.9,
+                        color = ColorSequence.new(Color3.fromRGB(209, 116, 255)),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 1, 1 } }), faceCamera = true,
+                    },
+                },
+            },
+            ["Water Vortex"] = {
+                source = "PulseVFX_WaterVortex.rbxm",
+
+                sizeScale = 0.105,
+                light = { color = Color3.fromRGB(170, 255, 255), brightness = 2, range = 7 },
+                particles = {
+                    {
+                        name = "Water Core", slot = "Center",
+                        texture = "rbxassetid://13405951462", rate = 5,
+                        lifetime = NumberRange.new(0.4), speed = NumberRange.new(0.02),
+                        size = wingNumberSequence({ { 0, 0 }, { 0.25, 10 }, { 0.72, 18.6 }, { 1, 20.73 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.6, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), lightEmission = 0.8, brightness = 2,
+                    },
+                    {
+                        name = "Water Gradient", slot = "Left",
+                        texture = "rbxassetid://8943878058", rate = 5,
+                        lifetime = NumberRange.new(0.2), speed = NumberRange.new(0.014),
+                        size = wingNumberSequence({ { 0, 15.75 }, { 0.5, 19.8 }, { 1, 23.62 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.62, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), lightEmission = 1, brightness = 1,
+                    },
+                    {
+                        name = "Water Initial", slot = "Right",
+                        texture = "rbxassetid://17256185841", rate = 5,
+                        lifetime = NumberRange.new(0.3, 0.45), speed = NumberRange.new(0.02),
+                        size = wingNumberSequence({ { 0, 12, 8 }, { 0.5, 22, 8 }, { 1, 32, 8 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.15 }, { 0.68, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), brightness = 2,
+                    },
+                    {
+                        name = "Water Spiral", slot = "Top",
+                        texture = "rbxassetid://11846119288", rate = 5,
+                        lifetime = NumberRange.new(0.2, 0.3), speed = NumberRange.new(0.009),
+                        size = wingNumberSequence({ { 0, 8.75 }, { 0.5, 16.2 }, { 1, 23.33 } }),
+                        transparency = wingNumberSequence({ { 0, 1 }, { 0.12, 0.08 }, { 0.72, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        brightness = 2,
+                    },
+                    {
+                        name = "Water Spray", slots = { "OuterLeft", "OuterRight" },
+                        texture = "rbxassetid://12828727111", rate = 4,
+                        lifetime = NumberRange.new(0.15, 0.5), speed = NumberRange.new(8, 18),
+                        size = wingNumberSequence({ { 0, 9.3 }, { 0.55, 12 }, { 1, 13.95 } }),
+                        transparency = wingNumberSequence({ { 0, 0.7 }, { 0.58, 0.35 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), spread = Vector2.new(15, 15),
+                        lightEmission = 0.8, brightness = 2,
+                    },
+                    {
+                        name = "Water Mist", slot = "Center",
+                        texture = "rbxassetid://12685367098", rate = 3,
+                        lifetime = NumberRange.new(1, 2.5), speed = NumberRange.new(0.03),
+                        size = wingNumberSequence({ { 0, 16, 8 }, { 0.5, 34, 8 }, { 1, 48, 8 } }),
+                        transparency = wingNumberSequence({ { 0, 0 }, { 0.62, 0.55 }, { 1, 1 } }),
+                        color = ColorSequence.new(Color3.fromRGB(170, 255, 255)),
+                        rotation = NumberRange.new(0, 360), rotSpeed = NumberRange.new(-30, 30),
+                        spread = Vector2.new(25, 25), lightEmission = 1, brightness = 1,
+                    },
                 },
             },
         }
-        local STYLE_NAMES = { "Angel Aura", "Dracula", "Frozen Bloom", "Magic Aura" }
+        local wingEffectNames = { "Off", "Angel Aura", "Dracula", "Frozen Bloom", "Magic Aura", "Water Vortex" }
+        local fx = { objects = {}, conns = {}, busy = false, ticket = 0, preloaded = {} }
 
-        local function styleOf(name)
-            name = tostring(name or "")
-            if STYLES[name] then return name end
-            if name:find("Demon") or name:find("Fire") or name:find("Red") or name:find("Bat") then return "Dracula" end
-            if name:find("Shadow") or name:find("Void") or name:find("Rainbow") or name:find("Dark") or name:find("Black") then return "Magic Aura" end
-            if name:find("Ice") or name:find("Frozen") or name:find("Blue") then return "Frozen Bloom" end
-            return "Angel Aura"
+        local function rootPart(char)
+            return char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
         end
-
-        local fx = { objs = {} }
+        local function prepPart(part, hidden)
+            part.Anchored = false
+            part.CanCollide = false
+            part.CanTouch = false
+            part.CanQuery = false
+            part.Massless = true
+            if hidden then part.Transparency = 1 end
+        end
+        local function own(obj)
+            table.insert(fx.objects, obj)
+            return obj
+        end
         local function clean()
-            for _, o in ipairs(fx.objs) do if o then pcall(function() o:Destroy() end) end end
-            table.clear(fx.objs)
+            fx.ticket = fx.ticket + 1
+            for _, conn in ipairs(fx.conns) do
+                if conn then pcall(function() conn:Disconnect() end) end
+            end
+            table.clear(fx.conns)
+            for _, obj in ipairs(fx.objects) do
+                if obj and obj.Parent then pcall(function() obj:Destroy() end) end
+            end
+            table.clear(fx.objects)
             local char = LP.Character
             if char then
-                for _, o in ipairs(char:GetDescendants()) do
-
-                    if o.Name == "InertiaVFX" or o.Name == "InertiaWingFX" or o.Name == "InertiaAuraFX" then
-                        pcall(function() o:Destroy() end)
+                for _, obj in ipairs(char:GetChildren()) do
+                    if obj.Name == "InertiaToolboxWings" or obj.Name == "InertiaToolboxAura" then
+                        pcall(function() obj:Destroy() end)
                     end
                 end
             end
         end
-        local function keep(o) table.insert(fx.objs, o) return o end
 
-        local function mkEmitter(parent, sp, scale, density, glow)
-            local em = keep(Instance.new("ParticleEmitter"))
-            em.Name = "InertiaVFX"
-            em.Texture = "rbxassetid://" .. sp.tex
-            em.Color = sp.col
-            em.Transparency = sp.tr
-            local pts = {}
-            for _, k in ipairs(sp.size.Keypoints) do
-                pts[#pts + 1] = NumberSequenceKeypoint.new(k.Time, math.max(0, k.Value * scale))
+        clean()
+        local function sanitize(container, data)
+            data = data or {}
+            local tint = data.tint
+            for _, obj in ipairs(container:GetDescendants()) do
+                if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
+                    pcall(function() obj:Destroy() end)
+                elseif obj:IsA("Humanoid") or obj:IsA("Animator") or obj:IsA("Animation") or obj:IsA("HumanoidDescription") then
+                    pcall(function() obj:Destroy() end)
+                elseif obj:IsA("BasePart") then
+                    prepPart(obj, false)
+                    if tint then pcall(function() obj.Color = tint end) end
+                end
             end
-            em.Size = NumberSequence.new(pts)
-            em.Rate = math.max(0.2, (sp.rate or 5) * density)
-            em.Lifetime = NumberRange.new(sp.life[1], sp.life[2])
-            em.Speed = NumberRange.new(sp.speed[1], sp.speed[2])
-            em.SpreadAngle = Vector2.new(sp.spread or 0, sp.spread or 0)
-            if sp.rot then em.Rotation = NumberRange.new(sp.rot[1], sp.rot[2]) end
-            if sp.rotsp then em.RotSpeed = NumberRange.new(sp.rotsp[1], sp.rotsp[2]) end
-            em.Acceleration = sp.acc or Vector3.new(0, 0, 0)
-            em.Drag = sp.drag or 0
-            em.ZOffset = sp.z or 0
-            em.LockedToPart = sp.lock ~= false
-            em.LightInfluence = 0
-            em.LightEmission = math.clamp((sp.le or 0) * glow, -2, 1)
-            if sp.ori then em.Orientation = sp.ori end
-            if sp.dir then em.EmissionDirection = sp.dir end
-
-            pcall(function() em.Brightness = math.max(0.1, (sp.br or 1) * glow) end)
-            em.Parent = parent
-            return em
         end
+        local function makeModel(loaded, name, prefer)
+            local source
+            for _, obj in ipairs(loaded) do
+                source = (prefer and obj:FindFirstChild(prefer, true)) or source or obj
+                if source then break end
+            end
+            if not source then return nil end
+            if source:IsA("Model") then
+                local clone = source:Clone()
+                clone.Name = name
+                return clone
+            end
+            local model = Instance.new("Model")
+            model.Name = name
+            source:Clone().Parent = model
+            return model
+        end
+        local function normalizeModel(model, data)
+            data = data or {}
 
+            local target = tonumber(data.max) or (MOBILE and 2.15 or 2.45)
+            target = math.clamp(target, MOBILE and 1.5 or 1.7, MOBILE and 2.35 or 2.55)
+
+            target = target * (math.clamp(tonumber(S.VFXWingScale) or 100, 40, 200) / 100)
+            pcall(function()
+                local _, size = model:GetBoundingBox()
+                local biggest = math.max(size.X, size.Y, size.Z)
+                if biggest > target and biggest > 0 then
+                    model:ScaleTo(target / biggest)
+                end
+            end)
+        end
+        local function weldModel(model, root, offset, data)
+            local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if not primary then return nil end
+            model.PrimaryPart = primary
+            normalizeModel(model, data)
+
+            local authored = offset or CFrame.new(0, 0.12, 0.62)
+            local ox, oy, oz = authored:ToOrientation()
+            local op = authored.Position
+
+            local anchorOffset = CFrame.new(
+                0,
+                math.clamp(op.Y, 0.12, 0.24) + (math.clamp(tonumber(S.VFXWingHeight) or 0, -60, 60) / 100),
+                math.clamp(op.Z, 0.42, 0.62) + (math.clamp(tonumber(S.VFXWingBack) or 0, -40, 90) / 100)
+            ) * CFrame.Angles(ox, oy, oz)
+            local target = root.CFrame * anchorOffset
+            model:PivotTo(target)
+
+            pcall(function()
+                local pivot = model:GetPivot()
+                local bounds = model:GetBoundingBox()
+                local delta = target.Position - bounds.Position
+                if delta.Magnitude > 0.001 then
+                    model:PivotTo(CFrame.fromMatrix(
+                        pivot.Position + delta,
+                        pivot.RightVector,
+                        pivot.UpVector,
+                        -pivot.LookVector
+                    ))
+                end
+            end)
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("BasePart") and part ~= primary then
+                    pcall(function()
+                        local wc = Instance.new("WeldConstraint")
+                        wc.Name = "InertiaToolboxPartWeld"
+                        wc.Part0 = primary
+                        wc.Part1 = part
+                        wc.Parent = primary
+                        own(wc)
+                    end)
+                end
+            end
+            local weld = Instance.new("Weld")
+            weld.Name = "InertiaToolboxWeld"
+            weld.Part0 = root
+            weld.Part1 = primary
+            weld.C0 = root.CFrame:ToObjectSpace(primary.CFrame)
+            weld.Parent = primary
+            own(weld)
+            return weld
+        end
+        local function scaleWingSequence(sequence, factor)
+            local keypoints = {}
+            for i, point in ipairs(sequence.Keypoints) do
+                keypoints[i] = NumberSequenceKeypoint.new(
+                    point.Time,
+                    point.Value * factor,
+                    point.Envelope * factor
+                )
+            end
+            return NumberSequence.new(keypoints)
+        end
+        local function makeFallbackWings(data)
+            local model = Instance.new("Model")
+            model.Name = "InertiaToolboxWings"
+            local tint = (data and data.tint) or WHITE_VFX
+            for side = -1, 1, 2 do
+                for index = 1, 5 do
+                    local feather = Instance.new("Part")
+                    feather.Name = side < 0 and ("LeftFeather" .. index) or ("RightFeather" .. index)
+                    feather.Material = Enum.Material.Neon
+                    feather.Color = tint
+                    feather.Transparency = 0.08
+                    feather.Size = Vector3.new(0.16, 0.58 + index * 0.16, 0.1)
+                    feather.CFrame = CFrame.new(
+                        side * (0.3 + index * 0.2),
+                        0.28 - index * 0.12,
+                        0
+                    ) * CFrame.Angles(0, 0, math.rad(side * (18 + index * 8)))
+                    prepPart(feather, false)
+                    feather.Parent = model
+                    model.PrimaryPart = model.PrimaryPart or feather
+                end
+            end
+            return model
+        end
+        local function preloadWingEffect(effectName, preset)
+            if fx.preloaded[effectName] then return end
+            fx.preloaded[effectName] = true
+            local content = {}
+            local seen = {}
+            for _, def in ipairs(preset.particles or {}) do
+                if def.texture and not seen[def.texture] then
+                    seen[def.texture] = true
+                    table.insert(content, def.texture)
+                end
+            end
+            for _, def in ipairs(preset.beams or {}) do
+                if def.texture and not seen[def.texture] then
+                    seen[def.texture] = true
+                    table.insert(content, def.texture)
+                end
+            end
+            if #content > 0 then
+                task.spawn(function()
+                    pcall(function() ContentProvider:PreloadAsync(content) end)
+                end)
+            end
+        end
+        local function buildPulseWingEffect(model, root, effectName)
+            local preset = PULSE_WING_FX[effectName]
+            if not (preset and model and root) then return end
+            preloadWingEffect(effectName, preset)
+
+            local boundsCF, boundsSize = root.CFrame, Vector3.new(3, 3, 1)
+            pcall(function()
+                boundsCF, boundsSize = model:GetBoundingBox()
+            end)
+
+            local carrier = Instance.new("Part")
+            carrier.Name = "InertiaWingFXCarrier"
+            carrier.Size = Vector3.new(0.05, 0.05, 0.05)
+            carrier.CFrame = boundsCF
+            prepPart(carrier, true)
+            carrier.Parent = model
+
+            local carrierWeld = Instance.new("Weld")
+            carrierWeld.Name = "InertiaWingFXWeld"
+            carrierWeld.Part0 = root
+            carrierWeld.Part1 = carrier
+            carrierWeld.C0 = root.CFrame:ToObjectSpace(carrier.CFrame)
+            carrierWeld.Parent = carrier
+
+            local horizontal = math.clamp(boundsSize.X * 0.3, 0.68, 1.45)
+            local vertical = math.clamp(boundsSize.Y * 0.28, 0.55, 1.25)
+            local slotFrames = {
+                Center = CFrame.new(0, 0.05, -0.03),
+                Left = CFrame.new(-horizontal * 0.62, 0.08, 0),
+                Right = CFrame.new(horizontal * 0.62, 0.08, 0),
+                OuterLeft = CFrame.new(-horizontal, -0.02, 0),
+                OuterRight = CFrame.new(horizontal, -0.02, 0),
+                Top = CFrame.new(0, vertical, 0),
+            }
+            local attachments = {}
+            for slot, frame in pairs(slotFrames) do
+                local attachment = Instance.new("Attachment")
+                attachment.Name = "InertiaWingFX_" .. slot
+                attachment.CFrame = frame
+                attachment.Parent = carrier
+                attachments[slot] = attachment
+            end
+
+            local power = math.clamp(tonumber(S.VFXWingPower) or 70, 10, 100) / 100
+            local wingScale = math.clamp(tonumber(S.VFXWingScale) or 100, 10, 200) / 100
+            local sizeScale = (preset.sizeScale or 1)
+                * math.clamp(wingScale, 0.35, 1.65)
+                * (MOBILE and 0.82 or 1)
+            local rateScale = power * (MOBILE and 0.48 or 1)
+            local rateCap = MOBILE and 8 or 20
+
+            for _, def in ipairs(preset.particles or {}) do
+                local slots = def.slots or { def.slot or "Center" }
+                for _, slot in ipairs(slots) do
+                    local attachment = attachments[slot] or attachments.Center
+                    local emitter = Instance.new("ParticleEmitter")
+                    emitter.Name = "InertiaWingFX_" .. tostring(def.name or effectName)
+                    emitter.Texture = def.texture or ""
+                    emitter.Color = def.color or ColorSequence.new(Color3.new(1, 1, 1))
+                    emitter.Size = scaleWingSequence(def.size or NumberSequence.new(1), sizeScale)
+                    emitter.Transparency = def.transparency or wingNumberSequence({ { 0, 1 }, { 0.12, 0 }, { 1, 1 } })
+                    emitter.Lifetime = def.lifetime or NumberRange.new(1)
+                    emitter.Rate = math.clamp((def.rate or 1) * rateScale, 0.25, rateCap)
+                    emitter.Speed = def.speed or NumberRange.new(0)
+                    emitter.Rotation = def.rotation or NumberRange.new(0)
+                    emitter.RotSpeed = def.rotSpeed or NumberRange.new(0)
+                    emitter.SpreadAngle = def.spread or Vector2.new(0, 0)
+                    emitter.Acceleration = def.acceleration or Vector3.new(0, 0, 0)
+                    emitter.Drag = def.drag or 0
+                    emitter.LightEmission = math.clamp(def.lightEmission or 0.35, 0, 1)
+                    emitter.LightInfluence = 0
+                    emitter.Brightness = math.clamp((def.brightness or 1) * (0.55 + power * 0.65), 0, 5)
+                    emitter.LockedToPart = true
+                    emitter.VelocityInheritance = 0
+                    emitter.ZOffset = 0.05
+                    emitter.Parent = attachment
+                end
+            end
+
+            for index, def in ipairs(preset.beams or {}) do
+                local from = attachments[def.from or "Left"] or attachments.Left
+                local to = attachments[def.to or "Right"] or attachments.Right
+                local beam = Instance.new("Beam")
+                beam.Name = "InertiaWingFX_" .. tostring(def.name or ("Beam" .. index))
+                beam.Attachment0 = from
+                beam.Attachment1 = to
+                beam.Texture = def.texture or ""
+                beam.TextureMode = Enum.TextureMode.Wrap
+                beam.TextureLength = def.textureLength or 1
+                beam.TextureSpeed = def.textureSpeed or 1
+                beam.Color = def.color or ColorSequence.new(Color3.new(1, 1, 1))
+                beam.Transparency = def.transparency or NumberSequence.new(0.25)
+                local width = math.clamp((def.width or 1) * sizeScale, 0.15, MOBILE and 1.8 or 3.5)
+                beam.Width0 = width
+                beam.Width1 = width
+                beam.Segments = MOBILE and 4 or 8
+                beam.FaceCamera = def.faceCamera == true
+                beam.LightEmission = 0.85
+                beam.LightInfluence = 0
+                beam.Parent = from
+            end
+
+            if preset.light then
+                local light = Instance.new("PointLight")
+                light.Name = "InertiaWingFX_Light"
+                light.Color = preset.light.color or Color3.new(1, 1, 1)
+                light.Brightness = math.clamp((preset.light.brightness or 1) * power, 0, MOBILE and 1.6 or 3)
+                light.Range = math.clamp((preset.light.range or 6) * math.sqrt(power), 2, MOBILE and 6 or 9)
+                light.Shadows = false
+                light.Parent = carrier
+            end
+        end
         local function rebuild()
             clean()
+            local char, root = LP.Character, rootPart(LP.Character)
+            if not (char and root) then return end
+            local wingData = WINGS[S.VFXWingStyle] or WINGS["White 02 Angel Rig"]
+            local effectName = PULSE_WING_FX[S.VFXWingEffect] and S.VFXWingEffect or "Off"
             if not S.VFXWings then return end
-            local char = LP.Character
-            if not char then return end
-            local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-                or char:FindFirstChild("HumanoidRootPart")
-            local hrp = char:FindFirstChild("HumanoidRootPart") or torso
-            if not torso then return end
-
-            local style = STYLES[styleOf(S.VFXWingStyle)]
-            local scale = math.clamp(tonumber(S.VFXWingScale) or 100, 30, 250) / 100
-            local density = math.clamp(tonumber(S.VFXDensity) or 70, 10, 200) / 100
-            local glow = math.clamp(tonumber(S.VFXGlow) or 35, 0, 100) / 100
-
-            for _, sign in ipairs({ -1, 1 }) do
-                local a = keep(Instance.new("Attachment"))
-                a.Name = "InertiaVFX"
-                a.CFrame = CFrame.new(sign * 0.85 * scale, 0.55, 0.6)
-                    * CFrame.Angles(0, math.rad(sign * -20), math.rad(sign * 16))
-                a.Parent = torso
-                for _, sp in ipairs(style.wing) do mkEmitter(a, sp, scale, density, glow) end
-            end
-
-            if S.VFXFootAura ~= false and hrp then
-
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                local drop = 3
-                if hum then drop = (hum.HipHeight or 2) + hrp.Size.Y / 2 end
-                local a = keep(Instance.new("Attachment"))
-                a.Name = "InertiaVFX"
-                a.CFrame = CFrame.new(0, -drop + 0.05, 0)
-                a.Parent = hrp
-                for _, sp in ipairs(style.floor) do mkEmitter(a, sp, scale, density, glow) end
-            end
-
-            if S.VFXWingLight and torso then
-                local pl = keep(Instance.new("PointLight"))
-                pl.Name = "InertiaVFX"
-                pl.Color = style.light.c
-                pl.Brightness = style.light.b * math.max(0.2, glow)
-                pl.Range = style.light.r
-                pl.Shadows = false
-                pl.Parent = torso
-            end
+            local ticket = fx.ticket
+            fx.busy = true
+            task.spawn(function()
+                if S.VFXWings and wingData then
+                    local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. wingData.id) end)
+                    char, root = LP.Character, rootPart(LP.Character)
+                    if ticket == fx.ticket and char and root then
+                        local model
+                        if ok and type(loaded) == "table" and #loaded > 0 then
+                            model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
+                        end
+                        model = model or makeFallbackWings(wingData)
+                        if model then
+                            sanitize(model, wingData)
+                            model.Parent = char
+                            local weld = weldModel(model, root, wingData.offset, wingData)
+                            if weld then
+                                if effectName ~= "Off" then
+                                    buildPulseWingEffect(model, root, effectName)
+                                end
+                                own(model)
+                            else
+                                model:Destroy()
+                                Notify("VFX Wings", "Asset has no attachable parts.", 3)
+                            end
+                        end
+                    end
+                end
+                fx.busy = false
+            end)
         end
         S._RefreshVFXWings = rebuild
-
         tc(LP.CharacterAdded:Connect(function()
-            task.delay(0.8, function() if S.VFXWings then rebuild() end end)
+            task.delay(0.9, function()
+                if S.VFXWings then rebuild() end
+            end)
         end))
-
-        local secWings = mkSection(Pages.Visuals, "VFX Wings & Aura", 12)
+        local secWings = mkSection(Pages.Visuals, "Wings", 4.7)
         table.insert(S._CustomsSections, secWings)
-        mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v rebuild() end, 1)
-        mkCycle(secWings, "VFX Wing Style", STYLE_NAMES, "Angel Aura", function(v) S.VFXWingStyle = v rebuild() end, 2)
-        mkToggle(secWings, "Foot Aura", true, function(v) S.VFXFootAura = v rebuild() end, 3)
-        mkToggle(secWings, "Wing Light", false, function(v) S.VFXWingLight = v rebuild() end, 4)
-        mkSlider(secWings, "Wing Size (%)", 30, 250, 100, function(v) S.VFXWingScale = v rebuild() end, 5)
-        mkSlider(secWings, "Particle Density (%)", 10, 200, 70, function(v) S.VFXDensity = v rebuild() end, 6)
-        mkSlider(secWings, "Glow (%)", 0, 100, 35, function(v) S.VFXGlow = v rebuild() end, 7)
+        mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
+        mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
+        mkCycle(secWings, "VFX Wing Effect", wingEffectNames, "Angel Aura", function(v) S.VFXWingEffect = v; rebuild() end, 8.05)
+        mkSlider(secWings, "Wing Effect Power", 10, 100, 70, function(v) S.VFXWingPower = v; rebuild() end, 8.08)
+
+        mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
+        mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
+        mkSlider(secWings, "Wing Back Offset", -150, 150, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
 
         S.VFXAura, S.AuraColor, S.AuraDensity, S.AuraSize = nil, nil, nil, nil
-        S.VFXWingHeight, S.VFXWingBack = nil, nil
     end
 
     do
