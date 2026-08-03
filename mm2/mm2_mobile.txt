@@ -116,6 +116,7 @@ local S = {
     SheriffAntiDesync = false,
     ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
     ForceShootMode = "Target", WallbangMode = "Muzzle",
+    GunTargetMode = "Murderer", GunAimPart = "Torso", GunPredictMode = "Off",
     PerkNoCooldown = false, PerkAutoUse = false,
     AntiAim = false, AntiAimKnifeOnly = true, AntiAimStrength = 320, AntiAimNearRange = 6,
     DesyncAlways = true, VelDesyncAlways = true,
@@ -6898,8 +6899,16 @@ do
     mkToggle(secSheriffAim, "Silent Aim", false, function(v) S.SheriffSilentAim = v end, 1, "Sheriff")
     mkToggle(secSheriffAim, "Piercing Bullet", false, function(v) S.SheriffSilentAimPiercing = v end, 2)
     mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
-    mkCycle(secSheriffAim, "Wallbang", { "Muzzle", "Point Blank", "Inside", "Head" }, "Muzzle",
+    mkCycle(secSheriffAim, "Wallbang",
+        { "Muzzle", "Point Blank", "Inside", "Head", "Above", "Under", "Orbit" }, "Muzzle",
         function(v) S.WallbangMode = v end, 3.5)
+    mkCycle(secSheriffAim, "Gun Target",
+        { "Murderer", "Murderer Only", "Nearest" }, "Murderer",
+        function(v) S.GunTargetMode = v end, 3.6)
+    mkCycle(secSheriffAim, "Gun Aim Part", { "Torso", "Head" }, "Torso",
+        function(v) S.GunAimPart = v end, 3.7)
+    mkCycle(secSheriffAim, "Gun Prediction", S._PredictNames or { "Off" }, "Off",
+        function(v) S.GunPredictMode = v end, 3.8)
     mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 4)
 
     local secGunFire = mkSection(Pages.Combat, "Gun Fire", 2)
@@ -7312,6 +7321,22 @@ do
             local hp = head and head.Position or (hitPos + Vector3.new(0, 1.5, 0))
             return CFrame.lookAt(hp + Vector3.new(0, 0.35, 0), hp)
         end
+        if mode == "Above" then
+
+            local from = hitPos + Vector3.new(0, 3, 0)
+            return CFrame.lookAt(from, hitPos)
+        end
+        if mode == "Under" then
+
+            local from = hitPos - Vector3.new(0, 2.5, 0)
+            return CFrame.lookAt(from, hitPos)
+        end
+        if mode == "Orbit" then
+
+            local a = (tick() * 3) % (math.pi * 2)
+            local from = hitPos + Vector3.new(math.cos(a) * 2, 1, math.sin(a) * 2)
+            return CFrame.lookAt(from, hitPos)
+        end
 
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
         local vel = hrp and hrp.AssemblyLinearVelocity or Vector3.zero
@@ -7320,14 +7345,64 @@ do
     end
     S._WallbangOrigin = wallbangOrigin
 
+    local function gunTargetChar()
+        local mode = S.GunTargetMode or "Murderer"
+        local myHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+
+        local function alive(p)
+            if p == LP or not p.Character or isWhitelisted(p) then return nil end
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if hum and hum.Health > 0 and hrp then return p.Character, hrp end
+            return nil
+        end
+
+        if mode ~= "Nearest" then
+            local m = getMurdererChar()
+            if m then return m end
+
+            if mode == "Murderer Only" then return nil end
+        end
+
+        local best, bestD
+        for _, p in ipairs(Players:GetPlayers()) do
+            local char, hrp = alive(p)
+            if char then
+
+                local d = myHrp and (hrp.Position - myHrp.Position).Magnitude or 0
+                if d ~= d or d == math.huge then d = 1e9 end
+                if not bestD or d < bestD then bestD, best = d, char end
+            end
+        end
+        return best
+    end
+    S._GunTargetChar = gunTargetChar
+
     S._ResolveGunShot = function()
-        local targetChar = getMurdererChar()
+        local targetChar = gunTargetChar()
         if not targetChar then return nil end
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
         if not hrp then return nil end
-        local pos = resolveTargetPos(targetChar, hrp)
-        local mode = S.WallbangMode or "Muzzle"
 
+        local aimPart = (S.GunAimPart == "Head" and targetChar:FindFirstChild("Head"))
+            or targetChar:FindFirstChild("UpperTorso")
+            or targetChar:FindFirstChild("Torso")
+            or hrp
+        local pos
+        if S.GunPredictMode and S.GunPredictMode ~= "Off" and S._Predict then
+            local ok, predicted = pcall(S._Predict, targetChar, aimPart.Name, S.GunPredictMode, 0)
+            if ok and typeof(predicted) == "Vector3" then pos = predicted end
+        end
+        pos = pos or aimPart.Position
+        if S.SheriffAntiDesync then
+            local sane = resolveTargetPos(targetChar, hrp)
+
+            pos = sane + (pos - hrp.Position)
+        end
+
+        if pos ~= pos or pos.Magnitude == math.huge then pos = aimPart.Position end
+
+        local mode = S.WallbangMode or "Muzzle"
         if mode == "Muzzle" and S.SheriffSilentAimPiercing then mode = "Point Blank" end
         local origin = (mode ~= "Muzzle") and wallbangOrigin(mode, pos, targetChar) or nil
         return pos, origin
