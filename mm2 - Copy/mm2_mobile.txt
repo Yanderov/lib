@@ -1,3 +1,7 @@
+-- MURDER MYSTERY 2 - MOBILE BUILD (generated, do not edit by hand).
+-- Identical source to mm2/mm2.lua with the build flag forced on.
+-- Regenerate after ANY edit to the source:   .\build_mobile.ps1
+_G.INERTIA_MOBILE = true
 if _G.MM2_Visuals_Script then
     pcall(function() _G.MM2_Visuals_Script:Destroy() end)
     _G.MM2_Visuals_Script = nil
@@ -100,6 +104,8 @@ local S = {
     AIChatProvider = "DeepSeek",
     AIChatResponseChance = 100, AIChatMaxTokens = 220, AIChatHistoryLimit = 18,
     AIChatMaxHumanizer = false,
+    AntiAim = false, AntiAimIgnoreList = true,
+    AntiAimSlot1 = "None", AntiAimSlot2 = "None", AntiAimSlot3 = "None",
     KnifeSilentAimPredictMode = "Perfect", KnifeSilentAimPrediction = 100, KnifePingOffset = 0,
     AntiKillVoid = false,
     CoinAura = false, CoinAuraRange = 8,
@@ -1747,13 +1753,7 @@ local function applySearch()
     if #tokens == 0 then
 
         for _, e in ipairs(UIRegistry) do
-            if e.card and e.card.Parent then
-                e.card.Visible = true
-                pcall(function() e.card:SetAttribute("LayoutAnimating", false) end)
-                if e.card.AutomaticSize ~= Enum.AutomaticSize.Y then
-                    e.card.AutomaticSize = Enum.AutomaticSize.Y
-                end
-            end
+            if e.card and e.card.Parent then e.card.Visible = true end
         end
         for _, pg in pairs(Pages) do
             pg.Visible = (pg == activePage)
@@ -4591,8 +4591,6 @@ local function mkSection(parent, title, order, collapsible)
         local animating = false
         local pendingToggle = false
         card.ClipsDescendants = true
-        if not S._SectionCards then S._SectionCards = {} end
-        S._SectionCards[card] = true
 
         local chevron = Instance.new("TextLabel")
         chevron.Name = "Chevron"
@@ -7598,23 +7596,12 @@ do
     secSheriffAim.Parent:SetAttribute("ConfigSection", "Silent Aim")
     mkToggle(secSheriffAim, "Silent Aim", false, function(v) S.SheriffSilentAim = v end, 1, "Sheriff")
     mkToggle(secSheriffAim, "Piercing Bullet", false, function(v) S.SheriffSilentAimPiercing = v end, 2)
-    mkCycle(secSheriffAim, "Piercing Mode", {
-        "CFrame Redirect",
-        "Target Override",
-        "Raycast Bypass",
-        "Hit Substitution",
-        "Noclip Projectile",
-    }, "CFrame Redirect", function(v) S.PiercingMode = v end, 3)
-    mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 4)
-    mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 5)
+    mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
+    mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 4)
 
     local secGunFire = mkSection(Pages.Combat, "Gun Fire", 2, true)
     secGunFire.Parent:SetAttribute("ConfigSection", "Silent Aim")
-    S.ForceShootDelay = S.ForceShootDelay or 0.12
-    S.ForceShootWallbang = S.ForceShootWallbang or false
     mkToggle(secGunFire, "Force Shoot", false, function(v) S.ForceShoot = v end, 1)
-    mkToggle(secGunFire, "Force Shoot Wallbang", false, function(v) S.ForceShootWallbang = v end, 2)
-    mkSlider(secGunFire, "Force Shoot Delay (ms)", 50, 500, 120, function(v) S.ForceShootDelay = v / 1000 end, 3)
     do
         local function heldGun()
             local c = LP.Character
@@ -7658,12 +7645,9 @@ do
             return CFrame.new(hit and hit.Position or (ray.Origin + ray.Direction * 300))
         end
 
-        local forceShootTarget = nil
-        local forceShootNextShot = 0
         task.spawn(function()
             while S.Gui and S.Gui.Parent do
                 if not S.ForceShoot or S.Destroyed then
-                    forceShootTarget = nil
                     task.wait(0.2)
                 else
                     pcall(function()
@@ -7680,51 +7664,10 @@ do
                         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                         local att = hrp and hrp:FindFirstChild("GunRaycastAttachment")
                         if not att then return end
-                        local bestTarget, bestDist = nil, math.huge
-                        local myPos = att.WorldPosition
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= LP and not isWhitelisted(p) and p.Character then
-                                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                                local pHrp = p.Character:FindFirstChild("HumanoidRootPart")
-                                if hum and hum.Health > 0 and pHrp then
-                                    local d = (pHrp.Position - myPos).Magnitude
-                                    if d < bestDist then bestTarget = p.Character; bestDist = d end
-                                end
-                            end
-                        end
-                        forceShootTarget = bestTarget
-                        if not forceShootTarget then return end
-                        local targetPos = nil
-                        local head = forceShootTarget:FindFirstChild("Head") or forceShootTarget:FindFirstChild("UpperTorso") or forceShootTarget:FindFirstChild("HumanoidRootPart")
-                        if head then
-                            local rawPos = head.Position
-                            local pred = getPredictedPosition and getPredictedPosition(forceShootTarget, head.Name, "Lag Comp", 100, S.KnifePingOffset or 0, 0)
-                            if pred and pred.Magnitude > 0.5 then targetPos = pred else targetPos = rawPos end
-                        end
-                        if not targetPos then return end
-                        local now = tick()
-                        if now < forceShootNextShot then return end
-                        forceShootNextShot = now + (S.ForceShootDelay or 0.12)
-                        local wallBangOrigin = att.WorldPosition
-                        if S.ForceShootWallbang then
-                            local dir = (targetPos - att.WorldPosition).Unit
-                            local behindTarget = targetPos + dir * 12
-                            wallBangOrigin = behindTarget
-                            local attached = hrp:FindFirstChild("GunRaycastAttachment")
-                            if attached then
-                                local origCF = att.WorldCFrame
-                                att.WorldCFrame = CFrame.lookAt(behindTarget, targetPos)
-                                task.defer(function() pcall(function() att.WorldCFrame = origCF end) end)
-                            end
-                        end
+                        local target = mouseTargetCF()
+                        if not target then return end
                         local shoot = gun:FindFirstChild("Shoot")
-                        if shoot then
-                            local shotCF = att.WorldCFrame
-                            if S.ForceShootWallbang then
-                                shotCF = CFrame.lookAt(wallBangOrigin, targetPos)
-                            end
-                            shoot:FireServer(shotCF, CFrame.new(targetPos))
-                        end
+                        if shoot then shoot:FireServer(att.WorldCFrame, target) end
                     end)
                 end
                 RunService.Heartbeat:Wait()
@@ -7738,8 +7681,10 @@ do
     mkToggle(secKnifeAim, "Wall Check", false, function(v) S.KnifeSilentAimWallCheck = v end, 2)
     mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
 
-    mkCycle(secKnifeAim, "Prediction", { "Off", "Basic", "Velocity", "Lag Comp", "Perfect", "Adaptive", "Momentum", "Kalman" },
+    mkCycle(secKnifeAim, "Prediction", { "Off", "Standard", "Lag Comp", "Perfect", "Adaptive" },
         "Perfect", function(v) S.KnifeSilentAimPredictMode = v end, 5)
+    mkSlider(secKnifeAim, "Prediction Amount (%)", 0, 200, 100, function(v) S.KnifeSilentAimPrediction = v end, 6)
+    mkSlider(secKnifeAim, "Ping Offset (ms)", -100, 200, 0, function(v) S.KnifePingOffset = v end, 7)
 
     local secKnifeThrow = mkSection(Pages.Combat, "Knife Throw", 4, true)
     secKnifeThrow.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
@@ -7761,10 +7706,6 @@ do
         S.KnifeFlightSpeed = v
         pcall(function() if S._ReapplyKnifeFlightSpeed then S._ReapplyKnifeFlightSpeed() end end)
     end, 4)
-    S.ThrownKnifeAura = S.ThrownKnifeAura or false
-    S.ThrownKnifeAuraRange = S.ThrownKnifeAuraRange or 10
-    mkToggle(secKnifeThrow, "Thrown Knife Aura", false, function(v) S.ThrownKnifeAura = v end, 5)
-    mkSlider(secKnifeThrow, "Thrown Knife Aura Range", 4, 30, 10, function(v) S.ThrownKnifeAuraRange = v end, 6)
 
     local secMurder = mkSection(Pages.Combat, "Kill Suite", 5, true)
     secMurder.Parent:SetAttribute("ConfigSection", "Murderer Kill Suite")
@@ -7832,8 +7773,8 @@ do
 
     updateSubTabs()
 end
-
-silentAimTargetChar = function(mode, fovCheck, wallCheck, aimPartName)
+do
+    silentAimTargetChar = function(mode, fovCheck, wallCheck, aimPartName)
         local cam = workspace.CurrentCamera
         if not cam then return nil end
         mode = mode or "Nearest"
@@ -8096,29 +8037,15 @@ local function resolveTargetPos(targetChar, hrp)
 end
 S._ResolveAntiDesyncPos = resolveTargetPos
 
-    local function piercingOrigin(hitPos, targetChar, mode)
-        mode = mode or "CFrame Redirect"
+    local function piercingOrigin(hitPos, targetChar)
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-        local head = targetChar:FindFirstChild("Head")
         local vel = hrp and hrp.AssemblyLinearVelocity or Vector3.zero
         if S._ResolveSmoothVel then
             local sv = S._ResolveSmoothVel(targetChar)
             if sv and sv.Magnitude > 0.5 then vel = sv end
         end
-        if mode == "CFrame Redirect" then
-            local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2.5) or Vector3.new(0, 1.25, 0)
-            return CFrame.lookAt(hitPos + back, hitPos)
-        elseif mode == "Target Override" then
-            return CFrame.lookAt(hitPos + Vector3.new(0, -3, 0), hitPos)
-        elseif mode == "Raycast Bypass" then
-            local dir = hrp and hrp.CFrame.LookVector or Vector3.new(1, 0, 0)
-            return CFrame.lookAt(hitPos + dir * 5, hitPos)
-        elseif mode == "Hit Substitution" then
-            return CFrame.lookAt(hitPos + Vector3.new(0, 2, 0), hitPos)
-        elseif mode == "Noclip Projectile" then
-            return CFrame.lookAt(hitPos + Vector3.new(0, -5, 0), hitPos)
-        end
-        return CFrame.lookAt(hitPos + Vector3.new(0, 1.25, 0), hitPos)
+        local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2.5) or Vector3.new(0, 1.25, 0)
+        return CFrame.lookAt(hitPos + back, hitPos)
     end
 
     local function handleFireServer(self, ...)
@@ -8136,8 +8063,7 @@ S._ResolveAntiDesyncPos = resolveTargetPos
             if pred and pred.Magnitude > 0.5 then pos = pred end
         end
         if S.SheriffSilentAimPiercing then
-            local pmode = S.PiercingMode or "CFrame Redirect"
-            args[1] = piercingOrigin(pos, targetChar, pmode)
+            args[1] = piercingOrigin(pos, targetChar)
         end
         args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
         return args
@@ -8278,33 +8204,10 @@ do
         local ping = MSP.Latency + (customPingOffset or 0)
         local pos = part.Position
 
-        if mode == "Basic" or mode == "Standard" then
-            return pos + vel * ((predAmount or 100) / 100) * 0.15
-        elseif mode == "Velocity" then
-            return pos + vel * (ping + 0.08)
+        if mode == "Standard" then
+            return pos + vel * (predAmount / 100)
         elseif mode == "Lag Comp" then
-            return pos + vel * ping * ((predAmount or 100) / 100)
-        elseif mode == "Momentum" then
-            local acc = hist and hist.Acc or Vector3.new()
-            local accMag = acc.Magnitude
-            if accMag > 400 then acc = acc * (400 / accMag) end
-            local t = ping + 0.05
-            return pos + vel * t + 0.5 * acc * t * t
-        elseif mode == "Kalman" then
-            local acc = hist and hist.Acc or Vector3.new()
-            local accMag = acc.Magnitude
-            if accMag > 400 then acc = acc * (400 / accMag) end
-            local jitter = math.clamp(tonumber(MSP.Jitter) or 0, 0, 0.15)
-            local t = (ping + jitter + (1 / 60)) * 1.1
-            t = math.min(t, 1.5)
-            local predictedPos = pos + vel * t + 0.5 * acc * t * t
-            local hum = targetChar:FindFirstChildOfClass("Humanoid")
-            if hum and hum.FloorMaterial == Enum.Material.Air then
-                predictedPos = predictedPos - Vector3.new(0, 0.5 * workspace.Gravity * t * t, 0)
-            end
-            local recentPos = hist and hist.Pos
-            if recentPos then predictedPos = predictedPos:Lerp(recentPos + vel * t, 0.3) end
-            return predictedPos
+            return pos + vel * ping * (predAmount / 100)
         elseif mode == "Perfect" then
             local acc = hist and hist.Acc or Vector3.new()
             local accMag = acc.Magnitude
@@ -8396,43 +8299,20 @@ do
         return pos
     end
 
-    S._MurdererKill = function(targetChar, noAnim)
+    S._MurdererKill = function(targetChar)
         if not targetChar or not targetChar.Parent then return false end
+        local knife = findKnife()
+        if not knife then return false end
         local pos = knifeTargetPos(targetChar)
         if not pos then return false end
-        local head = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
-        local headPos = head and head.Position
-        if headPos then pos = headPos end
-        local knife = findKnife()
-        if not knife then
-            for _, v in ipairs((LP.Backpack and LP.Backpack:GetChildren()) or {}) do
-                if v:IsA("Tool") and v:FindFirstChild("Events") and v.Events:FindFirstChild("KnifeThrown") then
-                    knife = v
-                    break
-                end
-            end
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hum and knife.Parent ~= LP.Character then
+            pcall(function() hum:EquipTool(knife) end)
+            task.wait(0.06)
+            knife = findKnife()
         end
-        if not knife then
-            local rs = game:GetService("ReplicatedStorage")
-            local knifeEvent = rs:FindFirstChild("KnifeThrown") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("KnifeThrown"))
-            if knifeEvent then
-                local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                local origin = hrp and hrp.CFrame or CFrame.new(pos)
-                pcall(function() knifeEvent:FireServer(origin, CFrame.new(pos)) end)
-                return true
-            end
-            return false
-        end
-        local ev = knife:FindFirstChild("Events") and knife.Events:FindFirstChild("KnifeThrown")
+        local ev = knife and knife:FindFirstChild("Events") and knife.Events:FindFirstChild("KnifeThrown")
         if not ev then return false end
-        if not noAnim then
-            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-            if hum and knife.Parent ~= LP.Character then
-                pcall(function() hum:EquipTool(knife) end)
-                task.wait(0.03)
-                knife = findKnife() or knife
-            end
-        end
         local handle = knife:FindFirstChild("Handle")
         local origin = handle and handle.CFrame or (LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") and LP.Character.HumanoidRootPart.CFrame or CFrame.new(pos))
         pcall(function() ev:FireServer(origin, CFrame.new(pos)) end)
@@ -8441,22 +8321,13 @@ do
 
     S._MurdererKillAll = function()
         local killed = 0
-        local rs = game:GetService("ReplicatedStorage")
-        local knifeEvent = rs:FindFirstChild("KnifeThrown") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("KnifeThrown"))
-        local myChar = LP.Character
-        local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        if not knifeEvent or not myHrp then return 0 end
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LP and not isWhitelisted(p) and p.Character then
                 local hum = p.Character:FindFirstChildOfClass("Humanoid")
                 local hrp = p.Character:FindFirstChild("HumanoidRootPart")
                 if hum and hum.Health > 0 and hrp then
-                    local pos = hrp.Position
-                    local head = p.Character:FindFirstChild("Head")
-                    if head then pos = head.Position end
-                    pcall(function() knifeEvent:FireServer(myHrp.CFrame, CFrame.new(pos)) end)
-                    killed = killed + 1
-                    task.wait(0.05)
+                    if S._MurdererKill(p.Character) then killed = killed + 1 end
+                    task.wait(0.08)
                 end
             end
         end
@@ -8486,33 +8357,25 @@ do
 
     task.spawn(function()
         local lastAutoKill, lastClickKill = 0, 0
-        local lastKillAuraTargets = {}
         while S.Gui and S.Gui.Parent do
-            task.wait(0.05)
+            task.wait(0.1)
             if S.Destroyed then break end
             pcall(function()
                 local role = S.getRole and S.getRole(LP)
                 local isMurderer = role == "Murderer"
+                local knife = isMurderer and findKnife()
                 local c = LP.Character
                 local me = c and c:FindFirstChild("HumanoidRootPart")
-                local rs = game:GetService("ReplicatedStorage")
-                local knifeEvent = rs:FindFirstChild("KnifeThrown") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("KnifeThrown"))
-                if isMurderer and me and knifeEvent then
+                if isMurderer and knife and me then
                     if S.KillAura then
                         local range = S.KillAuraRange or 18
-                        local now = tick()
                         for _, p in ipairs(Players:GetPlayers()) do
                             if p ~= LP and not isWhitelisted(p) and p.Character then
                                 local hrp = p.Character:FindFirstChild("HumanoidRootPart")
                                 local hum = p.Character:FindFirstChildOfClass("Humanoid")
                                 if hrp and hum and hum.Health > 0 and (hrp.Position - me.Position).Magnitude <= range then
-                                    if not lastKillAuraTargets[p.Name] or now - lastKillAuraTargets[p.Name] > 0.25 then
-                                        local head = p.Character:FindFirstChild("Head")
-                                        local pos = head and head.Position or hrp.Position
-                                        pcall(function() knifeEvent:FireServer(me.CFrame, CFrame.new(pos)) end)
-                                        lastKillAuraTargets[p.Name] = now
-                                        task.wait(0.02)
-                                    end
+                                    S._MurdererKill(p.Character)
+                                    task.wait(0.05)
                                 end
                             end
                         end
@@ -8533,25 +8396,11 @@ do
                         autoTarget = S._MurdererNearest()
                     end
                     if autoTarget and tick() - lastAutoKill >= 1.1 then
-                        local hrp = autoTarget:FindFirstChild("HumanoidRootPart")
-                        local head = autoTarget:FindFirstChild("Head")
-                        local pos = head and head.Position or (hrp and hrp.Position)
-                        if pos and me and knifeEvent then
-                            pcall(function() knifeEvent:FireServer(me.CFrame, CFrame.new(pos)) end)
-                            lastAutoKill = tick()
-                        end
+                        if S._MurdererKill(autoTarget) then lastAutoKill = tick() end
                     end
                     if S.ClickKill and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and tick() - lastClickKill >= 0.35 then
                         local n = S._MurdererNearest()
-                        if n and me and knifeEvent then
-                            local nrp = n:FindFirstChild("HumanoidRootPart")
-                            local nh = n:FindFirstChild("Head")
-                            local npos = nh and nh.Position or (nrp and nrp.Position)
-                            if npos then
-                                pcall(function() knifeEvent:FireServer(me.CFrame, CFrame.new(npos)) end)
-                                lastClickKill = tick()
-                            end
-                        end
+                        if n then S._MurdererKill(n); lastClickKill = tick() end
                     end
                 end
             end)
@@ -8581,7 +8430,7 @@ do
 
     local sec1 = mkSection(Pages.Motion, "Speed & Jump", 1, true)
 
-    mkSlider(sec1, "WalkSpeed", 16, 500, 16, function(v) S.CustomWalkSpeed = v end, 1)
+    mkSlider(sec1, "WalkSpeed", 16, 100, 16, function(v) S.CustomWalkSpeed = v end, 1)
     mkSlider(sec1, "JumpPower", 50, 150, 50, function(v) S.CustomJumpPower = v end, 2)
     mkToggle(sec1, "Infinity Jump", false, function(v) S.InfiniteJump = v end, 3)
 
@@ -8604,13 +8453,13 @@ do
             local h = c:FindFirstChildOfClass("Humanoid"); if h then h.PlatformStand = false end
         end end
     end, 2)
-    mkSlider(sec2, "Fly Speed", 10, 500, 50, function(v) S.FlySpeed = v end, 3)
+    mkSlider(sec2, "Fly Speed", 10, 200, 50, function(v) S.FlySpeed = v end, 3)
 
     local secMomentum = mkSection(Pages.Motion, "Momentum", 3, true)
     secMomentum.Parent:SetAttribute("ConfigSection", "Movement")
 
     mkToggle(secMomentum, "Bhop", false, function(v) S.Bhop = v end, 5)
-    mkSlider(secMomentum, "Bhop Max Speed", 16, 500, 28, function(v) S.BhopMax = v end, 6)
+    mkSlider(secMomentum, "Bhop Max Speed", 16, 200, 28, function(v) S.BhopMax = v end, 6)
     mkToggle(secMomentum, "Speed Glitch", false, function(v) S.SpeedGlitch = v end, 7)
     mkSlider(secMomentum, "Air Speed", 20, 150, 50, function(v) S.AirSpeed = v end, 8)
 
@@ -8673,7 +8522,7 @@ do
         end))
     end)
 
-end
+    end
 
 do
     local miscSubTabBar = Instance.new("Frame")
@@ -8762,7 +8611,6 @@ do
     mkToggle(sec4, "Anti Kill Void", false, function(v) S.AntiKillVoid = v end, 5)
     mkToggle(sec4, "Anti-AFK", false, function(v) S.AntiAFK = v end, 3)
     mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 4)
-    mkToggle(sec4, "Anti Coin (No Kick)", false, function(v) S.AntiCoin = v end, 6)
     local sec6 = mkSection(Pages.Misc, "Performance", 4, true)
     S._RegisterMiscSection(sec6, "Protection")
     mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
@@ -8771,95 +8619,6 @@ do
     if S._RegisterTeleportSection then S._RegisterTeleportSection(sec5) else S._ServerActionsSec = sec5 end
     mkAction(sec5, "Rejoin Server", function() rejoinServer() end, 2)
     mkAction(sec5, "Server Hop", function() serverHop() end, 3)
-    mkAction(sec5, "Dump Game (Desktop)", function()
-        local ts = os.date("%Y%m%d_%H%M%S")
-        local root = "MM2_FullDump_" .. ts
-        pcall(makefolder, root)
-        pcall(makefolder, root .. "/Scripts")
-        Notify("Dump", "Dumping to " .. root .. "...", 2)
-
-        local scriptCount, remoteCount = 0, 0
-
-        local function safeVal(v)
-            if v == nil then return "nil"
-            elseif typeof(v) == "Vector3" then return string.format("%.0f,%.0f,%.0f", v.X, v.Y, v.Z)
-            elseif typeof(v) == "Instance" then return v:GetFullName()
-            else local ok, r = pcall(tostring, v); return ok and tostring(r):sub(1,80) or "?" end
-        end
-
-        local function tree(obj, depth, buf)
-            depth = depth or 0
-            if depth > 7 or #buf > 120000 then return end
-            local indent = string.rep("  ", depth)
-            local extras = {}
-            pcall(function()
-                if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
-                    local ok, src = pcall(function() return decompile(obj) end)
-                    if ok and src and #src > 0 then
-                        extras[#extras+1] = "SRC:"..#src.."b"
-                        local sname = obj:GetFullName():gsub("[\\/:*?\"<>|%s%.]", "_"):sub(-100)
-                        pcall(writefile, root .. "/Scripts/" .. sname .. ".lua", "-- " .. obj:GetFullName() .. "\n\n" .. src)
-                        scriptCount = scriptCount + 1
-                    end
-                end
-            end)
-            pcall(function()
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") or obj:IsA("BindableEvent") or obj:IsA("BindableFunction") then
-                    extras[#extras+1] = "REMOTE"; remoteCount = remoteCount + 1
-                end
-            end)
-            pcall(function() if obj:IsA("BasePart") then extras[#extras+1] = safeVal(obj.Position); if obj.Anchored then extras[#extras+1] = "A" end end end)
-            pcall(function() if obj:IsA("Humanoid") then extras[#extras+1] = "HP"..obj.Health end end)
-            pcall(function() if obj:IsA("Tool") then extras[#extras+1] = "TOOL" end end)
-            table.insert(buf, indent .. obj.Name .. " [" .. obj.ClassName .. "]" .. (#extras > 0 and "  (" .. table.concat(extras, ", ") .. ")" or ""))
-            for _, child in ipairs(obj:GetChildren()) do pcall(function() tree(child, depth + 1, buf) end) end
-        end
-
-        local services = {
-            { game, "0_Game" },
-            { workspace, "1_Workspace" },
-            { game:GetService("ReplicatedStorage"), "2_ReplicatedStorage" },
-            { game:GetService("ServerScriptService"), "3_ServerScriptService" },
-            { game:GetService("ServerStorage"), "4_ServerStorage" },
-            { game:GetService("StarterGui"), "5_StarterGui" },
-            { game:GetService("StarterPack"), "6_StarterPack" },
-            { game:GetService("StarterPlayer"), "7_StarterPlayer" },
-            { game:GetService("Lighting"), "8_Lighting" },
-            { LP:FindFirstChildOfClass("PlayerGui"), "9_PlayerGui" },
-        }
-
-        local fullTree = {}
-        for _, entry in ipairs(services) do
-            if entry[1] then
-                table.insert(fullTree, "\n===== " .. entry[2] .. " =====")
-                pcall(function() tree(entry[1], 0, fullTree) end)
-            end
-        end
-        pcall(writefile, root .. "/_FULL_TREE.txt", table.concat(fullTree, "\n"))
-
-        local remBuf = {}
-        for _, entry in ipairs(services) do
-            if entry[1] then
-                local function col(obj)
-                    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") or obj:IsA("BindableEvent") or obj:IsA("BindableFunction") then
-                        table.insert(remBuf, obj:GetFullName() .. " [" .. obj.ClassName .. "]")
-                    end
-                    for _, c in ipairs(obj:GetChildren()) do pcall(function() col(c) end) end
-                end
-                pcall(function() col(entry[1]) end)
-            end
-        end
-        pcall(writefile, root .. "/_REMOTES.txt", "=== REMOTES (" .. #remBuf .. ") ===\n\n" .. table.concat(remBuf, "\n"))
-
-        local rBuf = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            local r = "?"; pcall(function() r = getRole(p) end)
-            table.insert(rBuf, p.Name .. " | " .. tostring(r) .. " | ID:" .. p.UserId)
-        end
-        pcall(writefile, root .. "/_ROLES.txt", "=== PLAYERS (" .. #Players:GetPlayers() .. ") ===\n\n" .. table.concat(rBuf, "\n"))
-
-        Notify("Dump", "Done! " .. scriptCount .. " scripts + " .. #remBuf .. " remotes -> " .. root, 5)
-    end, 10)
 
     local row = Instance.new("Frame")
     row.Parent = sec5
@@ -9706,8 +9465,9 @@ do
         end
         S._mkIdBox = mkIdBox
 
-end
+    end
 
+end
 do
 
     local teleportSubTabBar = Instance.new("Frame")
@@ -10211,166 +9971,165 @@ local function funTarget()
     return best
 end
 
-local _MT = {}
-do
-    local headSitConn
-    _MT.stopHeadSit = function()
-        if headSitConn then headSitConn:Disconnect(); headSitConn = nil end
-    end
-    _MT.startHeadSit = function()
-        _MT.stopHeadSit()
-        local target = funTarget()
-        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if not target or not hum then Notify("Head Sit", "No target", 2); S.HeadSit = false; return end
-        hum.Sit = true
-        headSitConn = tc(RunService.Heartbeat:Connect(function()
-            local tRoot = target.Character and getRoot(target.Character)
-            local myRoot = getRoot(LP.Character)
-            local myHum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-            if tRoot and myRoot and myHum and myHum.Sit then
-                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 1.6, 0.4)
-            end
-        end))
-    end
-
-    local orbitConns = {}
-    _MT.stopOrbit = function()
-        for _, c in pairs(orbitConns) do pcall(function() c:Disconnect() end) end
-        orbitConns = {}
-    end
-    _MT.startOrbit = function()
-        _MT.stopOrbit()
-        local target = funTarget()
-        local root = getRoot(LP.Character)
-        if not (target and target.Character and getRoot(target.Character) and root) then
-            Notify("Orbit", "No target", 2); S.Orbit = false; return end
-        local rotation = 0
-        orbitConns.a = tc(RunService.Heartbeat:Connect(function()
-            pcall(function()
-                rotation = rotation + (S.OrbitSpeed or 20) / 100
-                local troot = getRoot(target.Character)
-                if not (troot and root and root.Parent) then return end
-                local center = troot.Position + Vector3.new(0, S.OrbitHeight or 0, 0)
-                local rad = math.rad(rotation)
-                local dist = S.OrbitDist or 6
-                local orbitPos = center + Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
-                root.CFrame = CFrame.lookAt(orbitPos, troot.Position)
-            end)
-        end))
-    end
-
-    local bangConn, bangTrack, bangAnimInst
-    _MT.stopBang = function()
-        if bangConn then bangConn:Disconnect(); bangConn = nil end
-        if bangTrack then pcall(function() bangTrack:Stop() end); bangTrack = nil end
-        if bangAnimInst then pcall(function() bangAnimInst:Destroy() end); bangAnimInst = nil end
-    end
-    _MT.startBang = function()
-        _MT.stopBang()
-        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-        local target = funTarget()
-        bangAnimInst = Instance.new("Animation")
-        bangAnimInst.AnimationId = not isR15(LP) and "rbxassetid://148840371" or "rbxassetid://5918726674"
-        pcall(function()
-            bangTrack = hum:LoadAnimation(bangAnimInst)
-            bangTrack:Play(0.1, 1, 1)
-            bangTrack:AdjustSpeed(S.BangSpeed or 3)
-        end)
-        if target and target.Character then
-            local offset = CFrame.new(0, 0, 1.1)
-            bangConn = tc(RunService.Stepped:Connect(function()
-                pcall(function()
-                    local otherRoot = getTorso(target.Character)
-                    local myRoot = getRoot(LP.Character)
-                    if otherRoot and myRoot then myRoot.CFrame = otherRoot.CFrame * offset end
-                end)
-            end))
-        end
-    end
-
-    local blockJumpConn, blockJumpHumanoid
-    local function _stopBJlocal()
-        if blockJumpConn then blockJumpConn:Disconnect(); blockJumpConn = nil end
-        if blockJumpHumanoid and blockJumpHumanoid.Parent then
-            pcall(function() blockJumpHumanoid.PlatformStand = false end)
-        end
-        blockJumpHumanoid = nil
-    end
-    _MT.stopBlockJump = _stopBJlocal
-    _MT.startBlockJump = function()
-        _stopBJlocal()
-        local target = funTarget()
-        local root = getRoot(LP.Character)
+local headSitConn
+local function stopHeadSit()
+    if headSitConn then headSitConn:Disconnect(); headSitConn = nil end
+end
+local function startHeadSit()
+    stopHeadSit()
+    local target = funTarget()
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if not target or not hum then Notify("Head Sit", "No target", 2); S.HeadSit = false; return end
+    hum.Sit = true
+    headSitConn = tc(RunService.Heartbeat:Connect(function()
+        local tRoot = target.Character and getRoot(target.Character)
+        local myRoot = getRoot(LP.Character)
         local myHum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if not (target and target.Character and getRoot(target.Character) and root and myHum) then
-            Notify("Block Jump", "No target", 2); S.BlockJump = false; return end
-        myHum.PlatformStand = true
-        blockJumpHumanoid = myHum
-        blockJumpConn = tc(RunService.Stepped:Connect(function()
-            pcall(function()
-                local tChar = target.Character
-                local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
-                local tHead = tChar and tChar:FindFirstChild("Head")
-                local myRoot = getRoot(LP.Character)
-                local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-                if tHead and myRoot and hum and tHum and tHum.Health > 0 then
-                    if not hum.PlatformStand then hum.PlatformStand = true end
-                    blockJumpHumanoid = hum
-                    local gap = 0.2
-                    local headTop = tHead.Position.Y + tHead.Size.Y / 2
-                    local footClearance = (hum.HipHeight or 2) + 1
-                    local pos = Vector3.new(tHead.Position.X, headTop + gap + footClearance, tHead.Position.Z)
-                    myRoot.CFrame = CFrame.new(pos) * (myRoot.CFrame - myRoot.CFrame.Position)
-                    myRoot.AssemblyLinearVelocity = Vector3.zero
-                    myRoot.AssemblyAngularVelocity = Vector3.zero
-                end
-            end)
-        end))
-    end
-
-    local jerkTool
-    _MT.stopJerk = function()
-        if jerkTool then pcall(function() jerkTool:Destroy() end); jerkTool = nil end
-    end
-    _MT.startJerk = function()
-        _MT.stopJerk()
-        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        local backpack = LP:FindFirstChildWhichIsA("Backpack")
-        if not hum or not backpack then return end
-        jerkTool = Instance.new("Tool")
-        jerkTool.Name = "Jerk"
-        jerkTool.RequiresHandle = false
-        jerkTool.Parent = backpack
-        local jorkin, track = false, nil
-        jerkTool.Equipped:Connect(function() jorkin = true end)
-        jerkTool.Unequipped:Connect(function() jorkin = false; if track then pcall(function() track:Stop() end); track = nil end end)
-        task.spawn(function()
-            while jerkTool and jerkTool.Parent and S.Jerk do
-                task.wait()
-                if jorkin then
-                    local isR = isR15(LP)
-                    if not track then
-                        local anim = Instance.new("Animation")
-                        anim.AnimationId = not isR and "rbxassetid://72042024" or "rbxassetid://698251653"
-                        pcall(function() track = hum:LoadAnimation(anim) end)
-                    end
-                    if track then
-                        pcall(function()
-                            track:Play(); track:AdjustSpeed(isR and 0.7 or 0.65); track.TimePosition = 0.6
-                        end)
-                        task.wait(0.1)
-                        while track and track.TimePosition < (not isR and 0.65 or 0.7) do task.wait(0.1) end
-                        if track then pcall(function() track:Stop() end); track = nil end
-                    end
-                end
-            end
-        end)
-    end
-
+        if tRoot and myRoot and myHum and myHum.Sit then
+            myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 1.6, 0.4)
+        end
+    end))
 end
 
-_MT.doTrip = function()
+local orbitConns = {}
+local function stopOrbit()
+    for _, c in pairs(orbitConns) do pcall(function() c:Disconnect() end) end
+    orbitConns = {}
+end
+local function startOrbit()
+    stopOrbit()
+    local target = funTarget()
+    local root = getRoot(LP.Character)
+    if not (target and target.Character and getRoot(target.Character) and root) then
+        Notify("Orbit", "No target", 2); S.Orbit = false; return
+    end
+    local rotation = 0
+    orbitConns.a = tc(RunService.Heartbeat:Connect(function()
+        pcall(function()
+            rotation = rotation + (S.OrbitSpeed or 20) / 100
+            local troot = getRoot(target.Character)
+            if not (troot and root and root.Parent) then return end
+            local center = troot.Position + Vector3.new(0, S.OrbitHeight or 0, 0)
+            local rad = math.rad(rotation)
+            local dist = S.OrbitDist or 6
+            local orbitPos = center + Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
+            root.CFrame = CFrame.lookAt(orbitPos, troot.Position)
+        end)
+    end))
+end
+
+local bangConn, bangTrack, bangAnimInst
+local function stopBang()
+    if bangConn then bangConn:Disconnect(); bangConn = nil end
+    if bangTrack then pcall(function() bangTrack:Stop() end); bangTrack = nil end
+    if bangAnimInst then pcall(function() bangAnimInst:Destroy() end); bangAnimInst = nil end
+end
+local function startBang()
+    stopBang()
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local target = funTarget()
+    bangAnimInst = Instance.new("Animation")
+    bangAnimInst.AnimationId = not isR15(LP) and "rbxassetid://148840371" or "rbxassetid://5918726674"
+    pcall(function()
+        bangTrack = hum:LoadAnimation(bangAnimInst)
+        bangTrack:Play(0.1, 1, 1)
+        bangTrack:AdjustSpeed(S.BangSpeed or 3)
+    end)
+    if target and target.Character then
+        local offset = CFrame.new(0, 0, 1.1)
+        bangConn = tc(RunService.Stepped:Connect(function()
+            pcall(function()
+                local otherRoot = getTorso(target.Character)
+                local myRoot = getRoot(LP.Character)
+                if otherRoot and myRoot then myRoot.CFrame = otherRoot.CFrame * offset end
+            end)
+        end))
+    end
+end
+
+local blockJumpConn
+local blockJumpHumanoid
+local function stopBlockJump()
+    if blockJumpConn then blockJumpConn:Disconnect(); blockJumpConn = nil end
+    if blockJumpHumanoid and blockJumpHumanoid.Parent then
+        pcall(function() blockJumpHumanoid.PlatformStand = false end)
+    end
+    blockJumpHumanoid = nil
+end
+local function startBlockJump()
+    stopBlockJump()
+    local target = funTarget()
+    local root = getRoot(LP.Character)
+    local myHum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if not (target and target.Character and getRoot(target.Character) and root and myHum) then
+        Notify("Block Jump", "No target", 2); S.BlockJump = false; return
+    end
+    myHum.PlatformStand = true
+    blockJumpHumanoid = myHum
+    blockJumpConn = tc(RunService.Stepped:Connect(function()
+        pcall(function()
+            local tChar = target.Character
+            local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+            local tHead = tChar and tChar:FindFirstChild("Head")
+            local myRoot = getRoot(LP.Character)
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if tHead and myRoot and hum and tHum and tHum.Health > 0 then
+                if not hum.PlatformStand then hum.PlatformStand = true end
+                blockJumpHumanoid = hum
+
+                local gap = 0.2
+                local headTop = tHead.Position.Y + tHead.Size.Y / 2
+                local footClearance = (hum.HipHeight or 2) + 1
+                local pos = Vector3.new(tHead.Position.X, headTop + gap + footClearance, tHead.Position.Z)
+                myRoot.CFrame = CFrame.new(pos) * (myRoot.CFrame - myRoot.CFrame.Position)
+                myRoot.AssemblyLinearVelocity = Vector3.zero
+                myRoot.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
+    end))
+end
+
+local jerkTool
+local function stopJerk()
+    if jerkTool then pcall(function() jerkTool:Destroy() end); jerkTool = nil end
+end
+local function startJerk()
+    stopJerk()
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    local backpack = LP:FindFirstChildWhichIsA("Backpack")
+    if not hum or not backpack then return end
+    jerkTool = Instance.new("Tool")
+    jerkTool.Name = "Jerk"
+    jerkTool.RequiresHandle = false
+    jerkTool.Parent = backpack
+    local jorkin, track = false, nil
+    jerkTool.Equipped:Connect(function() jorkin = true end)
+    jerkTool.Unequipped:Connect(function() jorkin = false; if track then pcall(function() track:Stop() end); track = nil end end)
+    task.spawn(function()
+        while jerkTool and jerkTool.Parent and S.Jerk do
+            task.wait()
+            if jorkin then
+                local isR = isR15(LP)
+                if not track then
+                    local anim = Instance.new("Animation")
+                    anim.AnimationId = not isR and "rbxassetid://72042024" or "rbxassetid://698251653"
+                    pcall(function() track = hum:LoadAnimation(anim) end)
+                end
+                if track then
+                    pcall(function()
+                        track:Play(); track:AdjustSpeed(isR and 0.7 or 0.65); track.TimePosition = 0.6
+                    end)
+                    task.wait(0.1)
+                    while track and track.TimePosition < (not isR and 0.65 or 0.7) do task.wait(0.1) end
+                    if track then pcall(function() track:Stop() end); track = nil end
+                end
+            end
+        end
+    end)
+end
+
+local function doTrip()
     local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     local root = getRoot(LP.Character)
     if hum and root then
@@ -10654,7 +10413,7 @@ do
     local secM = mkSection(Pages.Motion, "Movement Tricks", 4, true)
     if S._RegisterMotionMovementSection then S._RegisterMotionMovementSection(secM) end
 
-    mkAction(secM, "Trip", function() _MT.doTrip() end, 4)
+    mkAction(secM, "Trip", function() doTrip() end, 4)
 
     toggleInvisible = mkToggle(secM, "Invisible", false, function(v)
         if v then startInvisibleFE() else stopInvisibleFE() end
@@ -10664,7 +10423,7 @@ do
     if S._RegisterMotionTargetsSection then S._RegisterMotionTargetsSection(secTr) end
     mkToggle(secTr, "Spinbot", false, function(v) S.Spinbot = v end, 1)
     mkSlider(secTr, "Spin Speed", 5, 1000, 20, function(v) S.SpinSpeed = v end, 2)
-    mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then _MT.startJerk() else _MT.stopJerk() end end, 3)
+    mkToggle(secTr, "Jerk", false, function(v) S.Jerk = v; if v then startJerk() else stopJerk() end end, 3)
     mkToggle(secTr, "Click Fling", false, function(v) S.ClickFling = v end, 4)
 
     mkToggle(secTr, "Touch Fling", false, function(v)
@@ -10777,12 +10536,12 @@ do
     S.FollowSpeed = 24
     S.FollowMirrorActions = true
 
-    mkToggle(secTgt, "Orbit Target", false, function(v) S.Orbit = v; if v then _MT.startOrbit() else _MT.stopOrbit() end end, 4)
+    mkToggle(secTgt, "Orbit Target", false, function(v) S.Orbit = v; if v then startOrbit() else stopOrbit() end end, 4)
     mkSlider(secTgt, "Orbit Speed", 5, 1000, 20, function(v) S.OrbitSpeed = v end, 5)
     mkSlider(secTgt, "Orbit Distance", 3, 30, 6, function(v) S.OrbitDist = v end, 6)
     mkSlider(secTgt, "Orbit Height", -30, 30, 0, function(v) S.OrbitHeight = v end, 7)
-mkToggle(secTgt, "Sit on Target", false, function(v) S.HeadSit = v; if v then _MT.startHeadSit() else _MT.stopHeadSit() end end, 8)
-mkToggle(secTgt, "Bang Target", false, function(v) S.Bang = v; if v then _MT.startBang() else _MT.stopBang() end end, 9)
+    mkToggle(secTgt, "Sit on Target", false, function(v) S.HeadSit = v; if v then startHeadSit() else stopHeadSit() end end, 8)
+    mkToggle(secTgt, "Bang Target", false, function(v) S.Bang = v; if v then startBang() else stopBang() end end, 9)
     mkSlider(secTgt, "Bang Speed", 1, 10, 3, function(v) S.BangSpeed = v end, 10)
 
 end
@@ -11046,6 +10805,168 @@ end
 
 HUD.hFps, HUD.fpsLbl = mkStatHUD("FPS", UDim2.new(1, -142, 0, 290), 130, 854)
 
+do
+    HUD.quickFrame = Instance.new("Frame")
+    HUD.quickFrame.Name = "HUD_QuickStatus"
+
+    pcall(function() HUD.quickFrame:SetAttribute("InertiaHudSurface", true) end)
+    if S._MarkSurface then pcall(S._MarkSurface, HUD.quickFrame) end
+    HUD.quickFrame.Parent = Main
+    HUD.quickFrame.Position = UDim2.fromOffset(8, 410)
+
+    local QUICK_W = 124
+    HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, 150)
+    HUD.quickFrame.BackgroundColor3 = T.Card; pcall(function() HUD.quickFrame:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
+    HUD.quickFrame.BackgroundTransparency = 0.01
+    HUD.quickFrame.BorderSizePixel = 0
+    HUD.quickFrame.ClipsDescendants = true
+    HUD.quickFrame.ZIndex = 25
+    Corner(HUD.quickFrame, 10)
+    local quickStroke = Stroke(HUD.quickFrame, T.Bd2, 1, 0.32); pcall(function() quickStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
+    local quickGrad = Grad(HUD.quickFrame, T.White:Lerp(T.Accent, 0.16), T.White:Lerp(T.Elev, 0.08), 90)
+    quickGrad.Name = "QuickStatusGradient"
+
+    local head = Instance.new("Frame")
+    head.Name = "QuickHeader"
+    head.Parent = HUD.quickFrame
+    head.Size = UDim2.new(1, 0, 0, 30)
+    head.BackgroundColor3 = T.Elev; pcall(function() head:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+    head.BackgroundTransparency = 0.025
+    head.BorderSizePixel = 0
+    head.ZIndex = 26
+    local headLine = Instance.new("Frame")
+    headLine.Parent = head
+    headLine.AnchorPoint = Vector2.new(0, 0.5)
+    headLine.Position = UDim2.new(0, 8, 0.5, 0)
+    headLine.Size = UDim2.fromOffset(2, 11)
+    headLine.BackgroundColor3 = T.Accent; pcall(function() headLine:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+    headLine.BackgroundTransparency = 0.12
+    headLine.BorderSizePixel = 0
+    headLine.ZIndex = 27
+    Corner(headLine, 2)
+    local headText = Instance.new("TextLabel")
+    headText.Parent = head
+    headText.Position = UDim2.new(0, 17, 0, 0)
+    headText.Size = UDim2.new(1, -22, 1, 0)
+    headText.BackgroundTransparency = 1
+    headText.Font = FB
+    headText.TextSize = 11
+    headText.TextColor3 = T.Tx2; pcall(function()
+        headText:SetAttribute("ThemeColorRole_TextColor3", "Tx2")
+        headText:SetAttribute("MinReadableTextSize", 10)
+    end)
+    headText.TextXAlignment = Enum.TextXAlignment.Left
+    headText.Text = "QUICK STATUS"
+    headText.ZIndex = 27
+
+    local body = Instance.new("Frame")
+    body.Parent = HUD.quickFrame
+    body.Position = UDim2.new(0, 0, 0, 31)
+    body.Size = UDim2.new(1, 0, 1, -35)
+    body.BackgroundTransparency = 1
+    body.ZIndex = 26
+
+    local function fitWholeText(lbl, maxSize, minSize)
+        lbl.TextScaled = false
+        lbl.TextWrapped = false
+        local function refit()
+            local avail = lbl.AbsoluteSize.X
+            if avail <= 0 then return end
+            for size = maxSize, minSize, -1 do
+                lbl.TextSize = size
+                if lbl.TextBounds.X <= avail then return end
+            end
+            lbl.TextSize = minSize
+            lbl.TextTruncate = Enum.TextTruncate.AtEnd
+        end
+        lbl:GetPropertyChangedSignal("Text"):Connect(refit)
+        lbl:GetPropertyChangedSignal("AbsoluteSize"):Connect(refit)
+        task.defer(refit)
+    end
+
+    local quickRows = {}
+    local function layoutQuickRows()
+        local h = body.AbsoluteSize.Y
+        if h <= 0 then return end
+        local each = math.floor(h / 4)
+        for i, r in ipairs(quickRows) do
+            r.Position = UDim2.fromOffset(8, (i - 1) * each)
+            r.Size = UDim2.new(1, -16, 0, each)
+        end
+    end
+    body:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutQuickRows)
+    local function quickRow(label, index)
+        local row = Instance.new("Frame")
+        row.Parent = body
+        row.Position = UDim2.fromOffset(8, 0)
+        row.Size = UDim2.new(1, -16, 0, 24)
+        row.BackgroundTransparency = 1
+        row.ZIndex = 26
+        quickRows[index] = row
+        task.defer(layoutQuickRows)
+        if index > 1 then
+            local line = Instance.new("Frame")
+            line.Parent = row
+            line.Size = UDim2.new(1, 0, 0, 1)
+            line.BackgroundColor3 = T.Bd; pcall(function() line:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd") end)
+            line.BackgroundTransparency = 0.55
+            line.BorderSizePixel = 0
+            line.ZIndex = 26
+        end
+        local key = Instance.new("TextLabel")
+        key.Parent = row
+        key.Size = UDim2.new(0, 48, 1, 0)
+        key.BackgroundTransparency = 1
+        key.Font = F
+        key.TextSize = 10
+        key.TextColor3 = T.Tx3; pcall(function()
+            key:SetAttribute("ThemeColorRole_TextColor3", "Tx3")
+            key:SetAttribute("MinReadableTextSize", 10)
+        end)
+        key.TextXAlignment = Enum.TextXAlignment.Left
+        key.Text = label
+        key.ZIndex = 27
+
+        fitWholeText(key, 10, 7)
+        local value = Instance.new("TextLabel")
+        value.Parent = row
+        value.Position = UDim2.new(0, 48, 0, 0)
+        value.Size = UDim2.new(1, -48, 1, 0)
+        value.BackgroundTransparency = 1
+        value.Font = FM
+        value.TextSize = 11
+        value:SetAttribute("MinReadableTextSize", 10)
+        value.TextColor3 = T.Tx; pcall(function() value:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        value.TextXAlignment = Enum.TextXAlignment.Right
+        value.Text = "—"
+        value.ZIndex = 27
+        fitWholeText(value, 11, 8)
+        return value
+    end
+    HUD.quickRole = quickRow("ROLE", 1)
+    HUD.quickRound = quickRow("ROUND", 2)
+    HUD.quickActive = quickRow("ACTIVE", 3)
+    HUD.quickNet = quickRow("NETWORK", 4)
+    local quickScale = Instance.new("UIScale")
+    quickScale.Name = "QuickStatusScale"
+    quickScale.Parent = HUD.quickFrame
+    S._ResizeQuickStatus = function()
+        local available = Main.AbsoluteSize.Y - 444
+
+        local show = (not MOBILE) and available >= 132
+        HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, math.clamp(available, 132, 196))
+        if show and not HUD.quickFrame.Visible then
+            HUD.quickFrame.Visible = true
+            quickScale.Scale = 0.96
+            TweenService:Create(quickScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+        elseif not show then
+            HUD.quickFrame.Visible = false
+        end
+    end
+    tc(Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(S._ResizeQuickStatus))
+    task.defer(S._ResizeQuickStatus)
+end
+
 local function mkWatermark()
     local f = Instance.new("TextButton")
     f.AutoButtonColor = false
@@ -11275,99 +11196,110 @@ tc(pinnedEmotesGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitP
 task.defer(fitPinnedEmotesHUD)
 
 do
-    local mgLine = Instance.new("Frame")
-    mgLine.Name = "HUD_MotionGraph_Line"
-    mgLine.Parent = SG
-    mgLine.AnchorPoint = Vector2.new(0.5, 1)
-    mgLine.Position = UDim2.new(0.5, 0, 1, -8)
-    mgLine.Size = UDim2.new(1, -60, 0, 22)
-    mgLine.BackgroundTransparency = 1
-    mgLine.BorderSizePixel = 0
-    mgLine.ZIndex = 858
-    mgLine.Visible = false
+    local width = math.clamp(tonumber(S.MGPanelWidth) or (MOBILE and 260 or 300), 240, 460)
+    local height = math.clamp(tonumber(S.MGPanelHeight) or (MOBILE and 132 or 150), 120, 260)
+    local mg = mkDragHUD("Motion Graph", UDim2.new(0, 10, 0, 590), UDim2.fromOffset(width, height), 858)
+    local plot = mg.content
+    plot.ClipsDescendants = true
 
-    local speedText = Instance.new("TextLabel")
-    speedText.Parent = mgLine
-    speedText.BackgroundTransparency = 1
-    speedText.Size = UDim2.new(0, 120, 1, 0)
-    speedText.AnchorPoint = Vector2.new(0, 0.5)
-    speedText.Position = UDim2.new(0, 0, 0.5, 0)
-    speedText.Font = FB
-    speedText.TextSize = 14
-    speedText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    speedText.TextTransparency = 0.1
-    speedText.TextXAlignment = Enum.TextXAlignment.Left
-    speedText.ZIndex = 859
-    speedText.Text = "0"
+    local stats = Instance.new("Frame")
+    stats.Name = "Stats"
+    stats.Parent = plot
+    stats.BackgroundTransparency = 1
+    stats.Size = UDim2.new(1, 0, 0, 20)
+    stats.ZIndex = 861
 
-    local peakText = Instance.new("TextLabel")
-    peakText.Parent = mgLine
-    peakText.BackgroundTransparency = 1
-    peakText.Size = UDim2.new(0, 80, 1, 0)
-    peakText.AnchorPoint = Vector2.new(1, 0.5)
-    peakText.Position = UDim2.new(1, 0, 0.5, 0)
-    peakText.Font = FM
-    peakText.TextSize = 11
-    peakText.TextColor3 = Color3.fromRGB(200, 200, 195)
-    peakText.TextTransparency = 0.15
-    peakText.TextXAlignment = Enum.TextXAlignment.Right
-    peakText.ZIndex = 859
-    peakText.Text = "PEAK 0"
+    local function statLabel(name, position, size, align, colorRole)
+        local label = Instance.new("TextLabel")
+        label.Name = name
+        label.Parent = stats
+        label.BackgroundTransparency = 1
+        label.Position = position
+        label.Size = size
+        label.Font = name == "Speed" and FB or FM
+        label.TextSize = name == "Speed" and 13 or 10
+        label.TextColor3 = T[colorRole]
+        label.TextXAlignment = align
+        label.ZIndex = 862
+        pcall(function() label:SetAttribute("ThemeColorRole_TextColor3", colorRole) end)
+        return label
+    end
+    local speedLabel = statLabel("Speed", UDim2.new(), UDim2.new(0.44, 0, 1, 0), Enum.TextXAlignment.Left, "Tx")
+    local averageLabel = statLabel("Average", UDim2.new(0.44, 0, 0, 0), UDim2.new(0.28, 0, 1, 0), Enum.TextXAlignment.Center, "Tx3")
+    local peakLabel = statLabel("Peak", UDim2.new(0.72, 0, 0, 0), UDim2.new(0.28, 0, 1, 0), Enum.TextXAlignment.Right, "Tx3")
+    speedLabel.Text, averageLabel.Text, peakLabel.Text = "0.0 STUDS/S", "AVG 0.0", "PEAK 0.0"
 
-    local avgText = Instance.new("TextLabel")
-    avgText.Parent = mgLine
-    avgText.BackgroundTransparency = 1
-    avgText.Size = UDim2.new(0, 80, 1, 0)
-    avgText.AnchorPoint = Vector2.new(1, 0.5)
-    avgText.Position = UDim2.new(1, -88, 0.5, 0)
-    avgText.Font = FM
-    avgText.TextSize = 11
-    avgText.TextColor3 = Color3.fromRGB(180, 179, 175)
-    avgText.TextTransparency = 0.2
-    avgText.TextXAlignment = Enum.TextXAlignment.Right
-    avgText.ZIndex = 859
-    avgText.Text = "AVG 0"
+    local chart = Instance.new("Frame")
+    chart.Name = "Chart"
+    chart.Parent = plot
+    chart.BackgroundColor3 = T.Elev
+    chart.BackgroundTransparency = 0.56
+    chart.BorderSizePixel = 0
+    chart.Position = UDim2.new(0, 0, 0, 23)
+    chart.Size = UDim2.new(1, 0, 1, -23)
+    chart.ClipsDescendants = true
+    chart.ZIndex = 859
+    Corner(chart, 7)
+    Stroke(chart, T.Bd, 1, 0.58)
+    pcall(function() chart:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
 
-    local lineCanvas = Instance.new("Frame")
-    lineCanvas.Name = "MGLineCanvas"
-    lineCanvas.Parent = mgLine
-    lineCanvas.BackgroundTransparency = 1
-    lineCanvas.Position = UDim2.new(0, 0, 1, -2)
-    lineCanvas.Size = UDim2.new(1, 0, 0, 2)
-    lineCanvas.ZIndex = 859
+    local gridLines = {}
+    for i = 1, 3 do
+        local line = Instance.new("Frame")
+        line.Name = "Grid" .. i
+        line.Parent = chart
+        line.BackgroundColor3 = T.Bd2
+        line.BackgroundTransparency = 0.68
+        line.BorderSizePixel = 0
+        line.Position = UDim2.new(0, 0, i / 4, 0)
+        line.Size = UDim2.new(1, 0, 0, 1)
+        line.ZIndex = 860
+        pcall(function() line:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd2") end)
+        gridLines[i] = line
+    end
 
-    local mainLine = Instance.new("Frame")
-    mainLine.Name = "MainLine"
-    mainLine.Parent = lineCanvas
-    mainLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    mainLine.BackgroundTransparency = 0.25
-    mainLine.BorderSizePixel = 0
-    mainLine.Size = UDim2.fromScale(0, 1)
-    mainLine.Position = UDim2.fromScale(0, 0)
-    mainLine.ZIndex = 860
-    Instance.new("UICorner", mainLine).CornerRadius = UDim.new(0, 1)
+    local samples = MOBILE and 48 or 72
+    local history = table.create(samples, 0)
+    local segments = {}
+    for i = 1, samples - 1 do
+        local segment = Instance.new("Frame")
+        segment.Name = "LineSegment" .. i
+        segment.Parent = chart
+        segment.AnchorPoint = Vector2.new(0.5, 0.5)
+        segment.BackgroundColor3 = T.Accent
+        segment.BorderSizePixel = 0
+        segment.Size = UDim2.fromOffset(2, 2)
+        segment.ZIndex = 863
+        Corner(segment, 2)
+        segments[i] = segment
+    end
 
-    local avgDot = Instance.new("Frame")
-    avgDot.Name = "AvgDot"
-    avgDot.Parent = lineCanvas
-    avgDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    avgDot.BackgroundTransparency = 0.15
-    avgDot.BorderSizePixel = 0
-    avgDot.Size = UDim2.fromOffset(3, 2)
-    avgDot.Position = UDim2.fromScale(0, 0)
-    avgDot.ZIndex = 860
-    Instance.new("UICorner", avgDot).CornerRadius = UDim.new(0, 1)
+    local newestPoint = Instance.new("Frame")
+    newestPoint.Name = "CurrentPoint"
+    newestPoint.Parent = chart
+    newestPoint.AnchorPoint = Vector2.new(0.5, 0.5)
+    newestPoint.Size = UDim2.fromOffset(7, 7)
+    newestPoint.BackgroundColor3 = T.White
+    newestPoint.BorderSizePixel = 0
+    newestPoint.ZIndex = 864
+    Corner(newestPoint, 4)
+    Stroke(newestPoint, T.Accent, 1, 0.1)
 
-    local history = table.create(60, 0)
-    local smoothed, peakSpeed, elapsed = 0, 0, 0
-    local maxSpeed = 40
-
+    local maxSpeed, peakSpeed, smoothed, elapsed = 40, 0, 0, 0
+    local function resizeGraph()
+        local w = math.clamp(tonumber(S.MGPanelWidth) or 300, 240, 460)
+        local h = math.clamp(tonumber(S.MGPanelHeight) or 150, 120, 260)
+        mg.frame.Size = UDim2.fromOffset(w, h)
+    end
     tc(RunService.Heartbeat:Connect(function(dt)
-        if not mgLine.Visible then return end
+        local el = HUDEls["Motion Graph"]
+        if not el or not el.frame.Visible then return end
         elapsed = elapsed + dt
-        if elapsed < 0.05 then return end
-        local sampleDt = math.clamp(elapsed, 0.05, 0.3)
-        elapsed = 0
+        local refresh = math.clamp(tonumber(S.MGRefresh) or 30, 10, MOBILE and 30 or 60)
+        local interval = 1 / refresh
+        if elapsed < interval then return end
+        local sampleDt = math.clamp(elapsed, interval, 0.25)
+        elapsed = math.max(0, elapsed - interval)
 
         local char = LP.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -11376,37 +11308,77 @@ do
             local velocity = root.AssemblyLinearVelocity
             raw = Vector2.new(velocity.X, velocity.Z).Magnitude
         end
-        smoothed = smoothed + (raw - smoothed) * math.clamp(1 - math.pow(0.62, sampleDt * 30), 0.001, 1)
+        local smooth = math.clamp(tonumber(S.MGSmoothing) or 62, 0, 95) / 100
+        local response = 1 - math.pow(smooth, sampleDt * 30)
+        smoothed = smoothed + (raw - smoothed) * math.clamp(response, 0.001, 1)
         table.remove(history, 1)
-        table.insert(history, smoothed)
+        history[samples] = smoothed
         peakSpeed = math.max(peakSpeed * math.pow(0.997, sampleDt * 30), smoothed)
         maxSpeed = math.max(20, maxSpeed * math.pow(0.982, sampleDt * 30), smoothed * 1.22)
 
         local total = 0
-        for i = 1, #history do total = total + history[i] end
-        local average = total / #history
+        for i = 1, samples do total = total + history[i] end
+        local average = total / samples
+        speedLabel.Text = string.format("%.1f STUDS/S", smoothed)
+        averageLabel.Text = string.format("AVG %.1f", average)
+        peakLabel.Text = string.format("PEAK %.1f", peakSpeed)
 
-        local pct = math.clamp(smoothed / math.max(maxSpeed, 1), 0, 1)
-        local avgPct = math.clamp(average / math.max(maxSpeed, 1), 0, 1)
-
-        local lineWidth = math.clamp(800, 120, 2400)
-        mainLine.Size = UDim2.fromOffset(lineWidth * pct, 2)
-        avgDot.Position = UDim2.fromScale(avgPct, 0)
-
-        speedText.Text = string.format("%.0f", smoothed)
-        peakText.Text = "PEAK " .. string.format("%.0f", peakSpeed)
-        avgText.Text = "AVG " .. string.format("%.0f", average)
+        local style = S.MGStyle or "Gradient"
+        local hue = (tick() * 0.1) % 1
+        local chartSize = chart.AbsoluteSize
+        local chartWidth, chartHeight = math.max(chartSize.X, 1), math.max(chartSize.Y, 1)
+        local pointPcts = table.create(samples, 0)
+        local function sampleColor(index, pct)
+            if style == "Rainbow" then
+                return Color3.fromHSV((hue + index / samples * 0.28) % 1, 0.7, 1)
+            elseif style == "Velocity" then
+                return Color3.fromHSV(0.34 * (1 - pct), 0.76, 1)
+            elseif style == "Minimal" then
+                return T.Tx2
+            elseif style == "Accent" then
+                return T.Accent
+            end
+            return T.Accent:Lerp(Color3.fromRGB(96, 214, 255), pct * 0.72)
+        end
+        for i = 1, samples do
+            pointPcts[i] = math.clamp(history[i] / maxSpeed, 0, 1)
+        end
+        for i = 1, samples - 1 do
+            local p1, p2 = pointPcts[i], pointPcts[i + 1]
+            local x1 = ((i - 1) / (samples - 1)) * chartWidth
+            local x2 = (i / (samples - 1)) * chartWidth
+            local y1 = (1 - p1) * chartHeight
+            local y2 = (1 - p2) * chartHeight
+            local dx, dy = x2 - x1, y2 - y1
+            local length = math.sqrt(dx * dx + dy * dy)
+            local segment = segments[i]
+            segment.Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2)
+            segment.Size = UDim2.fromOffset(math.max(length + 1, 2), style == "Minimal" and 1 or 2)
+            segment.Rotation = math.deg(math.atan2(dy, dx))
+            segment.BackgroundColor3 = sampleColor(i + 1, p2)
+            segment.BackgroundTransparency = style == "Minimal" and 0.18 or 0.02
+        end
+        local latestPct = pointPcts[samples]
+        newestPoint.Position = UDim2.fromOffset(chartWidth - 3, (1 - latestPct) * chartHeight)
+        newestPoint.BackgroundColor3 = sampleColor(samples, latestPct)
+        newestPoint.Visible = latestPct > 0.001
+        local showGrid = S.MGGrid ~= false
+        for _, line in ipairs(gridLines) do line.Visible = showGrid end
     end))
-
-    HUDEls["Motion Graph"] = { frame = mgLine }
-    HUD.hMotionGraph = HUDEls["Motion Graph"]
 
     local secMG = mkSection(Pages.Visuals, "Motion Graph", 13, true)
     if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secMG) end
     mkToggle(secMG, "Enable Motion Graph", false, function(v)
         S.HUD_MotionGraph = v
-        mgLine.Visible = v
+        S._SetHUDVisible(HUDEls["Motion Graph"], v)
     end, 1)
+    mkCycle(secMG, "Graph Style", { "Gradient", "Accent", "Velocity", "Rainbow", "Minimal" }, "Gradient", function(v) S.MGStyle = v end, 2)
+    mkSlider(secMG, "Panel Width", 240, 460, MOBILE and 260 or 300, function(v) S.MGPanelWidth = v; resizeGraph() end, 3)
+    mkSlider(secMG, "Panel Height", 120, 260, MOBILE and 132 or 150, function(v) S.MGPanelHeight = v; resizeGraph() end, 4)
+    mkSlider(secMG, "Smoothing", 0, 95, 62, function(v) S.MGSmoothing = v end, 5)
+    mkSlider(secMG, "Refresh Rate", 10, MOBILE and 30 or 60, 30, function(v) S.MGRefresh = v end, 6)
+    mkToggle(secMG, "Show Grid", true, function(v) S.MGGrid = v; for _, line in ipairs(gridLines) do line.Visible = v end end, 7)
+    resizeGraph()
 end
 
 do
@@ -12392,7 +12364,7 @@ do
 end
 
 
-task.spawn(function()
+do
     local RS = game:GetService("ReplicatedStorage")
     local catalogContainer, catalogCount = nil, 0
     local appliedEffectObjects, appliedEffectId = {}, nil
@@ -13021,7 +12993,7 @@ task.spawn(function()
         if S._RefreshKnifeEffectCatalog == refreshCatalog then S._RefreshKnifeEffectCatalog = nil end
         S._ApplySelectedKnifeEffect = nil
     end)
-end)
+end
 
 do
     local dualModel, trackedHandle = nil, nil
@@ -19407,64 +19379,291 @@ do
             end
         end, 2)
     end
-
-    do
-        local aaEnabled, aaToggled = false, false
-        local aaConnection, aaHadKnife = nil, false
-        local function aaHasKnife()
-            local c = LP.Character
-            if c and c:FindFirstChild("Knife") then return true end
-            local bp = LP:FindFirstChild("Backpack")
-            return bp and bp:FindFirstChild("Knife") ~= nil
-        end
-        local function aaPerformStep(hum)
-            task.spawn(function()
-                local rndX = math.random() > 0.5 and 1 or -1
-                local rndZ = math.random() > 0.5 and 1 or -1
-                local st = tick()
-                while tick() - st < 0.15 do
-                    if hum and hum.Parent then hum:Move(Vector3.new(rndX, 0, rndZ).Unit, false) end
-                    RunService.RenderStepped:Wait()
-                end
-            end)
-        end
-        local function aaStop()
-            if aaConnection then aaConnection:Disconnect(); aaConnection = nil end
-            aaHadKnife = false
-        end
-        local function aaStart()
-            if aaConnection then return end
-            aaConnection = RunService.Heartbeat:Connect(function()
-                if not aaEnabled or not aaToggled then return end
-                local char = LP.Character
-                if not char then aaHadKnife = false; return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then aaHadKnife = false; return end
-                local hasK = aaHasKnife()
-                if hasK and not aaHadKnife then aaPerformStep(hum) end
-                aaHadKnife = hasK
-                if hasK then
-                    local oldVel = hrp.AssemblyLinearVelocity
-                    local mult = math.random(1, 2) == 1 and 320 or -320
-                    hrp.AssemblyLinearVelocity = Vector3.new(mult, 0, mult)
-                    RunService.RenderStepped:Wait()
-                    hrp.AssemblyLinearVelocity = oldVel
-                end
-            end)
-        end
-        mkToggle(secDesync, "Anti Aim", false, function(v)
-            S.AntiAim = v
-            aaEnabled = v
-            aaToggled = v
-            if v then aaStart() else aaStop() end
-        end, 3)
-        SG.Destroying:Connect(aaStop)
-        cleanup(aaStop)
-    end
 end
 
 do
+    local secAA = mkSection(Pages.Motion, "Anti-Aim Extension", 5.5, true)
+
+    local userWantsEnabled = false
+    local enabled = false
+    local velocityConnection = nil
+    local hadKnifeLastFrame = false
+
+    local function getPlayerList()
+        local list = { "None" }
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP then
+                table.insert(list, p.Name)
+            end
+        end
+        return list
+    end
+
+    local function findPlayerByName(name)
+        if not name or name == "None" then return nil end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Name == name then return p end
+        end
+        return nil
+    end
+
+    local function hasKnife()
+        local backpack = LP:FindFirstChild("Backpack")
+        local character = LP.Character
+        if backpack and backpack:FindFirstChild("Knife") then return true end
+        if character and character:FindFirstChild("Knife") then return true end
+        return false
+    end
+
+    local function isPlayerNearby(hrp)
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LP and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local otherHrp = player.Character.HumanoidRootPart
+                if (otherHrp.Position - hrp.Position).Magnitude <= 6 then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    local function isInWater(humanoid)
+        local state = humanoid:GetState()
+        return state == Enum.HumanoidStateType.Swimming or humanoid.FloorMaterial == Enum.Material.Water
+    end
+
+    local function slotPlayer(slotKey)
+        local name = tostring(S[slotKey] or "None")
+        return findPlayerByName(name)
+    end
+
+    local function isIgnoredPlayerArmed()
+        if S.AntiAimIgnoreList == false then return false end
+        local targets = { slotPlayer("AntiAimSlot1"), slotPlayer("AntiAimSlot2"), slotPlayer("AntiAimSlot3") }
+        for _, player in ipairs(targets) do
+            if player and player.Parent then
+                local backpack = player:FindFirstChild("Backpack")
+                local character = player.Character
+
+                if backpack then
+                    for _, item in ipairs(backpack:GetChildren()) do
+                        if item:IsA("Tool") then
+                            return true
+                        end
+                    end
+                end
+
+                if character then
+                    for _, item in ipairs(character:GetChildren()) do
+                        if item:IsA("Tool") then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    local function performRoleStep(humanoid)
+        task.spawn(function()
+            local randomX = math.random() > 0.5 and 1 or -1
+            local randomZ = math.random() > 0.5 and 1 or -1
+            local moveDir = Vector3.new(randomX, 0, randomZ).Unit
+
+            local startTime = tick()
+            while tick() - startTime < 0.15 do
+                if humanoid and humanoid.Parent then
+                    humanoid:Move(moveDir, false)
+                end
+                RunService.RenderStepped:Wait()
+            end
+        end)
+    end
+
+    local function stopAntiAim()
+        if velocityConnection then
+            velocityConnection:Disconnect()
+            velocityConnection = nil
+        end
+    end
+
+    local function startAntiAim()
+        if velocityConnection then return end
+        velocityConnection = tc(RunService.Heartbeat:Connect(function()
+            if isIgnoredPlayerArmed() then
+                if enabled then
+                    enabled = false
+                end
+                return
+            elseif userWantsEnabled and not enabled then
+                enabled = true
+            end
+
+            local character = LP.Character
+            if character and character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("Humanoid") then
+                local humanoid = character.Humanoid
+                if humanoid.Health > 0 then
+                    local hrp = character.HumanoidRootPart
+                    local currentlyHasKnife = hasKnife()
+
+                    if currentlyHasKnife and not hadKnifeLastFrame then
+                        performRoleStep(humanoid)
+                    end
+                    hadKnifeLastFrame = currentlyHasKnife
+
+                    if currentlyHasKnife and not isPlayerNearby(hrp) and not isInWater(humanoid) then
+                        local oldVelocity = hrp.AssemblyLinearVelocity
+                        local state = humanoid:GetState()
+                        local isJumping = (state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall)
+                        local isStopped = (humanoid.MoveDirection.Magnitude == 0)
+
+                        local multiplier = math.random(1, 2) == 1 and 320 or -320
+
+                        if isJumping then
+                            local jumpMultY = math.random(1, 2) == 1 and 250 or -250
+                            hrp.AssemblyLinearVelocity = Vector3.new(multiplier, jumpMultY, multiplier)
+                        elseif isStopped then
+                            local stopMult = math.random(1, 2) == 1 and 400 or -400
+                            hrp.AssemblyLinearVelocity = Vector3.new(stopMult, 0, stopMult)
+                        else
+                            hrp.AssemblyLinearVelocity = Vector3.new(multiplier, 0, multiplier)
+                        end
+
+                        RunService.RenderStepped:Wait()
+                        hrp.AssemblyLinearVelocity = oldVelocity
+                    end
+                end
+            else
+                hadKnifeLastFrame = false
+            end
+        end))
+    end
+
+    mkToggle(secAA, "Enable Anti-Aim", false, function(v)
+        S.AntiAim = v
+        userWantsEnabled = v
+        enabled = v
+        if v then
+            startAntiAim()
+        else
+            stopAntiAim()
+        end
+    end, 1, "AntiAim")
+
+    mkToggle(secAA, "Enable Ignore List", true, function(v)
+        S.AntiAimIgnoreList = v
+    end, 2, "AntiAimIgnoreList")
+
+    local function mkPlayerDropdown(parent, label, order, slotKey)
+        local row = Instance.new("Frame")
+        row.Name = label
+        row.Parent = parent
+        row.LayoutOrder = order
+        row.Size = UDim2.new(1, 0, 0, M.rowH)
+        row.BackgroundTransparency = 1
+        row.BackgroundColor3 = T.Hover
+        pcall(function() row:SetAttribute("ThemeColorRole_BackgroundColor3", "Hover") end)
+        row.Active = true
+        row.BorderSizePixel = 0
+        Corner(row, 6)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Parent = row
+        lbl.BackgroundTransparency = 1
+        lbl.Position = UDim2.new(0, 6, 0, 0)
+        lbl.Size = UDim2.new(1, -(M.cycleW + 74), 1, 0)
+        lbl.Font = F
+        lbl.TextSize = M.rowFont
+        lbl.TextTruncate = Enum.TextTruncate.None
+        lbl.TextWrapped = false
+        lbl.TextColor3 = T.Tx2
+        pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        bindLocalizedText(lbl, label, label, false)
+
+        local btn = Instance.new("TextButton")
+        btn.Parent = row
+        btn.AnchorPoint = Vector2.new(1, 0.5)
+        btn.Position = UDim2.new(1, -6, 0.5, 0)
+        btn.Size = UDim2.new(0, M.cycleW, 0, M.cycleH)
+        btn.BackgroundColor3 = T.Elev
+        pcall(function() btn:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+        btn.Font = FM
+        btn.TextSize = MOBILE and 13 or 12
+        btn.TextColor3 = T.Tx
+        pcall(function() btn:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
+        Corner(btn, 6)
+        Stroke(btn, T.Bd2, 1, 0.4)
+
+        local function applyName(name)
+            name = tostring(name or "None")
+            if not table.find(getPlayerList(), name) then name = "None" end
+            S[slotKey] = name
+            btn.Text = name
+            pcall(function() if S._RequestAutoSave then S._RequestAutoSave() end end)
+        end
+
+        local function openPicker()
+            SFX.Click()
+            local opts = getPlayerList()
+            local cur = btn.Text
+            local idx = 1
+            for i, o in ipairs(opts) do
+                if o == cur then idx = i break end
+            end
+            if S._OpenOptionPicker then
+                S._OpenOptionPicker(label, opts, idx, function(newIdx)
+                    local name = opts[newIdx]
+                    local p = findPlayerByName(name)
+                    Notify(label, p and p.Name or "None", 2)
+                    applyName(name)
+                end)
+            end
+        end
+
+        btn.MouseButton1Click:Connect(openPicker)
+        btn.MouseButton2Click:Connect(openPicker)
+        btn.MouseEnter:Connect(function()
+            TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Hover }):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService.Create(TweenService, btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Elev }):Play()
+        end)
+
+        btn.Text = tostring(S[slotKey] or "None")
+
+        table.insert(UIRegistry, { label = string.lower(label), row = row, card = parent and parent.Parent or nil })
+        table.insert(ConfigControls, {
+            id = _cfgId(parent, label),
+            get = function() return tostring(S[slotKey] or "None") end,
+            set = function(v) applyName(v) end,
+        })
+        return {
+            refresh = function() applyName(S[slotKey]) end,
+        }
+    end
+
+    local drop1 = mkPlayerDropdown(secAA, "Ignore Player 1", 3, "AntiAimSlot1")
+    local drop2 = mkPlayerDropdown(secAA, "Ignore Player 2", 4, "AntiAimSlot2")
+    local drop3 = mkPlayerDropdown(secAA, "Ignore Player 3", 5, "AntiAimSlot3")
+
+    tc(Players.PlayerAdded:Connect(function()
+        drop1.refresh()
+        drop2.refresh()
+        drop3.refresh()
+    end))
+    tc(Players.PlayerRemoving:Connect(function()
+        drop1.refresh()
+        drop2.refresh()
+        drop3.refresh()
+    end))
+end
+
+do
+
     local secView = mkSection(Pages.Visuals, "View", 4, true)
     if S._RegisterVisualsEnvSection then pcall(S._RegisterVisualsEnvSection, secView) end
 
@@ -19840,308 +20039,40 @@ end
 -- <<< INERTIA AUTO ROLES LOGIC <<<
 
 
--- >>> ALL NEW FEATURES (separate proto for register limit) >>>
-task.spawn(function()
+-- >>> INERTIA NETWORK LOGIC >>>
+do
     local LP = game:GetService("Players").LocalPlayer
-    local HttpService = game:GetService("HttpService")
-    local RS = game:GetService("ReplicatedStorage")
-    local CHAT_API = "https://inertiahub.xyz/api/v1/chat"
-    local PRESENCE_API = "https://inertiahub.xyz/api/v1/telemetry/presence"
-    local chatChannel = "mm2"
-    local lastPresencePing = 0
-    local onlineUsers = {}
-
-    local function createTag(char, playerName)
+    
+    local function createTag(char)
         if not char then return end
         local head = char:WaitForChild("Head", 5)
         if not head then return end
         if head:FindFirstChild("InertiaTag") then return end
+        
         local bg = Instance.new("BillboardGui")
         bg.Name = "InertiaTag"
-        bg.Size = UDim2.new(0, 120, 0, 24)
+        bg.Size = UDim2.new(0, 100, 0, 30)
         bg.StudsOffset = Vector3.new(0, 2.5, 0)
         bg.AlwaysOnTop = true
-        bg.MaxDistance = 120
+        
         local text = Instance.new("TextLabel")
         text.Size = UDim2.new(1, 0, 1, 0)
         text.BackgroundTransparency = 1
-        text.Text = "INERTIA USER"
+        text.Text = "Inertia User"
         text.Font = Enum.Font.GothamBold
-        text.TextSize = 12
-        text.TextColor3 = Color3.fromRGB(255, 55, 95)
+        text.TextSize = 14
+        text.TextColor3 = Color3.fromRGB(255, 60, 100)
         text.TextStrokeTransparency = 0
         text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
         text.Parent = bg
+        
         bg.Parent = head
     end
 
-    if LP.Character then createTag(LP.Character, LP.Name) end
+    if LP.Character then createTag(LP.Character) end
     LP.CharacterAdded:Connect(function(char)
         task.wait(0.5)
-        createTag(char, LP.Name)
+        createTag(char)
     end)
-
-    local function updateOnlineUsers()
-        pcall(function()
-            local url = PRESENCE_API .. "?game=mm2&within=10"
-            local body = game:HttpGet(url)
-            local data = HttpService:JSONDecode(body)
-            if type(data) == "table" then
-                local names = {}
-                for _, u in ipairs(type(data.users)=="table" and data.users or data) do
-                    if u and u.name and u.name ~= LP.Name then
-                        names[u.name] = true
-                    end
-                end
-                onlineUsers = names
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= LP and p.Character then
-                        local head = p.Character:FindFirstChild("Head")
-                        if head then
-                            if onlineUsers[p.Name] then
-                                if not head:FindFirstChild("InertiaTag") then
-                                    createTag(p.Character, p.Name)
-                                end
-                            else
-                                local tag = head:FindFirstChild("InertiaTag")
-                                if tag then tag:Destroy() end
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-    end
-
-    local chatOpen = false
-    local chatInput = Instance.new("TextBox")
-    chatInput.Name = "InertiaChatInput"
-    chatInput.Parent = SG
-    chatInput.Position = UDim2.new(0, 42, 0.85, -2)
-    chatInput.Size = UDim2.fromOffset(MOBILE and 200 or 220, MOBILE and 36 or 28)
-    chatInput.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
-    chatInput.BackgroundTransparency = 0.02
-    chatInput.BorderSizePixel = 0
-    chatInput.Font = Enum.Font.Gotham
-    chatInput.TextSize = 13
-    chatInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    chatInput.PlaceholderText = "chat..."
-    chatInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-    chatInput.Text = ""
-    chatInput.ClearTextOnFocus = false
-    chatInput.Visible = false
-    chatInput.ZIndex = 970
-    Instance.new("UICorner", chatInput).CornerRadius = UDim.new(0, MOBILE and 18 or 14)
-    Instance.new("UIStroke", chatInput).Color = Color3.fromRGB(30, 30, 30); chatInput:FindFirstChildOfClass("UIStroke").Thickness = 1
-    local function sendChatMsg()
-        local msg = chatInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
-        if #msg < 1 or #msg > 500 then chatInput.Text = ""; return end
-        pcall(function()
-            game:GetService("HttpService"):PostAsync("https://inertiahub.xyz/api/v1/chat", game:GetService("HttpService"):JSONEncode({
-                channel = chatChannel, sender = LP.Name, content = msg,
-            }), Enum.HttpContentType.ApplicationJson)
-        end)
-        chatInput.Text = ""
-    end
-    chatInput.FocusLost:Connect(function(ep) if ep then sendChatMsg() end end)
-
-    local chatBtn = Instance.new("TextButton")
-    chatBtn.Name = "InertiaChatBtn"
-    chatBtn.Parent = SG
-    chatBtn.Position = UDim2.new(1, MOBILE and -70 or -48, 0.85, 0)
-    chatBtn.Size = UDim2.fromOffset(MOBILE and 44 or 36, MOBILE and 44 or 36)
-    chatBtn.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
-    chatBtn.BackgroundTransparency = 0.02
-    chatBtn.BorderSizePixel = 0
-    chatBtn.Text = "MSG"
-    chatBtn.TextSize = MOBILE and 11 or 10
-    chatBtn.Font = Enum.Font.GothamBold
-    chatBtn.ZIndex = 968
-    chatBtn.AutoButtonColor = false
-    chatBtn.TextColor3 = Color3.fromRGB(255, 55, 95)
-    Instance.new("UICorner", chatBtn).CornerRadius = UDim.new(0, MOBILE and 22 or 18)
-    Instance.new("UIStroke", chatBtn).Color = Color3.fromRGB(30, 30, 30); chatBtn:FindFirstChildOfClass("UIStroke").Thickness = 1
-    chatBtn.MouseButton1Click:Connect(function()
-        chatOpen = not chatOpen
-        chatInput.Visible = chatOpen
-        if chatOpen then task.defer(function() chatInput:CaptureFocus() end) end
-    end)
-
-    tc(RunService.Heartbeat:Connect(function()
-        local now = tick()
-        if now - lastPresencePing > 8 then
-            lastPresencePing = now
-            pcall(function()
-                local url = PRESENCE_API .. "?userId=" .. LP.UserId .. "&game=mm2&placeId=" .. game.PlaceId .. "&name=" .. HttpService:UrlEncode(LP.Name)
-                game:HttpGet(url)
-            end)
-            updateOnlineUsers()
-        end
-    end))
-
-    do
-        local secChat = mkSection(Pages.Misc, "Inertia Chat", 8, true)
-        if S._RegisterMiscSection then S._RegisterMiscSection(secChat, "Utility") end
-        mkToggle(secChat, "Chat Button", true, function(v)
-            chatBtn.Visible = v
-        end, 1)
-        mkCycle(secChat, "Channel", { "mm2", "universal", "global" }, "mm2", function(v)
-            chatChannel = v
-        end, 2)
-    end
-
-    -- THROWN KNIFE AURA
-    local thrownKnives = {}
-    local lastKnifeAura = 0
-    task.spawn(function()
-        while S.Gui and S.Gui.Parent do
-            task.wait(0.15)
-            if S.Destroyed then break end
-            pcall(function()
-                if not S.ThrownKnifeAura then
-                    thrownKnives = {}
-                    return
-                end
-                local now = tick()
-                local range = S.ThrownKnifeAuraRange or 10
-                local myChar = LP.Character
-                local me = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                if not me then return end
-                local rs = game:GetService("ReplicatedStorage")
-                local knifeEvent = rs:FindFirstChild("KnifeThrown") or (rs:FindFirstChild("Events") and rs.Events:FindFirstChild("KnifeThrown"))
-                if not knifeEvent then return end
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.Name:find("Knife") and obj.Transparency < 0.5 and obj.Anchored == false then
-                        local parent = obj.Parent
-                        local isTool = parent and parent:IsA("Tool")
-                        if not isTool then
-                            if not thrownKnives[obj] then thrownKnives[obj] = true end
-                            for _, p in ipairs(Players:GetPlayers()) do
-                                if p ~= LP and p.Character then
-                                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                                    if hrp and hum and hum.Health > 0 and (hrp.Position - obj.Position).Magnitude <= range then
-                                        pcall(function() knifeEvent:FireServer(me.CFrame, CFrame.new(hrp.Position)) end)
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end)
-
-    -- ANTI COIN
-    local lastSafePos = nil
-    tc(RunService.Heartbeat:Connect(function()
-        if not S.AntiCoin then return end
-        pcall(function()
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if not hrp or not hum or hum.Health <= 0 then return end
-            local pos = hrp.Position
-            if pos.X == pos.X and pos.Y == pos.Y and pos.Z == pos.Z
-                and pos.X < 1e5 and pos.Y < 1e5 and pos.Z < 1e5
-                and pos.X > -1e5 and pos.Y > -1e5 and pos.Z > -1e5 then
-                lastSafePos = pos
-            elseif lastSafePos then
-                local coinContainer = workspace:FindFirstChild("CoinContainer", true)
-                if coinContainer then
-                    for _, coin in ipairs(coinContainer:GetDescendants()) do
-                        if coin:IsA("BasePart") and coin.Transparency < 1 then
-                            pcall(function() coin.Position = lastSafePos end)
-                        end
-                    end
-                end
-            end
-        end)
-    end))
-
-    -- ROLE CHAMS
-    local chamsCache = {}
-    local lastChamsUpdate = 0
-    tc(RunService.Heartbeat:Connect(function()
-        local now = tick()
-        if now - lastChamsUpdate < 0.3 then return end
-        lastChamsUpdate = now
-        if not S.RoleChams then
-            for char, hl in pairs(chamsCache) do
-                if hl and hl.Parent then hl:Destroy() end
-                chamsCache[char] = nil
-            end
-            return
-        end
-        local opacity = (S.ChamsOpacity or 50) / 100
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character then
-                local char = p.Character
-                local r = getRole(p)
-                if r and r ~= "Innocent" and r ~= "???" then
-                    local color = ChamsRoleShade[r]
-                    if not color then color = ChamsRoleShade["Murderer"] end
-                    if not chamsCache[char] then
-                        local hl = Instance.new("Highlight")
-                        hl.Name = "InertiaCham"
-                        hl.FillTransparency = 1 - opacity
-                        hl.OutlineTransparency = 0.2
-                        hl.FillColor = color
-                        hl.OutlineColor = color
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        hl.Parent = char
-                        chamsCache[char] = hl
-                    else
-                        local hl = chamsCache[char]
-                        if hl.Parent ~= char then hl.Parent = char end
-                        hl.FillColor = color
-                        hl.OutlineColor = color
-                    end
-                else
-                    local hl = chamsCache[char]
-                    if hl then hl:Destroy(); chamsCache[char] = nil end
-                end
-            end
-        end
-        for char, hl in pairs(chamsCache) do
-            if not char.Parent then hl:Destroy(); chamsCache[char] = nil end
-        end
-    end))
-    cleanup(function()
-        for _, hl in pairs(chamsCache) do if hl.Parent then hl:Destroy() end end
-        table.clear(chamsCache)
-    end)
-
-    -- WATERMARK
-    local lastRole = "Innocent"
-    tc(RunService.Heartbeat:Connect(function()
-        pcall(function()
-            local r = getRole(LP)
-            if r and r ~= lastRole then
-                lastRole = r
-                if r == "Murderer" then
-                    HUD.islandDot.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-                    if HUD.islandDotScale then
-                        TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.4 }):Play()
-                        task.wait(0.3)
-                        TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 1 }):Play()
-                    end
-                elseif r == "Sheriff" or r == "Hero" then
-                    HUD.islandDot.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
-                    if HUD.islandDotScale then
-                        TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.4 }):Play()
-                        task.wait(0.3)
-                        TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 1 }):Play()
-                    end
-                else
-                    HUD.islandDot.BackgroundColor3 = T.Accent
-                    if HUD.islandDotScale then
-                        TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 1 }):Play()
-                    end
-                end
-            end
-        end)
-    end))
-end)
--- <<< WATERMARK ROLE TRANSITION <<<
+end
+-- <<< INERTIA NETWORK LOGIC <<<
