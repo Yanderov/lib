@@ -114,6 +114,7 @@ local S = {
     SheriffSilentAimPiercing = false,
     SheriffAntiDesync = false,
     ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
+    ForceShootMode = "Target", WallbangMode = "Muzzle",
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -6883,11 +6884,15 @@ do
     mkToggle(secSheriffAim, "Silent Aim", false, function(v) S.SheriffSilentAim = v end, 1, "Sheriff")
     mkToggle(secSheriffAim, "Piercing Bullet", false, function(v) S.SheriffSilentAimPiercing = v end, 2)
     mkToggle(secSheriffAim, "Wall Check", false, function(v) S.SheriffSilentAimWallCheck = v end, 3)
+    mkCycle(secSheriffAim, "Wallbang", { "Muzzle", "Point Blank", "Inside", "Head" }, "Muzzle",
+        function(v) S.WallbangMode = v end, 3.5)
     mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 4)
 
     local secGunFire = mkSection(Pages.Combat, "Gun Fire", 2)
     secGunFire.Parent:SetAttribute("ConfigSection", "Silent Aim")
     mkToggle(secGunFire, "Force Shoot", false, function(v) S.ForceShoot = v end, 1)
+    mkCycle(secGunFire, "Force Shoot Mode", { "Target", "Mouse" }, "Target",
+        function(v) S.ForceShootMode = v end, 1.5)
     mkToggle(secGunFire, "Hold Mouse to Fire", true, function(v) S.ForceShootHold = v end, 2)
     mkSlider(secGunFire, "Fire Delay (ms)", 0, 500, 60, function(v) S.ForceShootDelay = v end, 3)
     do
@@ -6970,9 +6975,22 @@ do
                         if gun.Enabled == false then gun.Enabled = true end
                         local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                         local att = hrp and hrp:FindFirstChild("GunRaycastAttachment")
-                        local target = mouseTargetCF()
-                        if not att or not target then return end
-                        gun.Shoot:FireServer(att.WorldCFrame, target)
+                        if not att then return end
+
+                        local originCF, targetCF = att.WorldCFrame, nil
+
+                        if (S.ForceShootMode or "Target") == "Target"
+                            and type(S._ResolveGunShot) == "function" then
+                            local pos, origin = S._ResolveGunShot()
+                            if not pos then return end
+                            if origin then originCF = origin end
+                            targetCF = CFrame.new(pos)
+                        else
+                            targetCF = mouseTargetCF()
+                        end
+                        if not targetCF then return end
+
+                        gun.Shoot:FireServer(originCF, targetCF)
                     end)
                     task.wait(delay > 0 and delay or 0.03)
                 end
@@ -7273,25 +7291,44 @@ do
     end
     S._ResolveAntiDesyncPos = resolveTargetPos
 
-    local function piercingOrigin(hitPos, targetChar)
+    local function wallbangOrigin(mode, hitPos, targetChar)
+        if mode == "Inside" then
+            return CFrame.lookAt(hitPos, hitPos + Vector3.new(0, 0, 1))
+        end
+        if mode == "Head" then
+            local head = targetChar:FindFirstChild("Head")
+            local hp = head and head.Position or (hitPos + Vector3.new(0, 1.5, 0))
+            return CFrame.lookAt(hp + Vector3.new(0, 0.35, 0), hp)
+        end
+
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
         local vel = hrp and hrp.AssemblyLinearVelocity or Vector3.zero
         local back = (vel.Magnitude > 1.5) and (-vel.Unit * 2) or Vector3.new(0, 1.25, 0)
         return CFrame.lookAt(hitPos + back, hitPos)
     end
+    S._WallbangOrigin = wallbangOrigin
+
+    S._ResolveGunShot = function()
+        local targetChar = getMurdererChar()
+        if not targetChar then return nil end
+        local hrp = targetChar:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local pos = resolveTargetPos(targetChar, hrp)
+        local mode = S.WallbangMode or "Muzzle"
+
+        if mode == "Muzzle" and S.SheriffSilentAimPiercing then mode = "Point Blank" end
+        local origin = (mode ~= "Muzzle") and wallbangOrigin(mode, pos, targetChar) or nil
+        return pos, origin
+    end
 
     local function handleFireServer(self, ...)
     local args = {...}
 
-    if self.Name == "Shoot" and (S.SheriffSilentAim or S.SheriffSilentAimPiercing) then
-        local targetChar = getMurdererChar()
-        if not targetChar then return nil end
-        local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-        local pos = resolveTargetPos(targetChar, hrp)
-        if S.SheriffSilentAimPiercing then
-            args[1] = piercingOrigin(pos, targetChar)
-        end
-
+    if self.Name == "Shoot" and (S.SheriffSilentAim or S.SheriffSilentAimPiercing
+        or (S.WallbangMode and S.WallbangMode ~= "Muzzle")) then
+        local pos, origin = S._ResolveGunShot()
+        if not pos then return nil end
+        if origin then args[1] = origin end
         args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
         return args
     end
