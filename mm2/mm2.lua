@@ -20375,9 +20375,13 @@ task.spawn(function()
 	local gameName = _liiIl1III("\155\187\189\209\199\219\227\216\234",63)
 	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
 		gameName = _liiIl1III("\160\167\147",76)
-	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937 then
+
+	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937
+		or game.PlaceId == 12552538292 then
 		gameName = _liiIl1III("\176\217\211\232\239\248\252\246",89)
-	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664 then
+
+	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664
+		or game.PlaceId == 18199615050 then
 		gameName = _liiIl1III("\177\217\232\241\247\255\3\13\12\37",102)
 	end
 

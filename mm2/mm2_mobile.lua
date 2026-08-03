@@ -20376,9 +20376,13 @@ task.spawn(function()
 	local gameName = _1lII1i1i1("\27\59\61\81\71\91\99\88\111",191)
 	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
 		gameName = _1lII1i1i1("\32\39\19",204)
-	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937 then
+
+	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937
+		or game.PlaceId == 12552538292 then
 		gameName = _1lII1i1i1("\48\89\83\104\116\125\129\123",217)
-	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664 then
+
+	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664
+		or game.PlaceId == 18199615050 then
 		gameName = _1lII1i1i1("\49\89\109\118\124\132\136\146\145\170",230)
 	end
 

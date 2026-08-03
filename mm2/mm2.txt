@@ -20383,9 +20383,13 @@ task.spawn(function()
 	local gameName = "Universal"
 	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
 		gameName = "MM2"
-	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937 then
+
+	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937
+		or game.PlaceId == 12552538292 then
 		gameName = "Pressure"
-	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664 then
+
+	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664
+		or game.PlaceId == 18199615050 then
 		gameName = "Demonology"
 	end
 

@@ -30,9 +30,14 @@ task.spawn(function()
 	local gameName = "Universal"
 	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 66654135 then
 		gameName = "MM2"
-	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937 then
+	-- 12552538292 is Hadal Blacksite, the place a Pressure RUN happens in. Only the lobby id was
+	-- listed, so presence reported "Universal" for anyone actually playing. Confirmed by joining.
+	elseif game.PlaceId == 12411473842 or game.PlaceId == 14120361937
+		or game.PlaceId == 12552538292 then
 		gameName = "Pressure"
-	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664 then
+	-- 18199615050 is the live Demonology place; neither listed id matches it any more.
+	elseif game.PlaceId == 15886981881 or game.PlaceId == 18451885664
+		or game.PlaceId == 18199615050 then
 		gameName = "Demonology"
 	end
 
