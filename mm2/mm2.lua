@@ -7328,6 +7328,12 @@ end, 6)
         if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "Environment") end
     end
 
+    local extraESPSections = {}
+    S._RegisterVisualsESPSection = function(sec)
+        table.insert(extraESPSections, sec)
+        if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "ESP") end
+    end
+    S._RegisterVisualsESPSections = extraESPSections
     S._RegisterVisualsCustomsSection = function(sec)
         table.insert(S._CustomsSections, sec)
         if sec and sec.Parent then sec.Parent.Visible = (activeVisualsSubTab == "Customs") end
@@ -7349,6 +7355,9 @@ end, 6)
             end
         end
         setVisible(isESP, sec1, sec2, sec5, secItemChams)
+        for _, s in ipairs(extraESPSections) do
+            if s and s.Parent then s.Parent.Visible = isESP end
+        end
         setVisible(isEnvironment, sec4, secFx)
 
         setVisible(isShaders, secShaders, secHandShaders, secShaderCustom)
@@ -19970,36 +19979,38 @@ do
 
                     if wantBox then
 
-                        local cf = root.CFrame
-                        local sz = Vector3.new(4, 6, 2)
-                        pcall(function()
-                            local c2, s = char:GetBoundingBox()
-                            if c2 then cf = c2 end
-                            if s then sz = s end
-                        end)
-                        local hx, hy, hz = sz.X / 2, sz.Y / 2, sz.Z / 2
-                        local pts, allFront = {}, true
-                        for i = 1, 8 do
-                            local sx = (i % 2 == 1) and -hx or hx
-                            local sy = (i <= 4) and -hy or hy
-                            local sz2 = ((i == 1 or i == 2 or i == 5 or i == 6)) and -hz or hz
-                            local world = (cf * CFrame.new(sx, sy, sz2)).Position
-                            local sp, vis = cam:WorldToViewportPoint(world)
-                            if not vis then allFront = false break end
-                            pts[i] = Vector2.new(sp.X, sp.Y)
-                        end
-                        for i, e in ipairs(BOX_EDGES) do
-                            local line = p.box[i]
-                            if allFront then
-                                line.From = pts[e[1]]
-                                line.To = pts[e[2]]
-                                line.Color = col
-                                line.Thickness = thick
-                                line.Visible = true
-                            else
-                                line.Visible = false
+                        local li = 0
+                        for _, part in ipairs(char:GetChildren()) do
+                            if part:IsA("BasePart") and part.Transparency < 1 then
+                                local cf, sz = part.CFrame, part.Size
+                                local hx, hy, hz = sz.X / 2, sz.Y / 2, sz.Z / 2
+                                local pts, allFront = {}, true
+                                for k = 1, 8 do
+                                    local sx = (k % 2 == 1) and -hx or hx
+                                    local sy = (k <= 4) and -hy or hy
+                                    local sz2 = (k == 1 or k == 2 or k == 5 or k == 6) and -hz or hz
+                                    local sp, vis = cam:WorldToViewportPoint((cf * CFrame.new(sx, sy, sz2)).Position)
+                                    if not vis then allFront = false break end
+                                    pts[k] = Vector2.new(sp.X, sp.Y)
+                                end
+                                if allFront then
+                                    for _, e in ipairs(BOX_EDGES) do
+                                        li += 1
+                                        local line = p.box[li]
+                                        if not line then
+                                            line = newLine()
+                                            p.box[li] = line
+                                        end
+                                        line.From = pts[e[1]]
+                                        line.To = pts[e[2]]
+                                        line.Color = col
+                                        line.Thickness = thick
+                                        line.Visible = true
+                                    end
+                                end
                             end
                         end
+                        for k = li + 1, #p.box do p.box[k].Visible = false end
                     else
                         for _, l in ipairs(p.box) do l.Visible = false end
                     end
@@ -20027,13 +20038,14 @@ do
     end)
 
     local secDraw = mkSection(Pages.Visuals, "Draw ESP", 2.5)
+    if S._RegisterVisualsESPSection then pcall(S._RegisterVisualsESPSection, secDraw) end
     if not hasDrawing then
         mkAction(secDraw, "Executor has no Drawing API", function()
             Notify("Draw ESP", "This executor does not expose Drawing.new", 4)
         end, 1)
     else
         mkToggle(secDraw, "Skeleton", false, function(v) S.SkeletonESP = v refresh() end, 1)
-        mkToggle(secDraw, "Wireframe Box", false, function(v) S.WireframeESP = v refresh() end, 2)
+        mkToggle(secDraw, "Wireframe", false, function(v) S.WireframeESP = v refresh() end, 2)
         mkSlider(secDraw, "Line Thickness", 1, 5, 1, function(v) S.DrawESPThickness = v end, 3)
     end
     task.delay(3, refresh)
