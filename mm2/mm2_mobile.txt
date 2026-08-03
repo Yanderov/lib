@@ -38,7 +38,7 @@ local S = {
     HubTag = nil, HubTagAnnounce = nil, HubTagShowSelf = nil,
 
     FogEnabled = nil, Weather = nil, WeatherSound = nil, AmbientSound = nil,
-    MGWidth = 2, MGStyle = "Accent", UIFont = "Gotham",
+    UIFont = "Gotham",
     HUD_Keybinds = false, HUD_GunStatus = false, HUD_FPS = false,
     HUD_Ping = false, HUD_Coords = false, NoEmoteStop = false, LoopEmote = false,
     NameESP = false, DistanceESP = false, RoleESP = false,
@@ -46,7 +46,6 @@ local S = {
     HeadDot = false, TracerOrigin = "Bottom",
     ChamsOpacity = 50, RoleChams = false, RoleHUDEnabled = false,
     ChamsStyle = "Highlight", ChamsThroughWalls = true,
-    SkeletonESP = false, WireframeESP = false, DrawESPThickness = 1,
 
     GunDropChams = false,
     ItemChamsMode = "Highlight", ItemChamsColor = "White", ItemChamsRainbow = false,
@@ -70,7 +69,6 @@ local S = {
     FOVEnabled = false, ShowFOV = false, RainbowFOV = false,
     FOVThickness = 2, FOVColor = "White", FOVRadius = 360,
     HUD_Watermark = false, HUD_Speed = false, HUD_Session = false, HUD_KillFeed = false,
-    HUD_MotionGraph = false,
     AutoRespawn = false, WalkOnWater = false, AutoSprint = false, AntiLag = false,
     InfiniteJump = false, Spinbot = false, SpinSpeed = 20, AntiAFK = false, Freeze = false,
     Bhop = false, BhopMax = 28, SpeedGlitch = false, AirSpeed = 50,
@@ -87,7 +85,6 @@ local S = {
     Fling = false, FlyFling = false, InvisFling = false,
     FastAutofarm = false, FastAutofarmSpeed = 20,
 
-    AutofarmAvoidRadius = 60,
         FollowPlayer = false, FollowPlayerDistance = 4, FollowPlayerMode = "Follow", FollowPlayerSpeed = 60, FollowPlayerOrbitSpeed = 20,
     CustomTime = false, TimeOfDay = 14, Gravity = 196, MoonGravity = false, DisableBlur = false,
     CrosshairShape = "Cross", CrosshairColor = "White", CrosshairSize = 12, CrosshairThickness = 2, CrosshairGap = 4, CrosshairRotation = 0,
@@ -107,7 +104,7 @@ local S = {
     SheriffAntiDesync = false,
     ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
     ForceShootMode = "Target", WallbangMode = "Muzzle",
-    GunTargetMode = "Murderer", GunPredictMode = "Off",
+    GunPredictMode = "Off",
     PerkNoCooldown = false, PerkAutoUse = false,
     AntiAim = false, AntiAimKnifeOnly = true, AntiAimStrength = 320, AntiAimNearRange = 6,
     AntiCoin = false,
@@ -772,11 +769,6 @@ local function applyTheme(themeName)
                 obj.Color = ColorSequence.new(
                     T.White:Lerp(T.Accent, 0.14),
                     T.White:Lerp(T.Card, 0.06)
-                )
-            elseif obj.Name == "QuickStatusGradient" then
-                obj.Color = ColorSequence.new(
-                    T.White:Lerp(T.Accent, 0.16),
-                    T.White:Lerp(T.Elev, 0.08)
                 )
             elseif obj.Name == "DynamicIslandGradient" then
                 obj.Color = ColorSequence.new(
@@ -4361,6 +4353,19 @@ local function mkSection(parent, title, order)
     end)
     card:SetAttribute("InertiaCollapsible", true)
 
+    task.defer(function()
+        if collapsed then return end
+        collapsed = true
+        card:SetAttribute("InertiaCollapsed", true)
+        card.ClipsDescendants = true
+        chevron.Rotation = 0
+        for _, ch in ipairs(inner:GetChildren()) do
+            if ch ~= hdrRow and ch:IsA("GuiObject") then ch.Visible = false end
+        end
+        inner.AutomaticSize = Enum.AutomaticSize.None
+        inner.Size = UDim2.new(1, 0, 0, HEADER_H)
+    end)
+
     S._CollapseHooks = S._CollapseHooks or {}
     table.insert(S._CollapseHooks, function()
         if not collapsed then return end
@@ -7512,9 +7517,6 @@ do
     mkCycle(secSheriffAim, "Wallbang",
         { "Muzzle", "Point Blank", "Inside", "Head", "Above", "Under", "Orbit" }, "Muzzle",
         function(v) S.WallbangMode = v end, 3.5)
-    mkCycle(secSheriffAim, "Gun Target",
-        { "Murderer", "Murderer Only", "Nearest" }, "Murderer",
-        function(v) S.GunTargetMode = v end, 3.6)
     mkCycle(secSheriffAim, "Gun Prediction", S._PredictNames or { "Off" }, "Off",
         function(v) S.GunPredictMode = v end, 3.8)
     mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 4)
@@ -7966,7 +7968,7 @@ do
     S._WallbangOrigin = wallbangOrigin
 
     local function gunTargetChar()
-        local mode = S.GunTargetMode or "Murderer"
+        local mode = "Murderer"
         local myHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
 
         local function alive(p)
@@ -10640,168 +10642,6 @@ end
 
 HUD.hFps, HUD.fpsLbl = mkStatHUD("FPS", UDim2.new(1, -142, 0, 290), 130, 854)
 
-do
-    HUD.quickFrame = Instance.new("Frame")
-    HUD.quickFrame.Name = "HUD_QuickStatus"
-
-    pcall(function() HUD.quickFrame:SetAttribute("InertiaHudSurface", true) end)
-    S._MarkSurface(HUD.quickFrame)
-    HUD.quickFrame.Parent = Main
-    HUD.quickFrame.Position = UDim2.fromOffset(8, 410)
-
-    local QUICK_W = 124
-    HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, 150)
-    HUD.quickFrame.BackgroundColor3 = T.Card; pcall(function() HUD.quickFrame:SetAttribute("ThemeColorRole_BackgroundColor3", "Card") end)
-    HUD.quickFrame.BackgroundTransparency = 0.01
-    HUD.quickFrame.BorderSizePixel = 0
-    HUD.quickFrame.ClipsDescendants = true
-    HUD.quickFrame.ZIndex = 25
-    Corner(HUD.quickFrame, 10)
-    local quickStroke = Stroke(HUD.quickFrame, T.Bd2, 1, 0.32); pcall(function() quickStroke:SetAttribute("ThemeColorRole_Color", "Bd2") end)
-    local quickGrad = Grad(HUD.quickFrame, T.White:Lerp(T.Accent, 0.16), T.White:Lerp(T.Elev, 0.08), 90)
-    quickGrad.Name = "QuickStatusGradient"
-
-    local head = Instance.new("Frame")
-    head.Name = "QuickHeader"
-    head.Parent = HUD.quickFrame
-    head.Size = UDim2.new(1, 0, 0, 30)
-    head.BackgroundColor3 = T.Elev; pcall(function() head:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-    head.BackgroundTransparency = 0.025
-    head.BorderSizePixel = 0
-    head.ZIndex = 26
-    local headLine = Instance.new("Frame")
-    headLine.Parent = head
-    headLine.AnchorPoint = Vector2.new(0, 0.5)
-    headLine.Position = UDim2.new(0, 8, 0.5, 0)
-    headLine.Size = UDim2.fromOffset(2, 11)
-    headLine.BackgroundColor3 = T.Accent; pcall(function() headLine:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
-    headLine.BackgroundTransparency = 0.12
-    headLine.BorderSizePixel = 0
-    headLine.ZIndex = 27
-    Corner(headLine, 2)
-    local headText = Instance.new("TextLabel")
-    headText.Parent = head
-    headText.Position = UDim2.new(0, 17, 0, 0)
-    headText.Size = UDim2.new(1, -22, 1, 0)
-    headText.BackgroundTransparency = 1
-    headText.Font = FB
-    headText.TextSize = 11
-    headText.TextColor3 = T.Tx2; pcall(function()
-        headText:SetAttribute("ThemeColorRole_TextColor3", "Tx2")
-        headText:SetAttribute("MinReadableTextSize", 10)
-    end)
-    headText.TextXAlignment = Enum.TextXAlignment.Left
-    headText.Text = "QUICK STATUS"
-    headText.ZIndex = 27
-
-    local body = Instance.new("Frame")
-    body.Parent = HUD.quickFrame
-    body.Position = UDim2.new(0, 0, 0, 31)
-    body.Size = UDim2.new(1, 0, 1, -35)
-    body.BackgroundTransparency = 1
-    body.ZIndex = 26
-
-    local function fitWholeText(lbl, maxSize, minSize)
-        lbl.TextScaled = false
-        lbl.TextWrapped = false
-        local function refit()
-            local avail = lbl.AbsoluteSize.X
-            if avail <= 0 then return end
-            for size = maxSize, minSize, -1 do
-                lbl.TextSize = size
-                if lbl.TextBounds.X <= avail then return end
-            end
-            lbl.TextSize = minSize
-            lbl.TextTruncate = Enum.TextTruncate.AtEnd
-        end
-        lbl:GetPropertyChangedSignal("Text"):Connect(refit)
-        lbl:GetPropertyChangedSignal("AbsoluteSize"):Connect(refit)
-        task.defer(refit)
-    end
-
-    local quickRows = {}
-    local function layoutQuickRows()
-        local h = body.AbsoluteSize.Y
-        if h <= 0 then return end
-        local each = math.floor(h / 4)
-        for i, r in ipairs(quickRows) do
-            r.Position = UDim2.fromOffset(8, (i - 1) * each)
-            r.Size = UDim2.new(1, -16, 0, each)
-        end
-    end
-    body:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutQuickRows)
-    local function quickRow(label, index)
-        local row = Instance.new("Frame")
-        row.Parent = body
-        row.Position = UDim2.fromOffset(8, 0)
-        row.Size = UDim2.new(1, -16, 0, 24)
-        row.BackgroundTransparency = 1
-        row.ZIndex = 26
-        quickRows[index] = row
-        task.defer(layoutQuickRows)
-        if index > 1 then
-            local line = Instance.new("Frame")
-            line.Parent = row
-            line.Size = UDim2.new(1, 0, 0, 1)
-            line.BackgroundColor3 = T.Bd; pcall(function() line:SetAttribute("ThemeColorRole_BackgroundColor3", "Bd") end)
-            line.BackgroundTransparency = 0.55
-            line.BorderSizePixel = 0
-            line.ZIndex = 26
-        end
-        local key = Instance.new("TextLabel")
-        key.Parent = row
-        key.Size = UDim2.new(0, 48, 1, 0)
-        key.BackgroundTransparency = 1
-        key.Font = F
-        key.TextSize = 10
-        key.TextColor3 = T.Tx3; pcall(function()
-            key:SetAttribute("ThemeColorRole_TextColor3", "Tx3")
-            key:SetAttribute("MinReadableTextSize", 10)
-        end)
-        key.TextXAlignment = Enum.TextXAlignment.Left
-        key.Text = label
-        key.ZIndex = 27
-
-        fitWholeText(key, 10, 7)
-        local value = Instance.new("TextLabel")
-        value.Parent = row
-        value.Position = UDim2.new(0, 48, 0, 0)
-        value.Size = UDim2.new(1, -48, 1, 0)
-        value.BackgroundTransparency = 1
-        value.Font = FM
-        value.TextSize = 11
-        value:SetAttribute("MinReadableTextSize", 10)
-        value.TextColor3 = T.Tx; pcall(function() value:SetAttribute("ThemeColorRole_TextColor3", "Tx") end)
-        value.TextXAlignment = Enum.TextXAlignment.Right
-        value.Text = "—"
-        value.ZIndex = 27
-        fitWholeText(value, 11, 8)
-        return value
-    end
-    HUD.quickRole = quickRow("ROLE", 1)
-    HUD.quickRound = quickRow("ROUND", 2)
-    HUD.quickActive = quickRow("ACTIVE", 3)
-    HUD.quickNet = quickRow("NETWORK", 4)
-    local quickScale = Instance.new("UIScale")
-    quickScale.Name = "QuickStatusScale"
-    quickScale.Parent = HUD.quickFrame
-    S._ResizeQuickStatus = function()
-        local available = Main.AbsoluteSize.Y - 444
-
-        local show = (not MOBILE) and available >= 132
-        HUD.quickFrame.Size = UDim2.fromOffset(QUICK_W, math.clamp(available, 132, 196))
-        if show and not HUD.quickFrame.Visible then
-            HUD.quickFrame.Visible = true
-            quickScale.Scale = 0.96
-            TweenService:Create(quickScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-        elseif not show then
-            HUD.quickFrame.Visible = false
-        end
-    end
-    tc(Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(S._ResizeQuickStatus))
-    task.defer(S._ResizeQuickStatus)
-end
-
 local function mkWatermark()
     local f = Instance.new("TextButton")
     f.AutoButtonColor = false
@@ -11031,155 +10871,6 @@ tc(pinnedEmotesGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitP
 task.defer(fitPinnedEmotesHUD)
 
 do
-
-    local f = Instance.new("Frame")
-    f.Name = "HUD_Motion Graph"
-    f.Parent = SG
-    f.Active = true
-    f.BackgroundTransparency = 1
-    f:SetAttribute("HUDChromeFree", true)
-    f:SetAttribute("HUDRestTransparency", 1)
-    f.BorderSizePixel = 0
-    f.Position = UDim2.new(0, 10, 0, 590)
-    f.Size = UDim2.fromOffset(220, 60)
-    f.Visible = false
-    f.ZIndex = 858
-
-    local mgGrip = Instance.new("Frame")
-    mgGrip.Name = "Grip"
-    mgGrip.Parent = f
-    mgGrip.Position = UDim2.new(0, 0, 0, 0)
-    mgGrip.Size = UDim2.new(0, 34, 0, 12)
-    mgGrip.BackgroundColor3 = T.Elev
-    pcall(function() mgGrip:SetAttribute("ThemeColorRole_BackgroundColor3", "Elev") end)
-    mgGrip.BackgroundTransparency = 0.35
-    mgGrip.BorderSizePixel = 0
-    mgGrip.ZIndex = 860
-    Corner(mgGrip, 5)
-    do
-        local d = Instance.new("Frame")
-        d.Parent = mgGrip
-        d.AnchorPoint = Vector2.new(0.5, 0.5)
-        d.Position = UDim2.new(0.5, 0, 0.5, 0)
-        d.Size = UDim2.new(0, 14, 0, 2)
-        d.BackgroundColor3 = T.Tx3
-        pcall(function() d:SetAttribute("ThemeColorRole_BackgroundColor3", "Tx3") end)
-        d.BorderSizePixel = 0
-        d.ZIndex = 861
-        Corner(d, 1)
-        mgGrip.MouseEnter:Connect(function() mgGrip.BackgroundTransparency = 0.1 end)
-        mgGrip.MouseLeave:Connect(function() mgGrip.BackgroundTransparency = 0.35 end)
-    end
-
-    local plot = Instance.new("Frame")
-    plot.Name = "Plot"
-    plot.Parent = f
-    plot.BackgroundTransparency = 1
-    plot.BorderSizePixel = 0
-    plot.Position = UDim2.new(0, 0, 0, 16)
-    plot.Size = UDim2.new(1, 0, 1, -16)
-    plot.ZIndex = 858
-
-    attachHUDDrag(f, mgGrip)
-    HUDEls["Motion Graph"] = { frame = f, content = plot }
-    local mg = HUDEls["Motion Graph"]
-    local SAMPLES = 48
-    local hist = table.create(SAMPLES, 0)
-    local segs = {}
-    for i = 1, SAMPLES - 1 do
-        local s = Instance.new("Frame")
-        s.BorderSizePixel = 0
-        s.AnchorPoint = Vector2.new(0.5, 0.5)
-        s.BackgroundColor3 = T.Accent
-        pcall(function() s:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
-        s.Size = UDim2.fromOffset(2, 2)
-        s.ZIndex = 859
-        s.Parent = plot
-        Corner(s, 1)
-        segs[i] = s
-    end
-    local lbl = Instance.new("TextLabel")
-    lbl.BackgroundTransparency = 1
-    lbl.AnchorPoint = Vector2.new(1, 0)
-    lbl.Position = UDim2.new(0, 0, 0, -15)
-    lbl.Size = UDim2.new(1, 0, 0, 12)
-    lbl.Font = FM
-    lbl.TextSize = 11
-    lbl.TextColor3 = T.Tx2
-    pcall(function() lbl:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
-    lbl.TextXAlignment = Enum.TextXAlignment.Right
-    lbl.ZIndex = 860
-    lbl.Parent = plot
-
-    local maxSpeed = 40
-    local acc = 0
-    tc(RunService.Heartbeat:Connect(function(dt)
-        local el = HUDEls["Motion Graph"]
-        if not el or not el.frame.Visible then return end
-        acc = acc + dt
-        if acc < 1 / 30 then return end
-        acc = 0
-        local char = LP.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local v = 0
-        if hrp then local vel = hrp.AssemblyLinearVelocity; v = Vector2.new(vel.X, vel.Z).Magnitude end
-        table.remove(hist, 1)
-        hist[SAMPLES] = v
-
-        maxSpeed = math.max(40, maxSpeed * 0.98, v * 1.1)
-
-        local sum, peak = 0, 0
-        for i = 1, SAMPLES do
-            local s = hist[i]
-            sum += s
-            if s > peak then peak = s end
-        end
-        lbl.Text = string.format("%d  ·  peak %d  ·  avg %d",
-            math.floor(v + 0.5), math.floor(peak + 0.5), math.floor(sum / SAMPLES + 0.5))
-        local w, h = plot.AbsoluteSize.X, plot.AbsoluteSize.Y
-        if w <= 0 or h <= 0 then return end
-        local function pt(i)
-            local x = (i - 1) / (SAMPLES - 1) * w
-            local y = h - math.clamp(hist[i] / maxSpeed, 0, 1) * (h - 6) - 2
-            return x, y
-        end
-        local width = math.clamp(tonumber(S.MGWidth) or 2, 1, 6)
-        local style = S.MGStyle or "Accent"
-        local hue = (tick() * 0.12) % 1
-        for i = 1, SAMPLES - 1 do
-            local x1, y1 = pt(i)
-            local x2, y2 = pt(i + 1)
-            local dx, dy = x2 - x1, y2 - y1
-            local len = math.sqrt(dx * dx + dy * dy)
-            local seg = segs[i]
-
-            seg.Size = UDim2.fromOffset(math.max(len, 1) + width, width)
-            seg.Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2)
-            seg.Rotation = math.deg(math.atan2(dy, dx))
-            if style == "Rainbow" then
-                seg.BackgroundColor3 = Color3.fromHSV((hue + i / SAMPLES * 0.35) % 1, 0.75, 1)
-            elseif style == "Speed" then
-
-                seg.BackgroundColor3 = Color3.fromHSV(0.33 * (1 - math.clamp(hist[i] / maxSpeed, 0, 1)), 0.85, 1)
-            elseif seg.BackgroundColor3 ~= T.Accent then
-                seg.BackgroundColor3 = T.Accent
-            end
-        end
-    end))
-
-    local secMG = mkSection(Pages.Visuals, "Motion Graph", 13)
-    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secMG) end
-    mkSlider(secMG, "Line Width", 1, 6, 2, function(v) S.MGWidth = v end, 1)
-    mkCycle(secMG, "Line Style", { "Accent", "Rainbow", "Speed" }, "Accent", function(v)
-        S.MGStyle = v
-
-        for _, s in ipairs(segs) do
-            pcall(function() s:SetAttribute("ThemeColorRole_BackgroundColor3", v == "Accent" and "Accent" or nil) end)
-        end
-    end, 2)
-end
-
-do
     local f = Instance.new("Frame")
     f.Name = "HUD_Kill Feed"
     f.Parent = SG
@@ -11349,10 +11040,6 @@ do
         S.HUD_KillFeed = v
         S._SetHUDVisible(HUDEls["Kill Feed"], v)
     end, 12)
-    mkToggle(sec, "Motion Graph", false, function(v)
-        S.HUD_MotionGraph = v
-        S._SetHUDVisible(HUDEls["Motion Graph"], v)
-    end, 12.5)
     mkToggle(sec, "Role HUD", false, function(v)
         S.RoleHUDEnabled = v
         if HUD.hRole and HUD.hRole.frame then
@@ -11393,13 +11080,28 @@ end
 saveLighting()
 
 local shaderEffects = {}
+
+local SHADER_TAG = "InertiaShaderFX"
+
+local function trackShader(eff)
+    pcall(function() eff:SetAttribute(SHADER_TAG, true) end)
+    trackShader(eff)
+    return eff
+end
+
 local function clearShaderEffects()
     for _, eff in ipairs(shaderEffects) do
         pcall(function() eff:Destroy() end)
     end
     shaderEffects = {}
+
+    for _, child in ipairs(Lighting:GetChildren()) do
+        if child:GetAttribute(SHADER_TAG) then pcall(function() child:Destroy() end) end
+    end
     S._ultraFX = nil
 end
+
+clearShaderEffects()
 
 local applyAtmo
 
@@ -11423,7 +11125,7 @@ S._ApplySimpleShader = function(name)
 
         bloom.Threshold = 1.35 + math.min(bloomAmt, 2) * 0.18
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
     end
 
     local sunAmt = n("ShaderSunRays", 8, 0, 1)
@@ -11432,7 +11134,7 @@ S._ApplySimpleShader = function(name)
         sun.Intensity = sunAmt * 0.25
         sun.Spread = 0.4 + sunAmt * 0.6
         sun.Parent = Lighting
-        table.insert(shaderEffects, sun)
+        trackShader(sun)
     end
 
     local dofAmt = n("ShaderDOF", 0, 0, 1)
@@ -11443,7 +11145,7 @@ S._ApplySimpleShader = function(name)
         dof.InFocusRadius = 90 - dofAmt * 55
         dof.NearIntensity = dofAmt * 0.5
         dof.Parent = Lighting
-        table.insert(shaderEffects, dof)
+        trackShader(dof)
     end
 
     local blurAmt = math.clamp(tonumber(S.ShaderBlur) or 0, 0, 24)
@@ -11451,7 +11153,7 @@ S._ApplySimpleShader = function(name)
         local blur = Instance.new("BlurEffect")
         blur.Size = blurAmt
         blur.Parent = Lighting
-        table.insert(shaderEffects, blur)
+        trackShader(blur)
     end
 
     local tintName = S.ShaderTint or "Neutral"
@@ -11461,7 +11163,7 @@ S._ApplySimpleShader = function(name)
     cc.Saturation = tintName == "Mono" and -1 or n("ShaderSaturation", 18, -1, 3)
     cc.TintColor = S._TINT_RGB[tintName] or S._TINT_RGB.Neutral
     cc.Parent = Lighting
-    table.insert(shaderEffects, cc)
+    trackShader(cc)
     return true
 end
 
@@ -11524,7 +11226,7 @@ applyShader = function(name)
         bloom.Size = 20
         bloom.Threshold = 1.75
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
 
         local cc = Instance.new("ColorCorrectionEffect")
         cc.Brightness = 0.005
@@ -11532,7 +11234,7 @@ applyShader = function(name)
         cc.Saturation = 0.14
         cc.TintColor = Color3.fromRGB(255, 252, 247)
         cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        trackShader(cc)
 
     elseif name == "RTX Medium" then
 
@@ -11553,13 +11255,13 @@ applyShader = function(name)
         bloom.Size = 26
         bloom.Threshold = 1.62
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
         sunrays.Intensity = 0.07
         sunrays.Spread = 0.6
         sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
+        trackShader(sunrays)
 
         local cc = Instance.new("ColorCorrectionEffect")
         cc.Brightness = 0.005
@@ -11567,7 +11269,7 @@ applyShader = function(name)
         cc.Saturation = 0.2
         cc.TintColor = Color3.fromRGB(255, 250, 243)
         cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        trackShader(cc)
 
     elseif name == "RTX High" then
 
@@ -11588,13 +11290,13 @@ applyShader = function(name)
         bloom.Size = 30
         bloom.Threshold = 1.55
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
         sunrays.Intensity = 0.1
         sunrays.Spread = 0.68
         sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
+        trackShader(sunrays)
 
         local dof = Instance.new("DepthOfFieldEffect")
         dof.FarIntensity = 0.09
@@ -11602,7 +11304,7 @@ applyShader = function(name)
         dof.InFocusRadius = 70
         dof.NearIntensity = 0.12
         dof.Parent = Lighting
-        table.insert(shaderEffects, dof)
+        trackShader(dof)
 
         local cc = Instance.new("ColorCorrectionEffect")
         cc.Brightness = 0.005
@@ -11610,7 +11312,7 @@ applyShader = function(name)
         cc.Saturation = 0.24
         cc.TintColor = Color3.fromRGB(255, 249, 240)
         cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        trackShader(cc)
 
     elseif name == "RTX Ultra" then
 
@@ -11631,13 +11333,13 @@ applyShader = function(name)
         bloom.Size = 34
         bloom.Threshold = 1.45
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
         sunrays.Intensity = 0.15
         sunrays.Spread = 0.72
         sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
+        trackShader(sunrays)
 
         local dof = Instance.new("DepthOfFieldEffect")
         dof.FarIntensity = 0.12
@@ -11645,7 +11347,7 @@ applyShader = function(name)
         dof.InFocusRadius = 55
         dof.NearIntensity = 0.18
         dof.Parent = Lighting
-        table.insert(shaderEffects, dof)
+        trackShader(dof)
 
         local cc = Instance.new("ColorCorrectionEffect")
         cc.Brightness = 0.005
@@ -11653,7 +11355,7 @@ applyShader = function(name)
         cc.Saturation = 0.32
         cc.TintColor = Color3.fromRGB(255, 251, 245)
         cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        trackShader(cc)
 
         S._ultraFX = { bloom = bloom, sunrays = sunrays, cc = cc }
 
@@ -11676,7 +11378,7 @@ applyShader = function(name)
         bloom.Size = 28
         bloom.Threshold = 1.15
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
 
         local dof = Instance.new("DepthOfFieldEffect")
         dof.FarIntensity = 0.1
@@ -11684,7 +11386,7 @@ applyShader = function(name)
         dof.InFocusRadius = 65
         dof.NearIntensity = 0.1
         dof.Parent = Lighting
-        table.insert(shaderEffects, dof)
+        trackShader(dof)
 
         local cc = Instance.new("ColorCorrectionEffect")
         cc.Brightness = 0.05
@@ -11692,7 +11394,7 @@ applyShader = function(name)
         cc.Contrast = 0.17
         cc.Saturation = 0.26
         cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        trackShader(cc)
 
     elseif name == "Pink Shaders" then
 
@@ -11713,13 +11415,13 @@ applyShader = function(name)
         bloom.Size = 28
         bloom.Threshold = 1.45
         bloom.Parent = Lighting
-        table.insert(shaderEffects, bloom)
+        trackShader(bloom)
 
         local sunrays = Instance.new("SunRaysEffect")
         sunrays.Intensity = 0.13
         sunrays.Spread = 0.75
         sunrays.Parent = Lighting
-        table.insert(shaderEffects, sunrays)
+        trackShader(sunrays)
 
         local cc = Instance.new("ColorCorrectionEffect")
         cc.Brightness = 0.005
@@ -11727,7 +11429,7 @@ applyShader = function(name)
         cc.Contrast = 0.13
         cc.Saturation = 0.2
         cc.Parent = Lighting
-        table.insert(shaderEffects, cc)
+        trackShader(cc)
     end
 
     if applyAtmo then pcall(applyAtmo) end
@@ -12518,7 +12220,6 @@ do
     mkToggle(secAuto, "Fast Autofarm", false, function(v) S.FastAutofarm = v end, 1)
 
     mkSlider(secAuto, "Autofarm Speed", 1, 120, 20, function(v) S.FastAutofarmSpeed = v end, 2)
-    mkSlider(secAuto, "Avoid Murderer (studs)", 0, 150, 60, function(v) S.AutofarmAvoidRadius = v end, 4)
 
     local secVote = mkSection(Pages.Teleport, "Vote Farm", 6)
     if S._RegisterAutofarmSection then S._RegisterAutofarmSection(secVote) end
@@ -12643,7 +12344,7 @@ do
                         local myPos = hrp.Position
                         local coins = {}
                         local murderPos = murdererPosition()
-                        local avoidR = math.max(tonumber(S.AutofarmAvoidRadius) or 60, 0)
+                        local avoidR = 60
                         eachCoin(function(coin)
                             if coin.Transparency < 1 and not (skipUntil[coin] and tick() < skipUntil[coin]) then
                                 local isSafe = true
@@ -15642,20 +15343,6 @@ task.spawn(function()
                     TweenService:Create(HUD.islandDotScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
                 end
             end
-            if HUD.quickFrame and HUD.quickFrame.Visible then
-                local quickRole = S._GetHUDRole(LP)
-                local quickRound = isRoundActive()
-                local enabled = 0
-                for _, entry in ipairs(AllBinds) do
-                    if entry.isToggle and entry.state then enabled = enabled + 1 end
-                end
-                HUD.quickRole.Text = string.upper(quickRole)
-                HUD.quickRound.Text = quickRound and "LIVE" or "LOBBY"
-                HUD.quickRound.TextColor3 = quickRound and T.Tx or T.Tx3
-                HUD.quickRound:SetAttribute("ThemeColorRole_TextColor3", quickRound and "Tx" or "Tx3")
-                HUD.quickActive.Text = enabled .. " ON"
-                HUD.quickNet.Text = livePing .. "ms"
-            end
             if HUD.hSpeed.frame.Visible then
                 local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                 local sp = 0
@@ -15906,11 +15593,6 @@ do
                         obj.Color = ColorSequence.new(
                             T.White:Lerp(T.Accent, 0.14),
                             T.White:Lerp(T.Card, 0.08)
-                        )
-                    elseif obj.Name == "QuickStatusGradient" then
-                        obj.Color = ColorSequence.new(
-                            T.White:Lerp(T.Accent, 0.16),
-                            T.White:Lerp(T.Elev, 0.08)
                         )
                     end
                 end
@@ -19691,192 +19373,6 @@ do
 end
 
 do
-    local hasDrawing = type(Drawing) == "table" and type(Drawing.new) == "function"
-
-    local R15_BONES = {
-        { "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
-        { "UpperTorso", "LeftUpperArm" }, { "LeftUpperArm", "LeftLowerArm" }, { "LeftLowerArm", "LeftHand" },
-        { "UpperTorso", "RightUpperArm" }, { "RightUpperArm", "RightLowerArm" }, { "RightLowerArm", "RightHand" },
-        { "LowerTorso", "LeftUpperLeg" }, { "LeftUpperLeg", "LeftLowerLeg" }, { "LeftLowerLeg", "LeftFoot" },
-        { "LowerTorso", "RightUpperLeg" }, { "RightUpperLeg", "RightLowerLeg" }, { "RightLowerLeg", "RightFoot" },
-    }
-    local R6_BONES = {
-        { "Head", "Torso" },
-        { "Torso", "Left Arm" }, { "Torso", "Right Arm" },
-        { "Torso", "Left Leg" }, { "Torso", "Right Leg" },
-    }
-
-    local pool, conn = {}, nil
-
-    local function newLine()
-        local l = Drawing.new("Line")
-        l.Thickness = 1
-        l.Transparency = 1
-        l.Visible = false
-        return l
-    end
-
-    local function freePlayer(plr)
-        local p = pool[plr]
-        if not p then return end
-        for _, l in ipairs(p.bones) do pcall(function() l:Remove() end) end
-        for _, l in ipairs(p.box) do pcall(function() l:Remove() end) end
-        pool[plr] = nil
-    end
-
-    local function freeAll()
-        for plr in pairs(pool) do freePlayer(plr) end
-        table.clear(pool)
-    end
-
-    local function poolFor(plr, boneCount)
-        local p = pool[plr]
-        if not p then
-            p = { bones = {}, box = {} }
-            pool[plr] = p
-        end
-        while #p.bones < boneCount do p.bones[#p.bones + 1] = newLine() end
-
-        while #p.box < 12 do p.box[#p.box + 1] = newLine() end
-        return p
-    end
-
-    local function hideAll(p)
-        for _, l in ipairs(p.bones) do l.Visible = false end
-        for _, l in ipairs(p.box) do l.Visible = false end
-    end
-
-    local BOX_EDGES = {
-        {1,2},{2,4},{4,3},{3,1},
-        {5,6},{6,8},{8,7},{7,5},
-        {1,5},{2,6},{3,7},{4,8},
-    }
-
-    local function draw()
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-        local wantSkel, wantBox = S.SkeletonESP == true, S.WireframeESP == true
-        local maxDist = tonumber(S.ESPMaxDist) or 1000
-
-        for _, plr in ipairs(Players:GetPlayers()) do
-            local char = plr.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            local bones = char and char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
-            local p = poolFor(plr, #bones)
-
-            if plr == LP or not (char and root and hum) or hum.Health <= 0
-                or not (wantSkel or wantBox) then
-                hideAll(p)
-            else
-                local originPos = cam.CFrame.Position
-                if (root.Position - originPos).Magnitude > maxDist then
-                    hideAll(p)
-                else
-                    local col = ChamsRoleShade[getRole(plr)] or ChamsRoleShade.Innocent
-                    local thick = math.clamp(tonumber(S.DrawESPThickness) or 1, 1, 5)
-
-                    if wantSkel then
-                        for i, bone in ipairs(bones) do
-                            local a = char:FindFirstChild(bone[1])
-                            local b = char:FindFirstChild(bone[2])
-                            local line = p.bones[i]
-                            if a and b then
-                                local pa, va = cam:WorldToViewportPoint(a.Position)
-                                local pb, vb = cam:WorldToViewportPoint(b.Position)
-
-                                if va and vb then
-                                    line.From = Vector2.new(pa.X, pa.Y)
-                                    line.To = Vector2.new(pb.X, pb.Y)
-                                    line.Color = col
-                                    line.Thickness = thick
-                                    line.Visible = true
-                                else
-                                    line.Visible = false
-                                end
-                            else
-                                line.Visible = false
-                            end
-                        end
-                    else
-                        for _, l in ipairs(p.bones) do l.Visible = false end
-                    end
-
-                    if wantBox then
-
-                        local li = 0
-                        for _, part in ipairs(char:GetChildren()) do
-                            if part:IsA("BasePart") and part.Transparency < 1 then
-                                local cf, sz = part.CFrame, part.Size
-                                local hx, hy, hz = sz.X / 2, sz.Y / 2, sz.Z / 2
-                                local pts, allFront = {}, true
-                                for k = 1, 8 do
-                                    local sx = (k % 2 == 1) and -hx or hx
-                                    local sy = (k <= 4) and -hy or hy
-                                    local sz2 = (k == 1 or k == 2 or k == 5 or k == 6) and -hz or hz
-                                    local sp, vis = cam:WorldToViewportPoint((cf * CFrame.new(sx, sy, sz2)).Position)
-                                    if not vis then allFront = false break end
-                                    pts[k] = Vector2.new(sp.X, sp.Y)
-                                end
-                                if allFront then
-                                    for _, e in ipairs(BOX_EDGES) do
-                                        li += 1
-                                        local line = p.box[li]
-                                        if not line then
-                                            line = newLine()
-                                            p.box[li] = line
-                                        end
-                                        line.From = pts[e[1]]
-                                        line.To = pts[e[2]]
-                                        line.Color = col
-                                        line.Thickness = thick
-                                        line.Visible = true
-                                    end
-                                end
-                            end
-                        end
-                        for k = li + 1, #p.box do p.box[k].Visible = false end
-                    else
-                        for _, l in ipairs(p.box) do l.Visible = false end
-                    end
-                end
-            end
-        end
-    end
-
-    local function refresh()
-        local on = hasDrawing and (S.SkeletonESP == true or S.WireframeESP == true)
-        if on and not conn then
-            conn = RunService.RenderStepped:Connect(draw)
-        elseif not on and conn then
-            conn:Disconnect()
-            conn = nil
-            freeAll()
-        end
-    end
-    S._RefreshDrawESP = refresh
-
-    tc(Players.PlayerRemoving:Connect(freePlayer))
-    SG.Destroying:Connect(function()
-        if conn then pcall(function() conn:Disconnect() end) conn = nil end
-        freeAll()
-    end)
-
-    local secDraw = mkSection(Pages.Visuals, "Draw ESP", 2.5)
-    if S._RegisterVisualsESPSection then pcall(S._RegisterVisualsESPSection, secDraw) end
-    if not hasDrawing then
-        mkAction(secDraw, "Executor has no Drawing API", function()
-            Notify("Draw ESP", "This executor does not expose Drawing.new", 4)
-        end, 1)
-    else
-        mkToggle(secDraw, "Skeleton", false, function(v) S.SkeletonESP = v refresh() end, 1)
-        mkToggle(secDraw, "Wireframe", false, function(v) S.WireframeESP = v refresh() end, 2)
-        mkSlider(secDraw, "Line Thickness", 1, 5, 1, function(v) S.DrawESPThickness = v end, 3)
-    end
-    task.delay(3, refresh)
-end
-
-do
     local RS = game:GetService("ReplicatedStorage")
 
     local function perkRemote()
@@ -20401,12 +19897,26 @@ task.spawn(function()
 
 do
     local RS = game:GetService("ReplicatedStorage")
-    local catalogue, owned = nil, nil
+    local catalogue, owned, equipped, profileData = nil, nil, {}, nil
 
     local function equipRemote()
         local r = RS:FindFirstChild("Remotes")
         r = r and r:FindFirstChild("Inventory")
         return r and r:FindFirstChild("Equip")
+    end
+
+    local function readInventory()
+        local ok, inv = pcall(function()
+            local f = RS:FindFirstChild("Remotes")
+            f = f and f:FindFirstChild("Extras")
+            f = f and f:FindFirstChild("GetFullInventory")
+            return f and f:InvokeServer(LP)
+        end)
+        if not (ok and type(inv) == "table" and type(inv.Weapons) == "table") then return end
+        local set = {}
+        for key in pairs(inv.Weapons.Owned or {}) do set[tostring(key)] = true end
+        owned = set
+        equipped = inv.Weapons.Equipped or {}
     end
 
     task.spawn(function()
@@ -20421,95 +19931,238 @@ do
                     id = id, kind = d.ItemType,
                     name = tostring(d.ItemName or id),
                     rarity = tostring(d.Rarity or "?"),
-                    event = d.Event and tostring(d.Event) or nil,
-                    year = d.Year and tostring(d.Year) or nil,
+                    image = d.ItemID and ("rbxthumb://type=Asset&id=" .. tostring(d.ItemID) .. "&w=150&h=150") or nil,
                 }
             end
         end
-        table.sort(list, function(a, b)
-            if a.kind ~= b.kind then return a.kind < b.kind end
-            return a.name:lower() < b.name:lower()
-        end)
         catalogue = list
+        pcall(readInventory)
 
-        local okInv, inv = pcall(function()
-            local f = RS:FindFirstChild("Remotes")
-            f = f and f:FindFirstChild("Extras")
-            f = f and f:FindFirstChild("GetFullInventory")
-            return f and f:InvokeServer()
-        end)
-        if okInv and type(inv) == "table" then
-            local set = {}
-            for k, v in pairs(inv) do
-                if type(v) == "table" and v.ItemID then set[tostring(v.ItemID)] = true end
-                if type(k) == "string" then set[k] = true end
-            end
-            owned = set
-        end
+        pcall(function() profileData = require(RS.Modules.ProfileData) end)
     end)
 
-    local function label(entry)
-        local bits = { entry.kind, entry.rarity }
-        if entry.event then bits[#bits + 1] = entry.event end
-        if entry.year then bits[#bits + 1] = entry.year end
-        local mark = ""
-        if owned then mark = owned[entry.id] and "  [owned]" or "  [not owned]" end
-        return entry.name .. "  (" .. table.concat(bits, " / ") .. ")" .. mark
+    local win, grid, tabBtns, searchBox
+    local activeKind = "Gun"
+
+    local function sortFor(kind)
+        local rows = {}
+        for _, e in ipairs(catalogue or {}) do
+            if e.kind == kind then rows[#rows + 1] = e end
+        end
+
+        table.sort(rows, function(a, b)
+            local ao, bo = owned and owned[a.id] or false, owned and owned[b.id] or false
+            if ao ~= bo then return ao end
+            return a.name:lower() < b.name:lower()
+        end)
+        return rows
     end
 
-    local function pick(kindFilter, title)
-        if not catalogue then
-            Notify("Skins", "Catalogue still loading", 3)
-            return
+    local function fill()
+        if not grid then return end
+        for _, ch in ipairs(grid:GetChildren()) do
+            if ch:IsA("GuiObject") then ch:Destroy() end
         end
-        local rows, refs = {}, {}
-        local q = tostring(S.SkinFilter or ""):lower()
-        for _, e in ipairs(catalogue) do
-            if (kindFilter == "All" or e.kind == kindFilter)
-                and (q == "" or e.name:lower():find(q, 1, true)) then
-                rows[#rows + 1] = label(e)
-                refs[#refs + 1] = e
+        local q = tostring(searchBox and searchBox.Text or ""):lower()
+        local shown = 0
+        for _, e in ipairs(sortFor(activeKind)) do
+            if q == "" or e.name:lower():find(q, 1, true) then
+                shown += 1
+
+                if shown > 150 then break end
+                local isOwned = owned and owned[e.id] or false
+                local tile = Instance.new("TextButton")
+                tile.Name = e.id
+                tile.LayoutOrder = shown
+                tile.AutoButtonColor = false
+                tile.Text = ""
+                tile.BackgroundColor3 = T.Elev
+                tile.BackgroundTransparency = isOwned and 0.05 or 0.45
+                tile.BorderSizePixel = 0
+                tile.Parent = grid
+                Corner(tile, 8)
+                if equipped[e.kind] == e.id then
+                    Stroke(tile, T.Accent, 2, 0)
+                elseif isOwned then
+                    Stroke(tile, T.Bd2, 1, 0.3)
+                end
+
+                local img = Instance.new("ImageLabel")
+                img.BackgroundTransparency = 1
+                img.Image = e.image or ""
+                img.ScaleType = Enum.ScaleType.Fit
+                img.ImageTransparency = isOwned and 0 or 0.55
+                img.Size = UDim2.new(1, -10, 1, -26)
+                img.Position = UDim2.fromOffset(5, 3)
+                img.Parent = tile
+
+                local cap = Instance.new("TextLabel")
+                cap.BackgroundTransparency = 1
+                cap.Size = UDim2.new(1, -8, 0, 20)
+                cap.Position = UDim2.new(0, 4, 1, -22)
+                cap.Font = Enum.Font.GothamMedium
+                cap.TextSize = 11
+                cap.TextTruncate = Enum.TextTruncate.AtEnd
+                cap.TextXAlignment = Enum.TextXAlignment.Left
+                cap.TextColor3 = isOwned and T.Tx or T.Tx3
+                cap.Text = e.name
+                cap.Parent = tile
+
+                tile.MouseButton1Click:Connect(function()
+                    SFX.Click()
+                    if not isOwned then
+                        Notify("Skins", e.name .. " is not in your inventory - the server will not equip it", 4)
+                        return
+                    end
+                    local ev = equipRemote()
+                    if not ev then
+                        Notify("Skins", "Equip remote missing", 3)
+                        return
+                    end
+
+                    pcall(function() ev:FireServer(e.id, "Weapons") end)
+
+                    if profileData and profileData.Weapons and profileData.Weapons.Equipped then
+                        pcall(function() profileData.Weapons.Equipped[e.kind] = e.id end)
+                    end
+                    task.delay(0.6, function()
+                        pcall(readInventory)
+                        fill()
+                    end)
+                    Notify("Skins", "Equipped " .. e.name, 2)
+                end)
             end
         end
-        if #rows == 0 then
-            Notify("Skins", "Nothing matches that filter", 3)
-            return
+        if shown == 0 then
+            local empty = Instance.new("TextLabel")
+            empty.BackgroundTransparency = 1
+            empty.Size = UDim2.fromOffset(320, 40)
+            empty.Font = Enum.Font.Gotham
+            empty.TextSize = 12
+            empty.TextColor3 = T.Tx3
+            empty.Text = catalogue and "Nothing matches that search" or "Loading catalogue..."
+            empty.Parent = grid
         end
-        S._OpenOptionPicker(title .. " (" .. #rows .. ")", rows, 0, function(index)
-            local e = refs[index]
-            if not e then return end
-            local ev = equipRemote()
-            if not ev then
-                Notify("Skins", "Equip remote missing", 3)
-                return
-            end
-            pcall(function() ev:FireServer(e.id) end)
-            S.LastSkin = e.id
-            Notify("Skins", "Equipped " .. e.name
-                .. (owned and not owned[e.id] and " (server may refuse - not owned)" or ""), 3)
-        end, { keepOpen = true })
+    end
+
+    local function setKind(kind)
+        activeKind = kind
+        for name, btn in pairs(tabBtns or {}) do
+            btn.BackgroundTransparency = (name == kind) and 0.05 or 0.6
+            btn.TextColor3 = (name == kind) and T.Tx or T.Tx3
+        end
+        fill()
+    end
+
+    local function build()
+        win = Instance.new("Frame")
+        win.Name = "InertiaSkinPicker"
+        win.Size = UDim2.fromOffset(470, 430)
+        win.Position = UDim2.new(0.5, -235, 0.5, -215)
+        win.BackgroundColor3 = T.Card
+        win.BorderSizePixel = 0
+        win.ZIndex = 60
+        win.Visible = false
+        win.Active = true
+        win.Draggable = true
+        win.Parent = SG
+        Corner(win, 12)
+        Stroke(win, T.Bd2, 1, 0.25)
+
+        local title = Instance.new("TextLabel")
+        title.BackgroundTransparency = 1
+        title.Size = UDim2.new(1, -80, 0, 34)
+        title.Position = UDim2.fromOffset(14, 4)
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 14
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.TextColor3 = T.Tx
+        title.Text = "SKINS"
+        title.ZIndex = 61
+        title.Parent = win
+
+        local close = Instance.new("TextButton")
+        close.Size = UDim2.fromOffset(26, 26)
+        close.Position = UDim2.new(1, -34, 0, 8)
+        close.BackgroundTransparency = 1
+        close.Font = Enum.Font.GothamBold
+        close.TextSize = 16
+        close.TextColor3 = T.Tx3
+        close.Text = "X"
+        close.ZIndex = 61
+        close.Parent = win
+        close.MouseButton1Click:Connect(function() SFX.Click() win.Visible = false end)
+
+        tabBtns = {}
+        for i, kind in ipairs({ "Gun", "Knife" }) do
+            local b = Instance.new("TextButton")
+            b.Size = UDim2.fromOffset(96, 26)
+            b.Position = UDim2.fromOffset(14 + (i - 1) * 102, 40)
+            b.BackgroundColor3 = T.Elev
+            b.BorderSizePixel = 0
+            b.AutoButtonColor = false
+            b.Font = Enum.Font.GothamMedium
+            b.TextSize = 12
+            b.Text = kind == "Gun" and "GUNS" or "KNIVES"
+            b.ZIndex = 61
+            b.Parent = win
+            Corner(b, 7)
+            b.MouseButton1Click:Connect(function() SFX.Click() setKind(kind) end)
+            tabBtns[kind] = b
+        end
+
+        searchBox = Instance.new("TextBox")
+        searchBox.Size = UDim2.new(1, -250, 0, 26)
+        searchBox.Position = UDim2.fromOffset(224, 40)
+        searchBox.BackgroundColor3 = T.Elev
+        searchBox.BorderSizePixel = 0
+        searchBox.Font = Enum.Font.Gotham
+        searchBox.TextSize = 12
+        searchBox.TextColor3 = T.Tx
+        searchBox.PlaceholderText = "search"
+        searchBox.Text = ""
+        searchBox.ClearTextOnFocus = false
+        searchBox.ZIndex = 61
+        searchBox.Parent = win
+        Corner(searchBox, 7)
+        searchBox:GetPropertyChangedSignal("Text"):Connect(fill)
+
+        grid = Instance.new("ScrollingFrame")
+        grid.Size = UDim2.new(1, -20, 1, -84)
+        grid.Position = UDim2.fromOffset(10, 76)
+        grid.BackgroundTransparency = 1
+        grid.BorderSizePixel = 0
+        grid.ScrollBarThickness = 4
+        grid.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        grid.CanvasSize = UDim2.new()
+        grid.ZIndex = 61
+        grid.Parent = win
+        local layout = Instance.new("UIGridLayout")
+        layout.CellSize = UDim2.fromOffset(104, 104)
+        layout.CellPadding = UDim2.fromOffset(6, 6)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Parent = grid
     end
 
     local secSkins = mkSection(Pages.Visuals, "Skins", 16)
     if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secSkins) end
-    mkAction(secSkins, "Choose Knife Skin", function() pick("Knife", "Knife Skins") end, 1)
-    mkAction(secSkins, "Choose Gun Skin", function() pick("Gun", "Gun Skins") end, 2)
-    mkAction(secSkins, "Search All Skins", function()
-        S._OpenTextPrompt = nil
-        pick("All", "All Skins")
-    end, 3)
-    mkCycle(secSkins, "Name Filter",
-        { "(none)", "elderwood", "chroma", "seer", "gingerscythe", "laser", "ghost", "batwing" },
-        "(none)", function(v) S.SkinFilter = (v == "(none)") and "" or v end, 4)
-    mkAction(secSkins, "Re-equip Last", function()
-        local ev = equipRemote()
-        if ev and S.LastSkin then
-            pcall(function() ev:FireServer(S.LastSkin) end)
-            Notify("Skins", "Re-equipped " .. tostring(S.LastSkin), 2)
-        else
-            Notify("Skins", "Nothing equipped yet this session", 2)
+    mkAction(secSkins, "Open Skin Picker", function()
+        if not win then build() end
+        if not win.Visible then
+            task.spawn(function() pcall(readInventory) fill() end)
         end
-    end, 5)
+        win.Visible = not win.Visible
+        setKind(activeKind)
+    end, 1)
+    mkAction(secSkins, "Refresh Inventory", function()
+        task.spawn(function()
+            pcall(readInventory)
+            fill()
+            local n = 0
+            for _ in pairs(owned or {}) do n += 1 end
+            Notify("Skins", n .. " weapons owned", 3)
+        end)
+    end, 2)
 end
 
 task.spawn(function()
