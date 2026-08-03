@@ -117,6 +117,7 @@ local S = {
     ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
     ForceShootMode = "Target", WallbangMode = "Muzzle",
     PerkNoCooldown = false, PerkAutoUse = false,
+    AntiAim = false, AntiAimKnifeOnly = true, AntiAimStrength = 320, AntiAimNearRange = 6,
     DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
@@ -19092,6 +19093,8 @@ do
 
     mkToggle(secDesync, "Position Always", true, function(v) S.DesyncAlways = v end, 1.5)
 
+    S._AddAntiAimControls = function(build) pcall(build, secDesync) end
+
     do
         local vLast, vCF, vApplied = nil, nil, false
         local VEL_SPAN = 7777
@@ -19912,4 +19915,118 @@ do
             end
         end
     end)
+end
+
+do
+    local conn = nil
+    local hadKnifeLastFrame = false
+
+    local function hasKnife()
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        local char = LP.Character
+        return (bp and bp:FindFirstChild("Knife") ~= nil)
+            or (char and char:FindFirstChild("Knife") ~= nil)
+    end
+
+    local function playerNearby(hrp, range)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character then
+                local o = p.Character:FindFirstChild("HumanoidRootPart")
+                if o and (o.Position - hrp.Position).Magnitude <= range then return true end
+            end
+        end
+        return false
+    end
+
+    local function inWater(hum)
+        return hum:GetState() == Enum.HumanoidStateType.Swimming
+            or hum.FloorMaterial == Enum.Material.Water
+    end
+
+    local function roleStep(hum)
+        task.spawn(function()
+            local dir = Vector3.new(
+                math.random() > 0.5 and 1 or -1, 0,
+                math.random() > 0.5 and 1 or -1).Unit
+            local t0 = tick()
+            while tick() - t0 < 0.15 do
+                if not (hum and hum.Parent) then return end
+                hum:Move(dir, false)
+                RunService.RenderStepped:Wait()
+            end
+        end)
+    end
+
+    local function step()
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not (hrp and hum) then hadKnifeLastFrame = false return end
+        if hum.Health <= 0 then return end
+
+        local knife = hasKnife()
+        if S.AntiAimKnifeOnly ~= false then
+            if knife and not hadKnifeLastFrame then roleStep(hum) end
+            hadKnifeLastFrame = knife
+            if not knife then return end
+        end
+
+        local range = math.clamp(tonumber(S.AntiAimNearRange) or 6, 0, 30)
+        if range > 0 and playerNearby(hrp, range) then return end
+        if inWater(hum) then return end
+
+        local old = hrp.AssemblyLinearVelocity
+        local amount = math.clamp(tonumber(S.AntiAimStrength) or 320, 50, 2000)
+        local sign = (math.random(1, 2) == 1) and 1 or -1
+        local state = hum:GetState()
+        local jumping = state == Enum.HumanoidStateType.Jumping
+            or state == Enum.HumanoidStateType.Freefall
+        local stopped = hum.MoveDirection.Magnitude == 0
+
+        if jumping then
+            local y = (math.random(1, 2) == 1) and amount * 0.78 or -amount * 0.78
+            hrp.AssemblyLinearVelocity = Vector3.new(amount * sign, y, amount * sign)
+        elseif stopped then
+
+            local s = amount * 1.25 * sign
+            hrp.AssemblyLinearVelocity = Vector3.new(s, 0, s)
+        else
+            hrp.AssemblyLinearVelocity = Vector3.new(amount * sign, 0, amount * sign)
+        end
+
+        RunService.RenderStepped:Wait()
+        if hrp and hrp.Parent then hrp.AssemblyLinearVelocity = old end
+    end
+
+    local function refresh()
+        if S.AntiAim and not conn then
+            conn = RunService.Heartbeat:Connect(function() pcall(step) end)
+        elseif not S.AntiAim and conn then
+            conn:Disconnect()
+            conn = nil
+            hadKnifeLastFrame = false
+        end
+    end
+
+    S._RefreshAntiAim = refresh
+    SG.Destroying:Connect(function()
+        if conn then pcall(function() conn:Disconnect() end) conn = nil end
+    end)
+
+    if S._AddAntiAimControls then
+        S._AddAntiAimControls(function(sec)
+            mkToggle(sec, "Anti-Aim", false, function(v)
+                S.AntiAim = v
+
+                if v and S.VelDesync then
+                    S.VelDesync = false
+                    Notify("Anti-Aim", "Velocity Desync turned off - they fight over velocity", 4)
+                end
+                refresh()
+            end, 3)
+            mkToggle(sec, "Anti-Aim Knife Only", true, function(v) S.AntiAimKnifeOnly = v end, 3.1)
+            mkSlider(sec, "Anti-Aim Strength", 50, 2000, 320, function(v) S.AntiAimStrength = v end, 3.2)
+            mkSlider(sec, "Anti-Aim Safe Range", 0, 30, 6, function(v) S.AntiAimNearRange = v end, 3.3)
+        end)
+    end
 end
