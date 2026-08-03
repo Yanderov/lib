@@ -62,7 +62,7 @@ local S = {
     ShaderSunRays = 8, ShaderDOF = 0, ShaderBlur = 0, ShaderAtmo = 22,
     ShaderTint = "Neutral", ShaderShadows = true,
     HandShader = false, HandShaderType = "Both", HandTarget = "Full Body", HandColor = "Cyan", HandRainbow = false, HandFill = 60,
-    UnlockAllKnifeEffects = false,
+    UnlockAllKnifeEffects = false, KnifeFXFallback = false,
     FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel Aura",
     VFXWingScale = 100, VFXFootAura = true, VFXWingLight = false, VFXDensity = 70, VFXGlow = 35,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
@@ -11510,6 +11510,8 @@ do
         if bp then clearLegacyAura(bp) end
     end
 
+    S._ClearKnifeEffect = clearAppliedKnifeEffect
+
     local function ownEffect(obj)
         if obj then table.insert(appliedEffectObjects, obj) end
         return obj
@@ -11820,7 +11822,8 @@ do
         local effect = { Id = tostring(effectId), Data = effectData or {} }
         local source = findEffectSource(effect)
         local made = source and (cloneVisualsFrom(source, tool, handle) + tryModuleApply(source, tool, handle)) or 0
-        if made <= 0 then fallbackEffect(effect, tool, handle) end
+
+        if made <= 0 and S.KnifeFXFallback then fallbackEffect(effect, tool, handle) end
         appliedKnife, appliedEffectId = tool, tostring(effectId)
         if not silent then Notify("Knife Effect", "Applied: " .. tostring((effectData and (effectData.Name or effectData.ItemName)) or effectId), 2) end
         return true
@@ -20150,4 +20153,19 @@ do
             mkSlider(sec, "Anti-Aim Safe Range", 0, 30, 6, function(v) S.AntiAimNearRange = v end, 3.3)
         end)
     end
+end
+
+do
+    local sec = mkSection(Pages.Visuals, "Knife Effects", 15)
+    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, sec) end
+    mkToggle(sec, "Unlock All Knife Effects", false, function(v)
+        S.UnlockAllKnifeEffects = v
+        if v then
+            if S._ApplySelectedKnifeEffect then task.spawn(function() pcall(S._ApplySelectedKnifeEffect, true) end) end
+        elseif S._ClearKnifeEffect then
+            pcall(S._ClearKnifeEffect)
+        end
+    end, 1, "Unlock All Knife Effects (Visual)")
+
+    mkToggle(sec, "Synthetic FX Fallback", false, function(v) S.KnifeFXFallback = v end, 2)
 end
