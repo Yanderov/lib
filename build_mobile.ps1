@@ -1,3 +1,14 @@
+# Rebuild every <game>_mobile.lua from its desktop source.
+#
+# There is no separate mobile UI codebase to keep in sync: a mobile build is the
+# SAME script with _G.INERTIA_MOBILE forced on, which each hub reads to pick its
+# layout, its control sizes and whether keybinds or floating buttons exist.
+# These files exist only because the repo serves standalone mobile payloads that
+# loaders can fetch directly; the launcher sets the flag itself and can run the
+# desktop file as-is. MM2 also publishes .txt aliases for older raw loadstrings.
+#
+# Run from this folder:   .\build_mobile.ps1
+
 $ErrorActionPreference = 'Stop'
 Set-Location -Path $PSScriptRoot
 
@@ -16,6 +27,8 @@ $builds = @(
 foreach ($build in $builds) {
     $lines = Get-Content -LiteralPath $build.Source
 
+    # `--!strict` only counts on the very first line, so it has to stay there:
+    # carry it over and drop it from the body instead of pushing it down.
     $strict = @()
     if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '--!strict') {
         $strict = @('--!strict')
@@ -29,6 +42,10 @@ foreach ($build in $builds) {
         '_G.INERTIA_MOBILE = true'
     )
 
+    # Written through .NET rather than Set-Content -Encoding utf8NoBOM, because that value only
+    # exists in PowerShell 6+ and Windows PowerShell 5.1 fails outright on it. UTF8Encoding($false)
+    # is the BOM-less writer both editions have, and BOM-less matters: a BOM at the top of a .lua
+    # file is not a comment and the executor chokes on it.
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $target = (Join-Path (Get-Location) $build.Target)
     [System.IO.File]::WriteAllLines($target, [string[]]($header + $lines), $utf8NoBom)

@@ -2029,6 +2029,9 @@ mScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 mScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 mScroll.ZIndex = 1000
 
+-- Same shave as ContentArea: settings rows sat flush on BOTH edges of this scroller (leftRoom and
+-- rightRoom were 0), so every button in the modal -- including the theme editor's role list -- was
+-- outlined on the top and bottom only.
 Pad(mScroll, 2, 2, 3, 3)
 local mList = Instance.new("UIListLayout")
 mList.Parent = mScroll
@@ -2623,7 +2626,8 @@ S._BuildThemeWindow = function()
         roleList.AutomaticCanvasSize = Enum.AutomaticSize.Y
         roleList.CanvasSize = UDim2.new()
         roleList.ZIndex = 4002
-
+        -- 3px of inset, or the selection outline on every row is shaved flat against this
+        -- scroller's clip rect -- a UIStroke renders outward from the row's bounds.
         Pad(roleList, 2, 2, 3, 3)
         local rl = Instance.new("UIListLayout")
         rl.Parent = roleList
@@ -2765,7 +2769,7 @@ S._BuildThemeWindow = function()
                 b.Text = ""
                 b.ZIndex = 4003
                 Corner(b, 7)
-
+                -- 1.5, not 2: at 2 the round join visibly flattens against a 7px corner.
                 local st = Stroke(b, T.Accent, 1.5, 1)
 
                 local chip = Instance.new("Frame")
@@ -2776,7 +2780,8 @@ S._BuildThemeWindow = function()
                 chip.BackgroundColor3 = colOf(role)
                 chip.ZIndex = 4004
                 Corner(chip, 5)
-
+                -- A hairline round the chip so a swatch the same colour as the row still reads as
+                -- a swatch (Card on Card, White on a light theme).
                 Stroke(chip, T.Bd2, 1, 0.35)
 
                 local nm = Instance.new("TextLabel")
@@ -2792,6 +2797,8 @@ S._BuildThemeWindow = function()
                 nm.ZIndex = 4004
                 pcall(function() nm:SetAttribute("ThemeColorRole_TextColor3", "Tx2") end)
 
+                -- The hex is the thing you actually copy between roles; without it the list is
+                -- twenty identical grey rows.
                 local hex = Instance.new("TextLabel")
                 hex.Parent = b
                 hex.BackgroundTransparency = 1
@@ -2823,7 +2830,8 @@ S._BuildThemeWindow = function()
                     math.round(c.R * 255), math.round(c.G * 255), math.round(c.B * 255))
                 local on = r.role == selected
                 r.stroke.Transparency = on and 0 or 1
-
+                -- Filled as well as outlined. A 1.5px accent line on a dark row is easy to lose;
+                -- the fill is what makes the selection readable at a glance.
                 r.btn.BackgroundColor3 = on and T.ActiveBg or T.Elev
                 pcall(function() r.btn:SetAttribute("ThemeColorRole_BackgroundColor3", on and "ActiveBg" or "Elev") end)
                 r.name.TextColor3 = on and T.Tx or T.Tx2
@@ -3154,7 +3162,11 @@ ContentArea.ScrollBarThickness = 0
 
 ContentArea.ScrollingEnabled = MOBILE
 ContentArea.ElasticBehavior = Enum.ElasticBehavior.Never
-
+-- A UIStroke is drawn OUTWARD from its object's bounds, so anything flush against a clipping
+-- container loses the outer half of its outline on that edge. Measured live: the first sub-tab pill
+-- on every page had leftRoom = 0 and the last had rightRoom = 0 against this frame, which is the
+-- "the outline is crooked almost everywhere" report -- one side of the pill simply was not drawn.
+-- Two pixels of inset is below the eye's notice and gives every stroke in here room to render.
 Pad(ContentArea, 2, 2, 2, 2)
 local caLayout = Instance.new("UIListLayout")
 caLayout.Parent = ContentArea
@@ -9138,7 +9150,20 @@ end
 
 local startInvisibleFE, stopInvisibleFE, toggleInvisible, toggleBlink
 do
-
+    -- ===== INVISIBLE (relocate, don't clone) =====
+    -- The old version cloned the character, handed you the clone and parked the real one in
+    -- Lighting. Reparenting a character out of workspace does not replicate, so the server kept
+    -- your real character exactly where it was and simply stopped receiving updates for it: to
+    -- everyone else you were not invisible, you were a statue standing where you switched it on.
+    --
+    -- This moves the character instead. You are genuinely thousands of studs above the map, so
+    -- nobody can see you, shoot you or walk into you -- and because it is really you up there, you
+    -- keep full control and walk around normally. A local anchored platform follows you so there is
+    -- something to stand on, and switching it off puts you back exactly where you left.
+    --
+    -- ponytail: the platform is client-side, so anything that ignores collision (No Clip, Fly with
+    -- the character unanchored) drops you straight through it. Height also has to clear the map --
+    -- the default does for every MM2 map; the slider is there if a future one is taller.
     local running = false
     local conns = {}
     local savedCF = nil
@@ -9150,6 +9175,11 @@ do
         end
     end
 
+    -- Fixed by the caller when the feature starts, and deliberately NOT re-derived from the
+    -- player's position each frame. Placing the pad at pos.Y - 3.5 every frame is a feedback loop:
+    -- the humanoid stands HipHeight above the pad, so the next frame reads a higher position,
+    -- which raises the pad again. Measured live -- 45 studs of walking lifted the character from
+    -- 9000 to 9021. Following X/Z only removes the loop entirely.
     local floorY = 0
 
     local function ensurePlatform(pos)
@@ -9167,7 +9197,8 @@ do
             plat.Parent = workspace
             S.VoidPlatform = plat
         end
-
+        -- Follows you rather than being one fixed slab: an 80-stud pad you can walk off the edge of
+        -- is worse than no pad at all, and a slab big enough to never leave would be a huge part.
         plat.CFrame = CFrame.new(pos.X, floorY, pos.Z)
         return plat
     end
@@ -9188,7 +9219,8 @@ do
             if hrp and hum and hum.Health > 0 then
                 pcall(function()
                     hrp.CFrame = savedCF
-
+                    -- Zeroed, or the fall speed you built up on the way to the platform arrives with
+                    -- you and drives you through the map floor the instant you land back.
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                 end)
@@ -9212,7 +9244,8 @@ do
         running = true
 
         local height = math.clamp(tonumber(S.InvisHeight) or 9000, 500, 40000)
-
+        -- Randomised horizontally so two people running the hub do not land on the same pad and
+        -- shove each other off it.
         local base = hrp.Position
         local target = Vector3.new(
             base.X + math.random(-400, 400),
@@ -9234,7 +9267,9 @@ do
         end
 
         table.insert(conns, tc(hum.Died:Connect(function() stopInvisibleFE() end)))
-
+        -- A respawn puts a brand new character on the map at a spawn point. Teleporting THAT back
+        -- to a CFrame captured before the death is not "returning", it is a random teleport, so the
+        -- feature just switches itself off instead.
         table.insert(conns, tc(LP.CharacterAdded:Connect(function()
             savedCF = nil
             task.defer(stopInvisibleFE)
@@ -9245,7 +9280,8 @@ do
             local r = c and c:FindFirstChild("HumanoidRootPart")
             if not r then return end
             local p = r.Position
-
+            -- Dropped off the pad (walked off an edge, or fell while it was being repositioned):
+            -- catch it well before the void rather than letting the fall become a death.
             if p.Y < height - 400 then
                 pcall(function()
                     r.CFrame = CFrame.new(p.X, height, p.Z)
@@ -12432,7 +12468,12 @@ local function loadConfig(name)
                 pcall(function()
                     if el.frame:GetAttribute("ContentDrivenVisibility") == true then
                         el.frame.Visible = false
-
+                    -- A HUD element with a toggle has TWO saved copies of its visibility: this
+                    -- hud[name].v, and the toggle's own ConfigControl. Controls restore first, so
+                    -- this block used to overwrite whatever the toggle had just decided -- which is
+                    -- how the Motion Graph ended up drawn on screen with its switch reading OFF.
+                    -- _SetHUDVisible stamps HUDTargetVisible, so a set attribute means a toggle
+                    -- already owns this element and .v is the stale copy.
                     elseif el.frame:GetAttribute("HUDTargetVisible") == nil then
                         el.frame.Visible = dat.hud[name].v
                     end
