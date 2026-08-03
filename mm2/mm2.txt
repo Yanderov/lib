@@ -96,7 +96,6 @@ local S = {
     SheriffSilentAim = false,
 
     SheriffSilentAimTarget = "Murderer",
-    SheriffSilentAimPart = "HumanoidRootPart",
     SheriffSilentAimWallCheck = false,
     SheriffSilentAimPredictMode = "Perfect",
     SheriffSilentAimPrediction = 25,
@@ -105,7 +104,7 @@ local S = {
     SheriffAntiDesync = false,
     ForceShoot = false, ForceShootHold = true, ForceShootDelay = 60,
     ForceShootMode = "Target", WallbangMode = "Muzzle",
-    GunTargetMode = "Murderer", GunAimPart = "Torso", GunPredictMode = "Off",
+    GunTargetMode = "Murderer", GunPredictMode = "Off",
     PerkNoCooldown = false, PerkAutoUse = false,
     AntiAim = false, AntiAimKnifeOnly = true, AntiAimStrength = 320, AntiAimNearRange = 6,
     AntiCoin = false,
@@ -7500,8 +7499,6 @@ do
     mkCycle(secSheriffAim, "Gun Target",
         { "Murderer", "Murderer Only", "Nearest" }, "Murderer",
         function(v) S.GunTargetMode = v end, 3.6)
-    mkCycle(secSheriffAim, "Gun Aim Part", { "Torso", "Head" }, "Torso",
-        function(v) S.GunAimPart = v end, 3.7)
     mkCycle(secSheriffAim, "Gun Prediction", S._PredictNames or { "Off" }, "Off",
         function(v) S.GunPredictMode = v end, 3.8)
     mkToggle(secSheriffAim, "Anti-Desync", false, function(v) S.SheriffAntiDesync = v end, 4)
@@ -7985,16 +7982,43 @@ do
     end
     S._GunTargetChar = gunTargetChar
 
+    local AIM_PARTS = { "UpperTorso", "Torso", "Head", "LowerTorso" }
+
+    local function bestAimPart(targetChar, from)
+        local best, bestScore
+        for _, name in ipairs(AIM_PARTS) do
+            local part = targetChar:FindFirstChild(name)
+            if part and part:IsA("BasePart") then
+
+                local sz = part.Size
+                local score = sz.X * sz.Y * sz.Z
+                if from then
+                    local rp = RaycastParams.new()
+                    rp.FilterType = Enum.RaycastFilterType.Exclude
+                    rp.FilterDescendantsInstances = { LP.Character, targetChar }
+
+                    if workspace:Raycast(from, part.Position - from, rp) then score *= 0.01 end
+                end
+                if not bestScore or score > bestScore then bestScore, best = score, part end
+            end
+        end
+        return best
+    end
+
     S._ResolveGunShot = function()
         local targetChar = gunTargetChar()
         if not targetChar then return nil end
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
         if not hrp then return nil end
 
-        local aimPart = (S.GunAimPart == "Head" and targetChar:FindFirstChild("Head"))
-            or targetChar:FindFirstChild("UpperTorso")
-            or targetChar:FindFirstChild("Torso")
-            or hrp
+        local from
+        if (S.WallbangMode or "Muzzle") == "Muzzle" and not S.SheriffSilentAimPiercing then
+            local myChar = LP.Character
+            local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local att = myHrp and myHrp:FindFirstChild("GunRaycastAttachment")
+            from = (att and att.WorldPosition) or (myHrp and myHrp.Position)
+        end
+        local aimPart = bestAimPart(targetChar, from) or hrp
         local pos
         if S.GunPredictMode and S.GunPredictMode ~= "Off" and S._Predict then
             local ok, predicted = pcall(S._Predict, targetChar, aimPart.Name, S.GunPredictMode, 0)
