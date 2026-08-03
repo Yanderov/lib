@@ -3320,8 +3320,9 @@ local function relayoutPage(page)
     end)
 
     local isServerPage = Pages and page == Pages.Servers
-
     local columns = 1
+    if not forceSingleColumn and #cards >= 2 and pageWidth >= 560 then columns = 2 end
+    if not forceSingleColumn and not isServerPage and #cards >= 4 and pageWidth >= 760 then columns = 3 end
     columns = math.max(1, math.min(columns, #cards))
     local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
     local columnWidth = math.floor(usableWidth / columns)
@@ -3359,14 +3360,20 @@ local function relayoutPage(page)
         end
         heights[1], heights[2] = y, y
     else
-        for _, card in ipairs(cards) do
+        for index, card in ipairs(cards) do
             card.AnchorPoint = Vector2.zero
             card.Size = UDim2.new(0, columnWidth, 0, 0)
-            local targetColumn = 1
-            for i = 2, columns do
-                if heights[i] < heights[targetColumn] then targetColumn = i end
+
+            local targetColumn = ((index - 1) % columns) + 1
+            local goal = UDim2.fromOffset(inset + (targetColumn - 1) * (columnWidth + gap), heights[targetColumn])
+
+            if card:GetAttribute("InertiaPlaced") and card.Visible then
+                TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    { Position = goal }):Play()
+            else
+                card.Position = goal
+                card:SetAttribute("InertiaPlaced", true)
             end
-            card.Position = UDim2.fromOffset(inset + (targetColumn - 1) * (columnWidth + gap), heights[targetColumn])
             local height = math.max(card.AbsoluteSize.Y, 42)
             heights[targetColumn] = heights[targetColumn] + height + gap
         end
@@ -4278,60 +4285,32 @@ local function mkSection(parent, title, order)
     hit.Size = UDim2.fromScale(1, 1)
     hit.ZIndex = (hdrRow.ZIndex or 1) + 2
 
-    local collapsed, busy = false, false
-    local HEADER_H = 34
+    local collapsed = false
 
     local function setCollapsed(on)
         collapsed = on
         card:SetAttribute("InertiaCollapsed", on)
         TweenService:Create(chevron, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             { Rotation = on and 0 or 90 }):Play()
+        for _, ch in ipairs(inner:GetChildren()) do
+            if ch ~= hdrRow and ch:IsA("GuiObject") then
+                if on then
 
-        if on then
-            local full = card.AbsoluteSize.Y
-            card.ClipsDescendants = true
-            card.AutomaticSize = Enum.AutomaticSize.None
-            card.Size = UDim2.new(1, 0, 0, full)
-            for _, ch in ipairs(inner:GetChildren()) do
-                if ch ~= hdrRow and ch:IsA("GuiObject") then
                     if ch:GetAttribute("PreCollapseVisible") == nil then
                         ch:SetAttribute("PreCollapseVisible", ch.Visible)
                     end
                     ch.Visible = false
-                end
-            end
-            TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                { Size = UDim2.new(1, 0, 0, HEADER_H) }):Play()
-        else
-            for _, ch in ipairs(inner:GetChildren()) do
-                if ch ~= hdrRow and ch:IsA("GuiObject") then
+                else
                     local want = ch:GetAttribute("PreCollapseVisible")
                     ch.Visible = (want == nil) and true or want
                     ch:SetAttribute("PreCollapseVisible", nil)
                 end
             end
-            busy = true
-            card.AutomaticSize = Enum.AutomaticSize.Y
-
-            task.defer(function()
-                local full = card.AbsoluteSize.Y
-                card.AutomaticSize = Enum.AutomaticSize.None
-                card.Size = UDim2.new(1, 0, 0, HEADER_H)
-                local tw = TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                    { Size = UDim2.new(1, 0, 0, full) })
-                tw.Completed:Connect(function()
-
-                    card.AutomaticSize = Enum.AutomaticSize.Y
-                    card.ClipsDescendants = false
-                    busy = false
-                end)
-                tw:Play()
-            end)
         end
+        if S._QueuePageLayout then pcall(S._QueuePageLayout) end
     end
 
     hit.MouseButton1Click:Connect(function()
-        if busy then return end
         SFX.Click()
         setCollapsed(not collapsed)
     end)
