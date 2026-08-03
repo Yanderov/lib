@@ -3320,10 +3320,8 @@ local function relayoutPage(page)
     end)
 
     local isServerPage = Pages and page == Pages.Servers
-    local columns = 1
-    if not forceSingleColumn and #cards >= 2 and pageWidth >= 560 then columns = 2 end
 
-    if not forceSingleColumn and not isServerPage and #cards >= 4 and pageWidth >= 760 then columns = 3 end
+    local columns = 1
     columns = math.max(1, math.min(columns, #cards))
     local usableWidth = pageWidth - inset * 2 - gap * math.max(columns - 1, 0)
     local columnWidth = math.floor(usableWidth / columns)
@@ -4261,12 +4259,13 @@ local function mkSection(parent, title, order)
     chevron.Name = "Chevron"
     chevron.Parent = hdrRow
     chevron.AnchorPoint = Vector2.new(1, 0.5)
-    chevron.Position = UDim2.new(1, -2, 0.5, 0)
-    chevron.Size = UDim2.fromOffset(14, 14)
+    chevron.Position = UDim2.new(1, -4, 0.5, 0)
+    chevron.Size = UDim2.fromOffset(12, 12)
     chevron.BackgroundTransparency = 1
     chevron.Font = FB
     chevron.TextSize = 12
-    chevron.Text = "\u{25BE}"
+    chevron.Text = ">"
+    chevron.Rotation = 90
     chevron.TextColor3 = T.Tx4
     pcall(function() chevron:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
 
@@ -4279,30 +4278,62 @@ local function mkSection(parent, title, order)
     hit.Size = UDim2.fromScale(1, 1)
     hit.ZIndex = (hdrRow.ZIndex or 1) + 2
 
-    local collapsed = false
-    local function applyCollapse()
-        chevron.Text = collapsed and "\u{25B8}" or "\u{25BE}"
-        for _, ch in ipairs(inner:GetChildren()) do
-            if ch ~= hdrRow and ch:IsA("GuiObject") then
+    local collapsed, busy = false, false
+    local HEADER_H = 34
 
-                if collapsed then
+    local function setCollapsed(on)
+        collapsed = on
+        card:SetAttribute("InertiaCollapsed", on)
+        TweenService:Create(chevron, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { Rotation = on and 0 or 90 }):Play()
+
+        if on then
+            local full = card.AbsoluteSize.Y
+            card.ClipsDescendants = true
+            card.AutomaticSize = Enum.AutomaticSize.None
+            card.Size = UDim2.new(1, 0, 0, full)
+            for _, ch in ipairs(inner:GetChildren()) do
+                if ch ~= hdrRow and ch:IsA("GuiObject") then
                     if ch:GetAttribute("PreCollapseVisible") == nil then
                         ch:SetAttribute("PreCollapseVisible", ch.Visible)
                     end
                     ch.Visible = false
-                else
+                end
+            end
+            TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                { Size = UDim2.new(1, 0, 0, HEADER_H) }):Play()
+        else
+            for _, ch in ipairs(inner:GetChildren()) do
+                if ch ~= hdrRow and ch:IsA("GuiObject") then
                     local want = ch:GetAttribute("PreCollapseVisible")
                     ch.Visible = (want == nil) and true or want
                     ch:SetAttribute("PreCollapseVisible", nil)
                 end
             end
+            busy = true
+            card.AutomaticSize = Enum.AutomaticSize.Y
+
+            task.defer(function()
+                local full = card.AbsoluteSize.Y
+                card.AutomaticSize = Enum.AutomaticSize.None
+                card.Size = UDim2.new(1, 0, 0, HEADER_H)
+                local tw = TweenService:Create(card, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    { Size = UDim2.new(1, 0, 0, full) })
+                tw.Completed:Connect(function()
+
+                    card.AutomaticSize = Enum.AutomaticSize.Y
+                    card.ClipsDescendants = false
+                    busy = false
+                end)
+                tw:Play()
+            end)
         end
     end
+
     hit.MouseButton1Click:Connect(function()
+        if busy then return end
         SFX.Click()
-        collapsed = not collapsed
-        card:SetAttribute("InertiaCollapsed", collapsed)
-        applyCollapse()
+        setCollapsed(not collapsed)
     end)
     card:SetAttribute("InertiaCollapsible", true)
 
@@ -7395,8 +7426,8 @@ do
     combatSubTabBar.Name = "SubTabBar"
     combatSubTabBar.LayoutOrder = 0
     combatSubTabBar.BackgroundTransparency = 1
-    combatSubTabBar.Size = UDim2.new(1, 0, 0, 64)
-    combatSubTabBar:SetAttribute("LayoutHeight", 64)
+    combatSubTabBar.Size = UDim2.new(1, 0, 0, 37)
+    combatSubTabBar:SetAttribute("LayoutHeight", 37)
     combatSubTabBar.Parent = Pages.Combat
 
     local subTabGrid = Instance.new("UIGridLayout")
@@ -8188,33 +8219,6 @@ do
         updateMotionSubTabs()
     end)
     updateMotionSubTabs()
-
-    local fakeLagTicks = 0
-    task.spawn(function()
-        tc(RunService.Heartbeat:Connect(function()
-            if S.FakeLag then
-                local c = LP.Character
-                local hrp = c and c:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    fakeLagTicks = fakeLagTicks + 1
-                    local limit = S.FakeLagLimit or 15
-                    if fakeLagTicks >= limit then
-                        hrp.Anchored = false
-                        fakeLagTicks = 0
-                    else
-                        hrp.Anchored = true
-                    end
-                end
-            else
-                fakeLagTicks = 0
-                local c = LP.Character
-                local hrp = c and c:FindFirstChild("HumanoidRootPart")
-                if hrp and hrp.Anchored then
-                    hrp.Anchored = false
-                end
-            end
-        end))
-    end)
 
     end
 
@@ -11644,27 +11648,6 @@ do
         ["Custom"]        = {density=0.22, offset=0.20, color=Color3.fromRGB(210,214,222), decay=Color3.fromRGB(120,142,190), glare=0.15, haze=1.6},
     }
 
-    local SKY_PRESETS = {
-        Day    = {clock=14.0, atmColor=Color3.fromRGB(190,210,235), decay=Color3.fromRGB(90,140,220),  glare=0.20, haze=1.4, density=0.30, ambient=Color3.fromRGB(120,128,140), outdoor=Color3.fromRGB(150,160,175)},
-        Sunset = {clock=17.6, atmColor=Color3.fromRGB(255,150,90),  decay=Color3.fromRGB(255,110,70),  glare=0.55, haze=2.4, density=0.36, ambient=Color3.fromRGB(150,100,80),  outdoor=Color3.fromRGB(230,150,110)},
-        Night  = {clock=0.0,  atmColor=Color3.fromRGB(40,55,110),   decay=Color3.fromRGB(14,20,55),    glare=0.00, haze=2.0, density=0.40, ambient=Color3.fromRGB(30,38,70),    outdoor=Color3.fromRGB(45,55,95)},
-        Aurora = {clock=1.0,  atmColor=Color3.fromRGB(60,200,170),  decay=Color3.fromRGB(80,60,205),   glare=0.35, haze=2.6, density=0.44, ambient=Color3.fromRGB(50,90,90),    outdoor=Color3.fromRGB(80,140,140)},
-        Space  = {clock=0.0,  atmColor=Color3.fromRGB(30,15,55),    decay=Color3.fromRGB(60,25,95),    glare=0.00, haze=0.6, density=0.18, ambient=Color3.fromRGB(30,25,50),    outdoor=Color3.fromRGB(45,40,75)},
-        Blood  = {clock=17.2, atmColor=Color3.fromRGB(180,40,40),   decay=Color3.fromRGB(90,12,16),    glare=0.45, haze=2.8, density=0.44, ambient=Color3.fromRGB(90,35,35),    outdoor=Color3.fromRGB(150,60,55)},
-        Toxic  = {clock=9.0,  atmColor=Color3.fromRGB(150,220,70),  decay=Color3.fromRGB(70,150,35),   glare=0.35, haze=2.8, density=0.44, ambient=Color3.fromRGB(80,110,45),   outdoor=Color3.fromRGB(120,170,70)},
-        Ocean  = {clock=12.0, atmColor=Color3.fromRGB(90,180,220),  decay=Color3.fromRGB(30,95,155),   glare=0.30, haze=2.0, density=0.40, ambient=Color3.fromRGB(60,100,120),  outdoor=Color3.fromRGB(90,150,180)},
-        Sakura = {clock=15.5, atmColor=Color3.fromRGB(255,185,210), decay=Color3.fromRGB(235,120,170), glare=0.30, haze=2.2, density=0.36, ambient=Color3.fromRGB(150,110,125), outdoor=Color3.fromRGB(230,170,190)},
-        Midnight={clock=0.0, atmColor=Color3.fromRGB(70,40,130),    decay=Color3.fromRGB(30,12,70),    glare=0.00, haze=2.2, density=0.42, ambient=Color3.fromRGB(45,32,75),    outdoor=Color3.fromRGB(70,50,110)},
-        Storm  = {clock=11.0, atmColor=Color3.fromRGB(105,112,125), decay=Color3.fromRGB(55,60,75),    glare=0.00, haze=3.0, density=0.48, ambient=Color3.fromRGB(75,80,90),    outdoor=Color3.fromRGB(105,112,125)},
-        Desert = {clock=13.5, atmColor=Color3.fromRGB(235,200,140), decay=Color3.fromRGB(200,150,90),  glare=0.45, haze=2.6, density=0.38, ambient=Color3.fromRGB(140,120,90),  outdoor=Color3.fromRGB(210,180,130)},
-    }
-
-    local SKY_TINTS = {
-        Blue   = Color3.fromRGB(60,120,235), Purple = Color3.fromRGB(150,80,225),
-        Pink   = Color3.fromRGB(240,110,190), Cyan   = Color3.fromRGB(60,205,220),
-        Orange = Color3.fromRGB(240,140,55),  Green  = Color3.fromRGB(70,190,80),
-        Red    = Color3.fromRGB(220,55,55),   White  = Color3.fromRGB(220,224,235),
-    }
     local FOG_COLORS = {
         Gray  = Color3.fromRGB(150,150,158), White = Color3.fromRGB(236,236,242), Black = Color3.fromRGB(14,14,20),
         Blue  = Color3.fromRGB(70,120,200),  Purple= Color3.fromRGB(140,80,200),  Pink  = Color3.fromRGB(235,120,185),
@@ -11729,11 +11712,10 @@ do
         end
     end
 
-    local skyHue, fogHue = 0, 0
+    local fogHue = 0
 
     applyAtmo = function()
         pcall(function()
-            skyHue = (skyHue + 0.006) % 1
             fogHue = (fogHue + 0.004 * math.clamp((tonumber(S.FogRainbowSpeed) or 100) / 100, 0.05, 5)) % 1
             local shaderBase = SHADER_ATMO[S.ActiveShader]
 
@@ -11763,7 +11745,7 @@ do
                     math.clamp((tonumber(S.FogRainbowSat) or 55) / 100, 0, 1), 0.85)
             end
 
-            local needOwnAtmo = atmoFog or ((not classicFog) and (S.SkyEnabled or shaderBase ~= nil))
+            local needOwnAtmo = atmoFog or ((not classicFog) and shaderBase ~= nil)
 
             parkMapAtmo(needOwnAtmo or classicFog)
 
@@ -11778,15 +11760,7 @@ do
                 restoreFog()
             end
 
-            if S.SkyEnabled then
-                local p = SKY_PRESETS[S.SkyPreset] or SKY_PRESETS.Day
-                removeSky(true)
-                if not S.CustomTime then Lighting.ClockTime = p.clock end
-                Lighting.Ambient = p.ambient
-                Lighting.OutdoorAmbient = p.outdoor
-            else
-                removeSky(false)
-            end
+            removeSky(false)
 
             if needOwnAtmo then
                 local a = getAtmo()
@@ -11808,17 +11782,6 @@ do
                         a.Haze   = 1.2 + d * 2.0
                         a.Decay  = Color3.fromHSV(h, math.max(0, sat - 0.15), math.max(0, val - 0.35))
                     end
-                elseif S.SkyEnabled then
-                    local p = SKY_PRESETS[S.SkyPreset] or SKY_PRESETS.Day
-                    a.Density = p.density
-                    a.Offset  = 0.25
-                    a.Glare   = p.glare
-                    a.Haze    = p.haze
-                    a.Color   = p.atmColor
-                    local decay = p.decay
-                    if S.SkyRainbow then decay = Color3.fromHSV(skyHue, 0.7, 0.85)
-                    elseif SKY_TINTS[S.SkyTint] then decay = SKY_TINTS[S.SkyTint] end
-                    a.Decay = decay
                 else
                     a.Density = shaderBase.density
                     a.Offset  = shaderBase.offset
@@ -11847,169 +11810,6 @@ do
         pcall(clearAtmo)
         pcall(restoreFog)
     end)
-end
-
-do
-
-    local hl
-    local function killHL()
-        if hl then pcall(function() hl:Destroy() end); hl = nil end
-    end
-
-    local HAND_SHADER_MODES = {
-        Both = { highlight = true, fill = true, outline = true },
-        Fill = { highlight = true, fill = true, outline = false },
-        Outline = { highlight = true, fill = false, outline = true },
-        Mirror = { material = Enum.Material.Glass, reflectance = 1, transparency = 0.18, highlight = true, fill = false, outline = true },
-        Bloom = { material = Enum.Material.Neon, useFillTransparency = true, highlight = true, fill = true, outline = true },
-        Maze = { material = Enum.Material.ForceField, useFillTransparency = true, highlight = true, fill = true, outline = true },
-        Crystal = { material = Enum.Material.Glass, reflectance = 0.45, transparency = 0.48, highlight = true, fill = true, outline = true },
-        Chrome = { material = Enum.Material.Metal, reflectance = 0.85, transparency = 0, highlight = true, fill = false, outline = true },
-        Plasma = { material = Enum.Material.Neon, useFillTransparency = true, pulse = true, highlight = true, fill = true, outline = true },
-    }
-
-    local origMaterials = {}
-    local origColors = {}
-    local origReflectances = {}
-    local origTransparencies = {}
-
-    local function restoreHandMaterials()
-        for part, mat in pairs(origMaterials) do
-            pcall(function()
-                if part and part.Parent then
-                    part.Material = mat
-                    if origColors[part] then part.Color = origColors[part] end
-                    if origReflectances[part] then part.Reflectance = origReflectances[part] end
-                    if origTransparencies[part] then part.Transparency = origTransparencies[part] end
-                end
-            end)
-        end
-        table.clear(origMaterials)
-        table.clear(origColors)
-        table.clear(origReflectances)
-        table.clear(origTransparencies)
-    end
-
-    local function eachShaderPart(root, cb)
-        if not root then return end
-        if root:IsA("BasePart") then
-            cb(root)
-        end
-        for _, part in ipairs(root:GetDescendants()) do
-            if part:IsA("BasePart") then
-                cb(part)
-            end
-        end
-    end
-
-    local function rememberPart(part)
-        if origMaterials[part] then return end
-        origMaterials[part] = part.Material
-        origColors[part] = part.Color
-        origReflectances[part] = part.Reflectance
-        origTransparencies[part] = part.Transparency
-    end
-
-    local lastAdornee = nil
-    local lastType = nil
-    local lastShaderOn = false
-
-    task.spawn(function()
-        local hue = 0
-        while S.Gui and S.Gui.Parent do
-            pcall(function()
-                local c = LP.Character
-                local adornee = c
-                local hlEnabled = true
-                if S.HandShader and c then
-                    if S.HandTarget == "Held Item" then
-                        local tool = c:FindFirstChildOfClass("Tool")
-                        if tool then
-                            adornee = tool
-                        else
-                            adornee = nil
-                            hlEnabled = false
-                        end
-                    end
-                else
-                    hlEnabled = false
-                end
-
-                local shaderOn = S.HandShader and hlEnabled
-                local shaderType = S.HandShaderType
-                local cfg = HAND_SHADER_MODES[shaderType] or HAND_SHADER_MODES.Both
-
-                if shaderOn ~= lastShaderOn or adornee ~= lastAdornee or shaderType ~= lastType then
-                    restoreHandMaterials()
-                    if hl then hl.Enabled = false end
-                    lastShaderOn = shaderOn
-                    lastAdornee = adornee
-                    lastType = shaderType
-                end
-
-                if shaderOn and adornee then
-                    local col
-                    if S.HandRainbow then
-                        hue = (hue + 0.02) % 1
-                        col = Color3.fromHSV(hue, 0.85, 1)
-                    else
-
-                        col = (S.HandColor == "Black") and Color3.fromRGB(0, 0, 0)
-                            or FOV_COLORS[S.HandColor]
-                            or (S._ChamColorMap and S._ChamColorMap[S.HandColor])
-                            or Color3.fromRGB(0, 255, 255)
-                    end
-                    local fillOpacity = math.clamp((tonumber(S.HandFill) or 60) / 100, 0, 1)
-                    local fillTransparency = math.clamp(1 - fillOpacity, 0, 1)
-                    local materialCol = col
-                    if cfg.pulse then
-                        local h, s, v = col:ToHSV()
-                        materialCol = Color3.fromHSV(h, s, math.clamp(v * (0.62 + 0.38 * math.sin(tick() * 5)), 0, 1))
-                    end
-
-                    if cfg.material then
-                        eachShaderPart(adornee, function(part)
-                            rememberPart(part)
-                            part.Material = cfg.material
-                            part.Color = materialCol
-                            part.Reflectance = cfg.reflectance or 0
-                            if cfg.useFillTransparency then
-                                part.Transparency = math.clamp(fillTransparency, 0, 0.85)
-                            else
-                                part.Transparency = cfg.transparency or 0
-                            end
-                        end)
-                    end
-
-                    if cfg.highlight then
-                        if not (hl and hl.Parent) then
-                            hl = Instance.new("Highlight")
-                            hl.Name = "MM2_HandShader"
-                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            hl.Parent = c
-                        end
-                        hl.Adornee = adornee
-                        hl.Enabled = true
-                        hl.FillColor = col
-                        hl.OutlineColor = col
-                        hl.FillTransparency = cfg.fill and fillTransparency or 1
-                        hl.OutlineTransparency = cfg.outline and 0 or 1
-                    elseif hl then
-                        hl.Enabled = false
-                    end
-                else
-                    if hl then hl.Enabled = false end
-                end
-            end)
-            task.wait((S.HandRainbow or S.HandShaderType == "Plasma") and 0.03 or 0.1)
-        end
-    end)
-
-    local function cleanupAll()
-        killHL()
-        restoreHandMaterials()
-    end
-    SG.Destroying:Connect(cleanupAll)
 end
 
 do
@@ -12496,95 +12296,6 @@ do
         if S._RefreshKnifeEffectCatalog == refreshCatalog then S._RefreshKnifeEffectCatalog = nil end
         S._ApplySelectedKnifeEffect = nil
     end)
-end
-
-do
-    local dualModel, trackedHandle = nil, nil
-
-    local function clearDual()
-        if dualModel then pcall(function() dualModel:Destroy() end) end
-        dualModel, trackedHandle = nil, nil
-    end
-
-    local function mirrorGrip(cf)
-        local rx, ry, rz = cf:ToOrientation()
-        local pos = cf.Position
-        return CFrame.new(-pos.X, pos.Y, pos.Z) * CFrame.fromOrientation(rx, -ry, -rz)
-    end
-
-    local function mirrorTransform(cf)
-        local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
-        return CFrame.new(-x, y, z, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
-    end
-
-    local function buildDual(handle, rightHand, leftHand)
-        clearDual()
-        local grip
-        for _, j in ipairs(rightHand:GetChildren()) do
-            if (j:IsA("Motor6D") or j:IsA("Weld")) and j.Part1 == handle then grip = j; break end
-        end
-
-        local gripC0 = (grip and grip.C0) or CFrame.new(0, -1, 0)
-        local gripC1 = (grip and grip.C1) or CFrame.new()
-
-        local ok, clone = pcall(function() return handle:Clone() end)
-        if not (ok and clone) then return end
-        clone.Name = "DualWieldHandle"
-        pcall(function() clone.CanCollide = false end)
-        pcall(function() clone.Massless = true end)
-        for _, d in ipairs(clone:GetDescendants()) do
-            if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("RemoteEvent") or d:IsA("RemoteFunction") or d:IsA("BindableEvent") then
-                pcall(function() d:Destroy() end)
-            end
-        end
-        local c = LP.Character
-        if not c then pcall(function() clone:Destroy() end); return end
-        clone.Parent = c
-
-        local weld = Instance.new("Motor6D")
-        weld.Name = "DualWieldGrip"
-        weld.Part0 = leftHand
-        weld.Part1 = clone
-        weld.C0 = mirrorGrip(gripC0)
-        weld.C1 = gripC1
-        weld.Parent = leftHand
-
-        dualModel, trackedHandle = clone, handle
-    end
-
-    tc(RunService.Heartbeat:Connect(function()
-        if not S.DualWield then
-            if dualModel then clearDual() end
-            return
-        end
-        local c = LP.Character
-        local tool = c and c:FindFirstChildWhichIsA("Tool")
-        local handle = tool and tool:FindFirstChild("Handle")
-        local rightHand = c and c:FindFirstChild("RightHand")
-        local leftHand = c and c:FindFirstChild("LeftHand")
-        if not (handle and rightHand and leftHand) then
-            if dualModel then clearDual() end
-            return
-        end
-        if handle ~= trackedHandle or not dualModel or not dualModel.Parent then
-            pcall(buildDual, handle, rightHand, leftHand)
-        end
-
-        pcall(function()
-            local rShoulder, lShoulder
-            if c:FindFirstChild("RightUpperArm") and c.RightUpperArm:FindFirstChild("RightShoulder") then
-                rShoulder = c.RightUpperArm.RightShoulder
-                lShoulder = c.LeftUpperArm and c.LeftUpperArm:FindFirstChild("LeftShoulder")
-            elseif c:FindFirstChild("Torso") then
-                rShoulder = c.Torso:FindFirstChild("Right Shoulder")
-                lShoulder = c.Torso:FindFirstChild("Left Shoulder")
-            end
-            if rShoulder and lShoulder then
-                lShoulder.Transform = mirrorTransform(rShoulder.Transform)
-            end
-        end)
-    end))
-    tc(LP.CharacterAdded:Connect(function() clearDual() end))
 end
 
 S._RoleDataRoundActive = workspace:FindFirstChild("Normal") ~= nil
@@ -15500,7 +15211,7 @@ do
         local c = LP.Character
         local hrp = c and c:FindFirstChild("HumanoidRootPart")
         local hum = c and c:FindFirstChildOfClass("Humanoid")
-        if not S.PixelSurf then
+        do
             if surfing then
                 surfing = false
                 if hum then pcall(function() hum.PlatformStand = false end) end
@@ -15660,7 +15371,7 @@ task.spawn(function()
     local bhopSpeed = 16
     while S.Gui and S.Gui.Parent do
 
-        if (S.Bhop or S.SpeedGlitch) and not S.PixelSurf then
+        if S.Bhop or S.SpeedGlitch then
             local c = LP.Character
             local hrp = c and c:FindFirstChild("HumanoidRootPart")
             local hum = c and c:FindFirstChildOfClass("Humanoid")
@@ -18885,26 +18596,6 @@ do
 
     S.CustomKillSound, S.CustomKillSoundId = nil, nil
     S.CustomKnifeSound, S.CustomKnifeKillSoundId = nil, nil
-
-    task.spawn(function()
-        local ok, gp = pcall(function()
-            return game:GetService("ReplicatedStorage"):WaitForChild("Remotes", 10):WaitForChild("Gameplay", 10)
-        end)
-        if not (ok and gp) then return end
-        local vs = gp:FindFirstChild("VictoryScreen")
-        if not vs then return end
-        tc(vs.OnClientEvent:Connect(function(_, _, winCondition)
-            if winCondition == "MurdererWin" then
-                if S.CustomMurdererWinSound then
-                    playOnce(S.CustomMurdererWinSoundId or "rbxassetid://1837849285", 0.8)
-                end
-            else
-                if S.CustomSheriffWinSound then
-                    playOnce(S.CustomSheriffWinSoundId or "rbxassetid://1837849285", 0.8)
-                end
-            end
-        end))
-    end)
 
     local ambientSnd = nil
     local function startAmbient()
