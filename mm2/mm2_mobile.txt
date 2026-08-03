@@ -68,7 +68,7 @@ local S = {
     VFXWingScale = 100, VFXFootAura = true, VFXWingLight = false, VFXDensity = 70, VFXGlow = 35,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
-    KnifePredictMode = "Perfect", KnifePredictAmount = 100, KnifePingOffset = 0,
+    KnifePredictMode = "Normal",
     NoBlackout = false,
 
     KillSoundMurderer = "Headshot", KillSoundVolume = 70,
@@ -155,6 +155,19 @@ end
 S.getRole = function(...) return getRole(...) end
 S.silentAimTargetChar = function(...) return silentAimTargetChar(...) end
 S.getPredictedPosition = function(...) return getPredictedPosition(...) end
+
+S._PredictPresets = {
+    Off    = { mode = "Off",      amount = 0,   ping = 0 },
+    Light  = { mode = "Perfect",  amount = 50,  ping = 0 },
+    Normal = { mode = "Perfect",  amount = 100, ping = 0 },
+    Heavy  = { mode = "Perfect",  amount = 150, ping = 25 },
+    Jitter = { mode = "Adaptive", amount = 100, ping = 0 },
+}
+S._PredictNames = { "Off", "Light", "Normal", "Heavy", "Jitter" }
+S._Predict = function(targetChar, partName, presetName, bulletSpeed)
+    local pre = S._PredictPresets[presetName] or S._PredictPresets.Normal
+    return getPredictedPosition(targetChar, partName, pre.mode, pre.amount, pre.ping, bulletSpeed)
+end
 function S:Destroy()
 
     self.Destroyed = true
@@ -7005,10 +7018,8 @@ do
     mkToggle(secKnifeAim, "Wall Check", false, function(v) S.KnifeSilentAimWallCheck = v end, 2)
     mkToggle(secKnifeAim, "Prioritize Sheriff/Hero", true, function(v) S.KnifeSilentAimPrioritizeSheriff = v end, 4)
 
-    mkCycle(secKnifeAim, "Prediction", { "Off", "Standard", "Lag Comp", "Perfect", "Adaptive" },
-        "Perfect", function(v) S.KnifePredictMode = v end, 5)
-    mkSlider(secKnifeAim, "Prediction Amount (%)", 0, 200, 100, function(v) S.KnifePredictAmount = v end, 6)
-    mkSlider(secKnifeAim, "Ping Offset (ms)", -100, 200, 0, function(v) S.KnifePingOffset = v end, 7)
+    mkCycle(secKnifeAim, "Prediction", S._PredictNames or { "Normal" }, "Normal",
+        function(v) S.KnifePredictMode = v end, 5)
 
     local secKnifeThrow = mkSection(Pages.Combat, "Knife Throw", 4)
     secKnifeThrow.Parent:SetAttribute("ConfigSection", "Knife Combat & Exploits")
@@ -7343,10 +7354,7 @@ do
             or targetChar:FindFirstChild("Torso")
             or targetChar:FindFirstChild("HumanoidRootPart")
         if not aimPart then return nil end
-        local pos = getPredictedPosition(
-            targetChar, aimPart.Name,
-            S.KnifeSilentAimPredictMode or "Perfect",
-            S.KnifeSilentAimPrediction or 0, 0, 80)
+        local pos = S._Predict(targetChar, aimPart.Name, S.KnifePredictMode or "Normal", 80)
         args[2] = (typeof(args[2]) == "Vector3") and pos or CFrame.new(pos)
         return args
     end
@@ -7439,6 +7447,7 @@ do
         end
 
     end))
+
     getPredictedPosition = function(targetChar, partName, mode, predAmount, customPingOffset, customBulletSpeed)
         local hrp = targetChar:FindFirstChild("HumanoidRootPart")
         local part = targetChar:FindFirstChild(partName)
