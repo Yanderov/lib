@@ -72,10 +72,8 @@ local S = {
     ShaderSunRays = 8, ShaderDOF = 0, ShaderBlur = 0, ShaderAtmo = 22,
     ShaderTint = "Neutral", ShaderShadows = true,
     UnlockAllKnifeEffects = false, KnifeFXFallback = false,
-    FakeHeadless = false, FakeKorblox = false, VFXWings = false, VFXWingStyle = "Angel Aura",
-    VFXWingScale = 100, VFXFootAura = true, VFXWingLight = false, VFXDensity = 70, VFXGlow = 35,
-    VFXWingEffect = "Angel Aura", VFXWingPower = 70, VFXWingHeight = 0, VFXWingBack = 0,
-    VFXBloom = 100, VFXAssetFX = false,
+    FakeHeadless = false, FakeKorblox = false, VFXWings = false,
+    VFXWingEffect = "Angel Aura", VFXWingPower = 70, VFXBloom = 100,
     WiwiEnabled = false, WiwiSize = 100, WiwiPhysics = 50, WiwiSpawnCount = 5, WiwiSpawnSize = 100,
     MusicVolume = 50, MusicLoop = false, MusicCategory = "All", MusicFavs = {},
     KnifePredictMode = "Normal",
@@ -128,7 +126,6 @@ local S = {
     VoidResetAura = false, VoidResetAuraRange = 15, VoidResetRetries = 3, VoidResetDelay = 0.2,
     VoidAutoSheriff = false, VoidAutoMurderer = false, VoidLoopSelected = false,
     VoidLoopAll = false, VoidClickReset = false,
-    DesyncAlways = true, VelDesyncAlways = true,
     KnifeSilentAim = false,
     KnifeSilentAimPrioritizeSheriff = true,
     KnifeSilentAimPredictMode = "Perfect",
@@ -1020,9 +1017,10 @@ S._MakeMenuGif = function(parent)
     img.ImageRectSize = Vector2.new(cell, cell)
     img.ImageRectOffset = Vector2.new(0, 0)
     img.Size = UDim2.fromOffset(56, 56)
-    img.AnchorPoint = Vector2.new(1, 1)
-    img.Position = UDim2.new(1, -10, 1, -10)
-    img.ZIndex = 90
+
+    img.AnchorPoint = Vector2.new(0, 1)
+    img.Position = UDim2.new(0, 10, 1, -10)
+    img.ZIndex = 1100
     img.Parent = parent
 
     task.spawn(function()
@@ -6279,47 +6277,6 @@ end, 6)
         local BLACK_VFX = Color3.fromRGB(18, 18, 22)
         local RED_VFX = Color3.fromRGB(255, 48, 42)
         local DARK_RED_VFX = Color3.fromRGB(145, 0, 18)
-        local WINGS = {
-            ["White 02 Angel Rig"] = { id = "12064263035", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.25 },
-            ["White 03 Soft Angel"] = { id = "12550041304", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
-            ["White 04 Sparkling"] = { id = "8626417899", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
-            ["White 05 Flutter"] = { id = "72790736442630", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
-            ["White 06 Clean Angel"] = { id = "11981045751", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
-            ["White 07 Animated"] = { id = "80608969510571", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.2 },
-            ["White 08 Small Wings"] = { id = "219520107", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
-            ["White 09 Bright Wings"] = { id = "581561374", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
-            ["White 10 Glowing"] = { id = "15748452406", offset = CFrame.new(0, 0.2, 1.05), whole = true, tint = WHITE_VFX, max = 3.15 },
-            ["Black 01 Classic"] = { id = "225736624", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 03 Floating"] = { id = "14891552293", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 04 Feather A"] = { id = "3751499926", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 05 Feather B"] = { id = "3751500005", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 06 Dark Clean"] = { id = "15245418264", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 07 Mesh"] = { id = "107079834769886", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 08 Metallic"] = { id = "104041918545936", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Black 09 Bone"] = { id = "15748206290", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = BLACK_VFX },
-            ["Red 01 Crimson"] = { id = "1190014189", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 02 Crimson Clean"] = { id = "758696741", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 03 Crimson Dark"] = { id = "8201815315", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
-            ["Red 04 Cartoon"] = { id = "117963462102223", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 05 Bat"] = { id = "59741192", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = DARK_RED_VFX },
-            ["Red 06 Galaxy"] = { id = "5606789346", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 07 Adurite"] = { id = "805964321", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 08 Adurite Alt"] = { id = "805985601", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-            ["Red 09 Spark Adurite"] = { id = "219863148", offset = CFrame.new(0, 0.08, 0.82), whole = true, tint = RED_VFX },
-        }
-
-        local wingNames = {}
-        do
-            local picks = {
-                { display = "Angel",       key = "White 02 Angel Rig" },
-                { display = "Demon",       key = "Red 05 Bat" },
-                { display = "Black Wings", key = "Black 01 Classic" },
-            }
-            for _, p in ipairs(picks) do
-                if WINGS[p.key] then WINGS[p.display] = WINGS[p.key] end
-                table.insert(wingNames, p.display)
-            end
-        end
 
         local function wingNumberSequence(points)
             local keypoints = {}
@@ -6668,43 +6625,6 @@ end, 6)
         end
 
         clean()
-        local function sanitize(container, data)
-            data = data or {}
-            local tint = data.tint
-
-            local keepAssetFX = S.VFXAssetFX == true
-            for _, obj in ipairs(container:GetDescendants()) do
-                if obj:IsA("BaseScript") or obj:IsA("ModuleScript") or obj:IsA("Camera") then
-                    pcall(function() obj:Destroy() end)
-                elseif obj:IsA("Humanoid") or obj:IsA("Animator") or obj:IsA("Animation") or obj:IsA("HumanoidDescription") then
-                    pcall(function() obj:Destroy() end)
-                elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
-                    or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles")
-                    or obj:IsA("Light") then
-                    if not keepAssetFX then pcall(function() obj:Destroy() end) end
-                elseif obj:IsA("BasePart") then
-                    prepPart(obj, false)
-                    if tint then pcall(function() obj.Color = tint end) end
-                end
-            end
-        end
-        local function makeModel(loaded, name, prefer)
-            local source
-            for _, obj in ipairs(loaded) do
-                source = (prefer and obj:FindFirstChild(prefer, true)) or source or obj
-                if source then break end
-            end
-            if not source then return nil end
-            if source:IsA("Model") then
-                local clone = source:Clone()
-                clone.Name = name
-                return clone
-            end
-            local model = Instance.new("Model")
-            model.Name = name
-            source:Clone().Parent = model
-            return model
-        end
         local function normalizeModel(model, data)
             data = data or {}
 
@@ -6720,58 +6640,6 @@ end, 6)
                 end
             end)
         end
-        local function weldModel(model, root, offset, data)
-            local primary = model:FindFirstChild("CrystalWings", true) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-            if not primary then return nil end
-            model.PrimaryPart = primary
-            normalizeModel(model, data)
-
-            local authored = offset or CFrame.new(0, 0.12, 0.62)
-            local ox, oy, oz = authored:ToOrientation()
-            local op = authored.Position
-
-            local anchorOffset = CFrame.new(
-                0,
-                math.clamp(op.Y, 0.12, 0.24) + (math.clamp(tonumber(S.VFXWingHeight) or 0, -60, 60) / 100),
-                math.clamp(op.Z, 0.42, 0.62) + (math.clamp(tonumber(S.VFXWingBack) or 0, -40, 90) / 100)
-            ) * CFrame.Angles(ox, oy, oz)
-            local target = root.CFrame * anchorOffset
-            model:PivotTo(target)
-
-            pcall(function()
-                local pivot = model:GetPivot()
-                local bounds = model:GetBoundingBox()
-                local delta = target.Position - bounds.Position
-                if delta.Magnitude > 0.001 then
-                    model:PivotTo(CFrame.fromMatrix(
-                        pivot.Position + delta,
-                        pivot.RightVector,
-                        pivot.UpVector,
-                        -pivot.LookVector
-                    ))
-                end
-            end)
-            for _, part in ipairs(model:GetDescendants()) do
-                if part:IsA("BasePart") and part ~= primary then
-                    pcall(function()
-                        local wc = Instance.new("WeldConstraint")
-                        wc.Name = "InertiaToolboxPartWeld"
-                        wc.Part0 = primary
-                        wc.Part1 = part
-                        wc.Parent = primary
-                        own(wc)
-                    end)
-                end
-            end
-            local weld = Instance.new("Weld")
-            weld.Name = "InertiaToolboxWeld"
-            weld.Part0 = root
-            weld.Part1 = primary
-            weld.C0 = root.CFrame:ToObjectSpace(primary.CFrame)
-            weld.Parent = primary
-            own(weld)
-            return weld
-        end
         local function scaleWingSequence(sequence, factor)
             local keypoints = {}
             for i, point in ipairs(sequence.Keypoints) do
@@ -6782,30 +6650,6 @@ end, 6)
                 )
             end
             return NumberSequence.new(keypoints)
-        end
-        local function makeFallbackWings(data)
-            local model = Instance.new("Model")
-            model.Name = "InertiaToolboxWings"
-            local tint = (data and data.tint) or WHITE_VFX
-            for side = -1, 1, 2 do
-                for index = 1, 5 do
-                    local feather = Instance.new("Part")
-                    feather.Name = side < 0 and ("LeftFeather" .. index) or ("RightFeather" .. index)
-                    feather.Material = Enum.Material.Neon
-                    feather.Color = tint
-                    feather.Transparency = 0.08
-                    feather.Size = Vector3.new(0.16, 0.58 + index * 0.16, 0.1)
-                    feather.CFrame = CFrame.new(
-                        side * (0.3 + index * 0.2),
-                        0.28 - index * 0.12,
-                        0
-                    ) * CFrame.Angles(0, 0, math.rad(side * (18 + index * 8)))
-                    prepPart(feather, false)
-                    feather.Parent = model
-                    model.PrimaryPart = model.PrimaryPart or feather
-                end
-            end
-            return model
         end
         local function preloadWingEffect(effectName, preset)
             if fx.preloaded[effectName] then return end
@@ -6837,7 +6681,8 @@ end, 6)
 
             local boundsCF, boundsSize = root.CFrame, Vector3.new(3, 3, 1)
             pcall(function()
-                boundsCF, boundsSize = model:GetBoundingBox()
+                local cf, sz = model:GetBoundingBox()
+                if sz and sz.Magnitude > 0.1 then boundsCF, boundsSize = cf, sz end
             end)
 
             local carrier = Instance.new("Part")
@@ -6858,7 +6703,7 @@ end, 6)
             local horizontal = math.clamp(boundsSize.X * 0.3, 0.68, 1.45)
             local vertical = math.clamp(boundsSize.Y * 0.28, 0.55, 1.25)
 
-            local back = 0.55 + (math.clamp(tonumber(S.VFXWingBack) or 0, -150, 150) / 150) * 0.9
+            local back = 0.55
             local slotFrames = {
                 Center = CFrame.new(0, 0.05, back),
                 Left = CFrame.new(-horizontal * 0.62, 0.08, back),
@@ -6879,7 +6724,7 @@ end, 6)
             local power = math.clamp(tonumber(S.VFXWingPower) or 70, 10, 100) / 100
 
             local bloom = math.clamp(tonumber(S.VFXBloom) or 100, 0, 200) / 100
-            local wingScale = math.clamp(tonumber(S.VFXWingScale) or 100, 10, 200) / 100
+            local wingScale = 1
             local sizeScale = (preset.sizeScale or 1)
                 * math.clamp(wingScale, 0.35, 1.65)
                 * (MOBILE and 0.82 or 1)
@@ -6949,41 +6794,17 @@ end, 6)
         end
         local function rebuild()
             clean()
+            if not S.VFXWings then return end
             local char, root = LP.Character, rootPart(LP.Character)
             if not (char and root) then return end
-            local wingData = WINGS[S.VFXWingStyle] or WINGS["White 02 Angel Rig"]
             local effectName = PULSE_WING_FX[S.VFXWingEffect] and S.VFXWingEffect or "Off"
-            if not S.VFXWings then return end
-            local ticket = fx.ticket
-            fx.busy = true
-            task.spawn(function()
-                if S.VFXWings and wingData then
-                    local ok, loaded = pcall(function() return game:GetObjects("rbxassetid://" .. wingData.id) end)
-                    char, root = LP.Character, rootPart(LP.Character)
-                    if ticket == fx.ticket and char and root then
-                        local model
-                        if ok and type(loaded) == "table" and #loaded > 0 then
-                            model = makeModel(loaded, "InertiaToolboxWings", wingData.rig)
-                        end
-                        model = model or makeFallbackWings(wingData)
-                        if model then
-                            sanitize(model, wingData)
-                            model.Parent = char
-                            local weld = weldModel(model, root, wingData.offset, wingData)
-                            if weld then
-                                if effectName ~= "Off" then
-                                    buildPulseWingEffect(model, root, effectName)
-                                end
-                                own(model)
-                            else
-                                model:Destroy()
-                                Notify("VFX Wings", "Asset has no attachable parts.", 3)
-                            end
-                        end
-                    end
-                end
-                fx.busy = false
-            end)
+            if effectName == "Off" then return end
+
+            local holder = Instance.new("Model")
+            holder.Name = "InertiaWings"
+            holder.Parent = char
+            buildPulseWingEffect(holder, root, effectName)
+            own(holder)
         end
         S._RefreshVFXWings = rebuild
         tc(LP.CharacterAdded:Connect(function()
@@ -6994,15 +6815,9 @@ end, 6)
         local secWings = mkSection(Pages.Visuals, "Wings", 4.7)
         table.insert(S._CustomsSections, secWings)
         mkToggle(secWings, "VFX Wings", false, function(v) S.VFXWings = v; rebuild() end, 7)
-        mkCycle(secWings, "VFX Wing Style", wingNames, wingNames[1], function(v) S.VFXWingStyle = v; rebuild() end, 8)
-        mkCycle(secWings, "VFX Wing Effect", wingEffectNames, "Angel Aura", function(v) S.VFXWingEffect = v; rebuild() end, 8.05)
-        mkSlider(secWings, "Wing Effect Power", 10, 100, 70, function(v) S.VFXWingPower = v; rebuild() end, 8.08)
-        mkSlider(secWings, "Wing Bloom", 0, 200, 100, function(v) S.VFXBloom = v; rebuild() end, 8.09)
-        mkToggle(secWings, "Keep Asset FX", false, function(v) S.VFXAssetFX = v; rebuild() end, 8.095)
-
-        mkSlider(secWings, "Wing Size (%)", 10, 200, 100, function(v) S.VFXWingScale = v; rebuild() end, 8.1)
-        mkSlider(secWings, "Wing Height", -150, 150, 0, function(v) S.VFXWingHeight = v; rebuild() end, 8.2)
-        mkSlider(secWings, "Wing Back Offset", -150, 150, 0, function(v) S.VFXWingBack = v; rebuild() end, 8.3)
+        mkCycle(secWings, "VFX Wing Effect", wingEffectNames, "Angel Aura", function(v) S.VFXWingEffect = v; rebuild() end, 8)
+        mkSlider(secWings, "Effect Power", 10, 100, 70, function(v) S.VFXWingPower = v; rebuild() end, 9)
+        mkSlider(secWings, "Bloom", 0, 200, 100, function(v) S.VFXBloom = v; rebuild() end, 10)
 
         S.VFXAura, S.AuraColor, S.AuraDensity, S.AuraSize = nil, nil, nil, nil
     end
@@ -8457,6 +8272,7 @@ do
     mkToggle(sec4, "Anti-Void", false, function(v) S.AntiVoid = v end, 2)
     mkToggle(sec4, "Anti-AFK", false, function(v) S.AntiAFK = v end, 3)
     mkToggle(sec4, "Anti Ragdoll", false, function(v) S.AntiRagdoll = v end, 4)
+    S._ProtectionSection = sec4
     local sec6 = mkSection(Pages.Misc, "Performance", 4)
     S._RegisterMiscSection(sec6, "Protection")
     mkToggle(sec6, "Anti Lag", false, function(v) S.AntiLag = v end, 1)
@@ -12489,7 +12305,6 @@ local CFG_CONTROL_KEY_ALIASES = {
     enablehandshader = "HandShader",
     unlockallknifeeffectsvisual = "UnlockAllKnifeEffects",
     dynamicisland = "WatermarkEnabled",
-    vfxwingstyle = "VFXWingStyle",
     aiprovider = "AIChatProvider",
     respondtoallmessages = "AIChatRespondToAll",
     maxhumanizer = "AIChatMaxHumanizer",
@@ -13763,6 +13578,11 @@ do
         pull()
         if crc.PlayerDataChanged and crc.PlayerDataChanged.Event then
             tc(crc.PlayerDataChanged.Event:Connect(pull))
+        end
+
+        while S.Gui and S.Gui.Parent do
+            task.wait(0.25)
+            pcall(pull)
         end
     end)
 
@@ -19269,37 +19089,42 @@ do
         ), CFrame.Angles(rnd() * 6.2832, rnd() * 6.2832, rnd() * 6.2832)
     end
 
+    local appliedTo = nil
+
+    local function restoreNow()
+        if not applied then return end
+        applied = false
+        local hrp = appliedTo
+        appliedTo = nil
+        if hrp and hrp.Parent and lastCF then
+            hrp.CFrame = lastCF
+            if lastVel then hrp.AssemblyLinearVelocity = lastVel end
+            if lastAng then hrp.AssemblyAngularVelocity = lastAng end
+        end
+        lastCF, lastVel, lastAng = nil, nil, nil
+    end
+    S._DesyncRestoreNow = restoreNow
+
     tc(RunService.Heartbeat:Connect(function()
+
+        restoreNow()
         if not S.Desync then return end
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
 
-        if S.DesyncAlways == false and hum.MoveDirection.Magnitude < 0.1 then return end
-
         local pos, rot = offsetCFrame()
         lastCF = hrp.CFrame
         lastVel = hrp.AssemblyLinearVelocity
         lastAng = hrp.AssemblyAngularVelocity
         applied = true
+        appliedTo = hrp
         hrp.CFrame = (lastCF + pos) * rot
     end))
 
     local restoreName = "InertiaDesyncRestore_" .. tostring(math.random(1, 1e9))
-    RunService:BindToRenderStep(restoreName, Enum.RenderPriority.First.Value - 1, function()
-        if not applied then return end
-        applied = false
-        local char = LP.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp and lastCF then
-            hrp.CFrame = lastCF
-
-            if lastVel then hrp.AssemblyLinearVelocity = lastVel end
-            if lastAng then hrp.AssemblyAngularVelocity = lastAng end
-        end
-        lastCF, lastVel, lastAng = nil, nil, nil
-    end)
+    RunService:BindToRenderStep(restoreName, Enum.RenderPriority.First.Value - 1, restoreNow)
     SG.Destroying:Connect(function()
         pcall(function() RunService:UnbindFromRenderStep(restoreName) end)
     end)
@@ -19308,14 +19133,9 @@ do
         S.Desync = v
         if not v then
 
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp and applied and lastCF then hrp.CFrame = lastCF end
-            lastCF, lastVel, lastAng, applied = nil, nil, nil, false
+            restoreNow()
         end
     end, 1)
-
-    mkToggle(secDesync, "Position Always", true, function(v) S.DesyncAlways = v end, 1.5)
 
     S._AddAntiAimControls = function(build) pcall(build, secDesync) end
 
@@ -19323,18 +19143,32 @@ do
         local vLast, vCF, vApplied = nil, nil, false
         local VEL_SPAN = 7777
 
+        local vAppliedTo = nil
+        local function vRestoreNow()
+            if not vApplied then return end
+            vApplied = false
+            local hrp = vAppliedTo
+            vAppliedTo = nil
+            if hrp and hrp.Parent then
+                if vCF then hrp.CFrame = vCF end
+                if vLast then hrp.AssemblyLinearVelocity = vLast end
+            end
+            vLast, vCF = nil, nil
+        end
+
         tc(RunService.Heartbeat:Connect(function()
+            vRestoreNow()
             if not S.VelDesync then return end
             local char = LP.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum or hum.Health <= 0 then return end
-            if S.VelDesyncAlways == false and hum.MoveDirection.Magnitude < 0.1 then return end
             local rnd = math.random
 
             vCF = hrp.CFrame
             vLast = hrp.AssemblyLinearVelocity
             vApplied = true
+            vAppliedTo = hrp
             hrp.AssemblyLinearVelocity = Vector3.new(
                 (rnd() * 2 - 1) * VEL_SPAN,
                 rnd() * VEL_SPAN,
@@ -19343,34 +19177,15 @@ do
         end))
 
         local vName = "InertiaVelDesyncRestore_" .. tostring(math.random(1, 1e9))
-        RunService:BindToRenderStep(vName, Enum.RenderPriority.First.Value - 1, function()
-            if not vApplied then return end
-            vApplied = false
-            local char = LP.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                if vCF then hrp.CFrame = vCF end
-                if vLast then hrp.AssemblyLinearVelocity = vLast end
-            end
-            vLast, vCF = nil, nil
-        end)
+        RunService:BindToRenderStep(vName, Enum.RenderPriority.First.Value - 1, vRestoreNow)
         SG.Destroying:Connect(function()
             pcall(function() RunService:UnbindFromRenderStep(vName) end)
         end)
 
         mkToggle(secDesync, "Velocity Desync", false, function(v)
             S.VelDesync = v
-            if not v then
-                local char = LP.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp and vApplied then
-                    if vCF then hrp.CFrame = vCF end
-                    if vLast then hrp.AssemblyLinearVelocity = vLast end
-                end
-                vLast, vCF, vApplied = nil, nil, false
-            end
+            if not v then vRestoreNow() end
         end, 2)
-        mkToggle(secDesync, "Velocity Always", true, function(v) S.VelDesyncAlways = v end, 2.5)
     end
 end
 
@@ -19718,10 +19533,8 @@ do
         restore()
     end)
 
-    if S._AddAntiAimControls then
-        S._AddAntiAimControls(function(sec)
-            mkToggle(sec, "Anti-Coin", false, function(v) S.AntiCoin = v refresh() end, 4)
-        end)
+    if S._ProtectionSection then
+        mkToggle(S._ProtectionSection, "Anti-Coin", false, function(v) S.AntiCoin = v refresh() end, 5)
     end
 end
 
@@ -20018,381 +19831,6 @@ do
 end
 
 task.spawn(function()
-
-do
-    local RS = game:GetService("ReplicatedStorage")
-    local catalogue, owned, equipped, profileData = nil, nil, {}, nil
-
-    local function equipRemote()
-        local r = RS:FindFirstChild("Remotes")
-        r = r and r:FindFirstChild("Inventory")
-        return r and r:FindFirstChild("Equip")
-    end
-
-    local function readInventory()
-        local ok, inv = pcall(function()
-            local f = RS:FindFirstChild("Remotes")
-            f = f and f:FindFirstChild("Extras")
-            f = f and f:FindFirstChild("GetFullInventory")
-            return f and f:InvokeServer(LP)
-        end)
-        if not (ok and type(inv) == "table" and type(inv.Weapons) == "table") then return end
-        local set = {}
-        for key in pairs(inv.Weapons.Owned or {}) do set[tostring(key)] = true end
-        owned = set
-        equipped = inv.Weapons.Equipped or {}
-    end
-
-    task.spawn(function()
-        local ok, sync = pcall(function()
-            return require(RS:WaitForChild("Database", 20):WaitForChild("Sync", 20))
-        end)
-        if not (ok and type(sync) == "table" and type(sync.Item) == "table") then return end
-        local list = {}
-        for id, d in pairs(sync.Item) do
-            if type(d) == "table" and (d.ItemType == "Knife" or d.ItemType == "Gun") then
-                list[#list + 1] = {
-                    id = id, kind = d.ItemType,
-                    name = tostring(d.ItemName or id),
-                    rarity = tostring(d.Rarity or "?"),
-                    image = d.ItemID and ("rbxthumb://type=Asset&id=" .. tostring(d.ItemID) .. "&w=150&h=150") or nil,
-                }
-            end
-        end
-        catalogue = list
-        pcall(readInventory)
-
-        pcall(function() profileData = require(RS.Modules.ProfileData) end)
-    end)
-
-    local MESH_CACHE_FILE = "MM2_Configs/_skin_mesh_cache.json"
-    local Http = game:GetService("HttpService")
-    local meshCache, originalMesh = {}, {}
-
-    local function loadMeshCache()
-        pcall(function()
-            if isfile and isfile(MESH_CACHE_FILE) then
-                local t = Http:JSONDecode(readfile(MESH_CACHE_FILE))
-                if type(t) == "table" then meshCache = t end
-            end
-        end)
-    end
-
-    local saveQueued = false
-    local function saveMeshCache()
-        if saveQueued then return end
-        saveQueued = true
-        task.delay(2, function()
-            saveQueued = false
-            pcall(function() writefile(MESH_CACHE_FILE, Http:JSONEncode(meshCache)) end)
-        end)
-    end
-
-    local function readHandleMesh(tool)
-        local h = tool and tool:FindFirstChild("Handle")
-        if not h then return nil end
-        local m = h:FindFirstChildWhichIsA("SpecialMesh")
-        if m then
-            return { MeshId = m.MeshId, TextureId = m.TextureId,
-                     Scale = { m.Scale.X, m.Scale.Y, m.Scale.Z },
-                     Offset = { m.Offset.X, m.Offset.Y, m.Offset.Z } }
-        end
-        if h:IsA("MeshPart") and h.MeshId ~= "" then
-            return { MeshId = h.MeshId, TextureId = h.TextureID }
-        end
-        return nil
-    end
-
-    task.spawn(function()
-        loadMeshCache()
-        while S.Gui and S.Gui.Parent do
-            pcall(function()
-                for _, p in ipairs(Players:GetPlayers()) do
-                    local gear = GearCache[p.Name]
-                    local char = p.Character
-                    if gear and char then
-                        for _, t in ipairs(char:GetChildren()) do
-                            if t:IsA("Tool") and (t.Name == "Gun" or t.Name == "Knife") then
-                                local key = gear[t.Name]
-                                local ck = t.Name .. "|" .. tostring(key)
-                                if key and not meshCache[ck] then
-                                    local data = readHandleMesh(t)
-                                    if data and data.MeshId and data.MeshId ~= "" then
-                                        meshCache[ck] = data
-                                        saveMeshCache()
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-            task.wait(3)
-        end
-    end)
-
-    local function myTool(kind)
-        local c = LP.Character
-        local bp = LP:FindFirstChild("Backpack")
-        return (c and c:FindFirstChild(kind)) or (bp and bp:FindFirstChild(kind))
-    end
-
-    local function applyVisual(kind, key)
-        local data = meshCache[kind .. "|" .. tostring(key)]
-        if not data then return false, "never seen" end
-        local tool = myTool(kind)
-        if not tool then return false, "no " .. kind:lower() .. " in hand" end
-        local h = tool:FindFirstChild("Handle")
-        if not h then return false, "tool has no handle" end
-        local m = h:FindFirstChildWhichIsA("SpecialMesh")
-        if not m then
-            m = Instance.new("SpecialMesh")
-            m.Name = "InertiaSkinMesh"
-            m.MeshType = Enum.MeshType.FileMesh
-            m.Parent = h
-        elseif originalMesh[kind] == nil then
-            originalMesh[kind] = { MeshId = m.MeshId, TextureId = m.TextureId, Scale = m.Scale, Offset = m.Offset }
-        end
-        m.MeshType = Enum.MeshType.FileMesh
-        m.MeshId = data.MeshId
-        m.TextureId = data.TextureId or ""
-        if data.Scale then m.Scale = Vector3.new(table.unpack(data.Scale)) end
-        if data.Offset then m.Offset = Vector3.new(table.unpack(data.Offset)) end
-        return true
-    end
-
-    S._ApplySkinVisual = applyVisual
-
-    local win, grid, tabBtns, searchBox
-    local activeKind = "Gun"
-
-    local function sortFor(kind)
-        local rows = {}
-        for _, e in ipairs(catalogue or {}) do
-            if e.kind == kind then rows[#rows + 1] = e end
-        end
-
-        table.sort(rows, function(a, b)
-            local ao, bo = owned and owned[a.id] or false, owned and owned[b.id] or false
-            if ao ~= bo then return ao end
-            return a.name:lower() < b.name:lower()
-        end)
-        return rows
-    end
-
-    local function fill()
-        if not grid then return end
-        for _, ch in ipairs(grid:GetChildren()) do
-            if ch:IsA("GuiObject") then ch:Destroy() end
-        end
-        local q = tostring(searchBox and searchBox.Text or ""):lower()
-        local shown = 0
-        for _, e in ipairs(sortFor(activeKind)) do
-            if q == "" or e.name:lower():find(q, 1, true) then
-                shown += 1
-
-                if shown > 150 then break end
-                local isOwned = owned and owned[e.id] or false
-                local tile = Instance.new("TextButton")
-                tile.Name = e.id
-                tile.LayoutOrder = shown
-                tile.AutoButtonColor = false
-                tile.Text = ""
-                tile.BackgroundColor3 = T.Elev
-                tile.BackgroundTransparency = isOwned and 0.05 or 0.45
-                tile.BorderSizePixel = 0
-                tile.Parent = grid
-                Corner(tile, 8)
-                if equipped[e.kind] == e.id then
-                    Stroke(tile, T.Accent, 2, 0)
-                elseif isOwned then
-                    Stroke(tile, T.Bd2, 1, 0.3)
-                end
-
-                local img = Instance.new("ImageLabel")
-                img.BackgroundTransparency = 1
-                img.Image = e.image or ""
-                img.ScaleType = Enum.ScaleType.Fit
-                img.ImageTransparency = isOwned and 0 or 0.55
-                img.Size = UDim2.new(1, -10, 1, -26)
-                img.Position = UDim2.fromOffset(5, 3)
-                img.Parent = tile
-
-                local cap = Instance.new("TextLabel")
-                cap.BackgroundTransparency = 1
-                cap.Size = UDim2.new(1, -8, 0, 20)
-                cap.Position = UDim2.new(0, 4, 1, -22)
-                cap.Font = Enum.Font.GothamMedium
-                cap.TextSize = 11
-                cap.TextTruncate = Enum.TextTruncate.AtEnd
-                cap.TextXAlignment = Enum.TextXAlignment.Left
-                cap.TextColor3 = isOwned and T.Tx or T.Tx3
-                cap.Text = e.name
-                cap.Parent = tile
-
-                tile.MouseButton1Click:Connect(function()
-                    SFX.Click()
-
-                    local vok, why = applyVisual(e.kind, e.id)
-                    if not isOwned then
-                        if vok then
-                            Notify("Skins", e.name .. " applied (visual - you do not own it)", 3)
-                        else
-                            Notify("Skins", e.name .. " not owned and mesh " .. tostring(why)
-                                .. " - it is learned the first time anyone is seen holding it", 5)
-                        end
-                        return
-                    end
-                    local ev = equipRemote()
-                    if not ev then
-                        Notify("Skins", "Equip remote missing", 3)
-                        return
-                    end
-
-                    pcall(function() ev:FireServer(e.id, "Weapons") end)
-
-                    if profileData and profileData.Weapons and profileData.Weapons.Equipped then
-                        pcall(function() profileData.Weapons.Equipped[e.kind] = e.id end)
-                    end
-                    task.delay(0.6, function()
-                        pcall(readInventory)
-                        fill()
-                    end)
-                    Notify("Skins", "Equipped " .. e.name, 2)
-                end)
-            end
-        end
-        if shown == 0 then
-            local empty = Instance.new("TextLabel")
-            empty.BackgroundTransparency = 1
-            empty.Size = UDim2.fromOffset(320, 40)
-            empty.Font = Enum.Font.Gotham
-            empty.TextSize = 12
-            empty.TextColor3 = T.Tx3
-            empty.Text = catalogue and "Nothing matches that search" or "Loading catalogue..."
-            empty.Parent = grid
-        end
-    end
-
-    local function setKind(kind)
-        activeKind = kind
-        for name, btn in pairs(tabBtns or {}) do
-            btn.BackgroundTransparency = (name == kind) and 0.05 or 0.6
-            btn.TextColor3 = (name == kind) and T.Tx or T.Tx3
-        end
-        fill()
-    end
-
-    local function build()
-        win = Instance.new("Frame")
-        win.Name = "InertiaSkinPicker"
-        win.Size = UDim2.fromOffset(470, 430)
-        win.Position = UDim2.new(0.5, -235, 0.5, -215)
-        win.BackgroundColor3 = T.Card
-        win.BorderSizePixel = 0
-        win.ZIndex = 60
-        win.Visible = false
-        win.Active = true
-        win.Draggable = true
-        win.Parent = SG
-        Corner(win, 12)
-        Stroke(win, T.Bd2, 1, 0.25)
-
-        local title = Instance.new("TextLabel")
-        title.BackgroundTransparency = 1
-        title.Size = UDim2.new(1, -80, 0, 34)
-        title.Position = UDim2.fromOffset(14, 4)
-        title.Font = Enum.Font.GothamBold
-        title.TextSize = 14
-        title.TextXAlignment = Enum.TextXAlignment.Left
-        title.TextColor3 = T.Tx
-        title.Text = "SKINS"
-        title.ZIndex = 61
-        title.Parent = win
-
-        local close = Instance.new("TextButton")
-        close.Size = UDim2.fromOffset(26, 26)
-        close.Position = UDim2.new(1, -34, 0, 8)
-        close.BackgroundTransparency = 1
-        close.Font = Enum.Font.GothamBold
-        close.TextSize = 16
-        close.TextColor3 = T.Tx3
-        close.Text = "X"
-        close.ZIndex = 61
-        close.Parent = win
-        close.MouseButton1Click:Connect(function() SFX.Click() win.Visible = false end)
-
-        tabBtns = {}
-        for i, kind in ipairs({ "Gun", "Knife" }) do
-            local b = Instance.new("TextButton")
-            b.Size = UDim2.fromOffset(96, 26)
-            b.Position = UDim2.fromOffset(14 + (i - 1) * 102, 40)
-            b.BackgroundColor3 = T.Elev
-            b.BorderSizePixel = 0
-            b.AutoButtonColor = false
-            b.Font = Enum.Font.GothamMedium
-            b.TextSize = 12
-            b.Text = kind == "Gun" and "GUNS" or "KNIVES"
-            b.ZIndex = 61
-            b.Parent = win
-            Corner(b, 7)
-            b.MouseButton1Click:Connect(function() SFX.Click() setKind(kind) end)
-            tabBtns[kind] = b
-        end
-
-        searchBox = Instance.new("TextBox")
-        searchBox.Size = UDim2.new(1, -250, 0, 26)
-        searchBox.Position = UDim2.fromOffset(224, 40)
-        searchBox.BackgroundColor3 = T.Elev
-        searchBox.BorderSizePixel = 0
-        searchBox.Font = Enum.Font.Gotham
-        searchBox.TextSize = 12
-        searchBox.TextColor3 = T.Tx
-        searchBox.PlaceholderText = "search"
-        searchBox.Text = ""
-        searchBox.ClearTextOnFocus = false
-        searchBox.ZIndex = 61
-        searchBox.Parent = win
-        Corner(searchBox, 7)
-        searchBox:GetPropertyChangedSignal("Text"):Connect(fill)
-
-        grid = Instance.new("ScrollingFrame")
-        grid.Size = UDim2.new(1, -20, 1, -84)
-        grid.Position = UDim2.fromOffset(10, 76)
-        grid.BackgroundTransparency = 1
-        grid.BorderSizePixel = 0
-        grid.ScrollBarThickness = 4
-        grid.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        grid.CanvasSize = UDim2.new()
-        grid.ZIndex = 61
-        grid.Parent = win
-        local layout = Instance.new("UIGridLayout")
-        layout.CellSize = UDim2.fromOffset(104, 104)
-        layout.CellPadding = UDim2.fromOffset(6, 6)
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Parent = grid
-    end
-
-    local secSkins = mkSection(Pages.Visuals, "Skins", 16)
-    if S._RegisterVisualsCustomsSection then pcall(S._RegisterVisualsCustomsSection, secSkins) end
-    mkAction(secSkins, "Open Skin Picker", function()
-        if not win then build() end
-        if not win.Visible then
-            task.spawn(function() pcall(readInventory) fill() end)
-        end
-        win.Visible = not win.Visible
-        setKind(activeKind)
-    end, 1)
-    mkAction(secSkins, "Refresh Inventory", function()
-        task.spawn(function()
-            pcall(readInventory)
-            fill()
-            local n = 0
-            for _ in pairs(owned or {}) do n += 1 end
-            Notify("Skins", n .. " weapons owned", 3)
-        end)
-    end, 2)
-end
 
 task.spawn(function()
 	if _G.__INERTIA_HUB_TAG_INITIALIZED then return end
