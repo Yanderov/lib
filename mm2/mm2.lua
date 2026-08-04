@@ -6679,7 +6679,7 @@ end, 6)
             if not (preset and model and root) then return end
             preloadWingEffect(effectName, preset)
 
-            local boundsCF, boundsSize = root.CFrame, Vector3.new(3, 3, 1)
+            local boundsCF, boundsSize = root.CFrame, Vector3.new(5.5, 4, 1)
             pcall(function()
                 local cf, sz = model:GetBoundingBox()
                 if sz and sz.Magnitude > 0.1 then boundsCF, boundsSize = cf, sz end
@@ -6700,17 +6700,17 @@ end, 6)
             carrierWeld.C0 = root.CFrame:ToObjectSpace(carrier.CFrame)
             carrierWeld.Parent = carrier
 
-            local horizontal = math.clamp(boundsSize.X * 0.3, 0.68, 1.45)
-            local vertical = math.clamp(boundsSize.Y * 0.28, 0.55, 1.25)
+            local spread = math.clamp(boundsSize.X * 0.6, 2.2, 3.4)
+            local lift = math.clamp(boundsSize.Y * 0.35, 0.9, 1.8)
+            local back = 0.85
 
-            local back = 0.55
             local slotFrames = {
-                Center = CFrame.new(0, 0.05, back),
-                Left = CFrame.new(-horizontal * 0.62, 0.08, back),
-                Right = CFrame.new(horizontal * 0.62, 0.08, back),
-                OuterLeft = CFrame.new(-horizontal, -0.02, back),
-                OuterRight = CFrame.new(horizontal, -0.02, back),
-                Top = CFrame.new(0, vertical, back),
+                Center     = CFrame.new(0, 0.15, back * 0.7),
+                Left       = CFrame.new(-spread * 0.34, lift * 0.15, back),
+                Right      = CFrame.new(spread * 0.34, lift * 0.15, back),
+                OuterLeft  = CFrame.new(-spread * 0.82, lift * 0.72, back * 1.15),
+                OuterRight = CFrame.new(spread * 0.82, lift * 0.72, back * 1.15),
+                Top        = CFrame.new(0, lift * 1.15, back * 0.9),
             }
             local attachments = {}
             for slot, frame in pairs(slotFrames) do
