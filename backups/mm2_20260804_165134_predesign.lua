@@ -964,15 +964,25 @@ local function styleSubTabActive(btn, stroke, active)
     pcall(function() stroke:SetAttribute("ThemeColorRole_Color", active and "Accent" or "Bd") end)
 end
 
-S._NavIcons = {
-    eye = "rbxassetid://100033680381365",
-    combat = "rbxassetid://81872698913435",
-    motion = "rbxassetid://139192589041315",
-    player = "rbxassetid://136485052187963",
-    misc = "rbxassetid://81344910161871",
-    teleport = "rbxassetid://79308213542922",
-    servers = "rbxassetid://92188766517878",
-    config = "rbxassetid://80758916183665",
+S._NavIconFiles = {
+    eye = "InertiaAssets/nav_eye.png",
+    combat = "InertiaAssets/nav_combat.png",
+    motion = "InertiaAssets/nav_motion.png",
+    player = "InertiaAssets/nav_player.png",
+    misc = "InertiaAssets/nav_misc.png",
+    teleport = "InertiaAssets/nav_teleport.png",
+    servers = "InertiaAssets/nav_servers.png",
+    config = "InertiaAssets/nav_config.png",
+}
+S._NavIconData = {
+    eye = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAB6ElEQVR42u2cQXLEMAgEzVT+/2XnlMtWHK83khhE9weAIRGyFjgOAAAAAAAAAAAAAAAAmEq4O3ie5/nvICOCBCwUvFJCoovorsmIjqI7JSMQPjcRgfC5iRDiJ18IED73vyGqCP+JAC5+LE3AqKBn/MU5+hYuAWZcAR38jexgHL5KM32PzsI7xBKrHXZ+GMuI66vLm8snvlp/BzxxbrT4f9leaWuE7Zjp1Egxso+7WTFrV/FHHyHvxvPUZjiLnyHgag3UQfyMr+B37amD+M5JUMdrplO8GpFFh4LrWlfu7MnpPX+VPae4VO12sdvTtFyOnt3rwZWeQj7DxqwKhfc3+xWeK17tqWQ32YV9V78e1QD3Toa7IN3r0qu+1IBkxBdv7jGkzs1WDt8XHEFuR1C1Ilb9EqGKPZ9X9l39+ugXsd1eQR0/wqgBztfQEW/d3Hzu9dTO3dAVntG1oyiVkq0VP7s5ieNQeKcU4W71YFS8yuwKWz6PZdicpezWvGWzWKadcbFzb2iFBl25NKnOELFCdzTzARXnAxyS4HbTsR9R+glm1xkxpiQ7TkkyJ2wwJ8ykPLsiDnZFsC2FfUHsC9o0EbNrkw7WFKT6zdbELlsT2RvK5lw257I7mu3pAAAAAAAAAAAAAAAAy/kGzEXEcfIZXyUAAAAASUVORK5CYII=",
+    combat = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAACQ0lEQVR42u2dSXYEMQhDg17f/8qVTS+T19VlG2HzuYCRGDzDzw+CIAjSVWIXRa/rur4GFxEYIInsXY0SXYivaojoRHpFY0Rn4isYIiDea4iAeK8hBPlevQPivdEgyPfiEeR7cQnyvfi0E/l38nC8ZRcjRGXy/yLy0zj/kZ+ln8UAUz3iA6inBnDpuzwFzQKTkTpWjDWKX27yM4lfNfYID3KR7yR+hS5P+ZCL/BN3u094Uaez94r6Kcv7K6Wclbp+y09kkd9t53sXs7qnHLf+4ozHGznC+7041PlR1Go8d3gTnu/FJXK/dy4Q3u/FJ7zfGwXC+704hX96RXi/F6/I/955gBR0Qgrqln5m4iYCKkYA+T9vHiACdp8Duub/WfhfGRcPHa8k+SHTbSeMETZYhmKEBXMAnzA2MED3lRI74cIOgwHMRniRXsaxWf4HIEVSUPelpfWLErIoAlg25s0pRMAJ+4Cu88AM3ERA1QhgHsjZU4iTTi9eUtBJh3FdomAmTnGM7D1TomJW9YpZRMHaE1WK9u1QtG/VF83Tyb/Dm3gF4cUhbr68t2niLZC5FGe18i2j48+M1AysyiLyessuXp/laKKBg1c/7VLcbgfyn/AiZ4XBKoaYoctTPuR+lOU0xKyxR3go80Up0xAzxxrFT/X0E6qnZ/YPuGuACr0MLE18OtyKlS5XQ8WsApfyFO0rsBOmbGWhVoY7zwtlShd3jIYMvemm2qWbKv2E6ahNR216yhc3QIYhqi0Iovu7HARBkMbyC8NruLR56eRtAAAAAElFTkSuQmCC",
+    motion = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAACGklEQVR42u2d23LDIAxEYSf//8vuS9vpTDtJbKNKK86+5mb2GAchAWMghBBCKEXT+eKP4zi+GzLnBECC8b8aZAZCncx/53UABJrvCEHdzHeDoI7mO0FQV/NdIKiz+Q4Q1N386hC0g/mVIWgX86tC0E7mV4Sg3cyvBkFu5q+c66kAwWoq4l3zV78PABfMeuf99IAfZn1p5Z3qMDWt6nf6XROffZ5H0AtjVhn01/dU6R3tMmJuWTENBAAAIAAAAAEAAAgAu+kRFRy51mr+dy2qoiJTtxLBs208PpUO4NlFdIEQ2UZ1LnpySG8q8ke7/A9EJndElXIuBLkk0LuWxgvz17fnjE/C/FwIwvxcCML8XAjC/FwIkyArFxqzoclDWXH3D/IBAEC1AOw2oqEHMAqiF2TFDdMxEq5QnLvKF2XNAu6SAXvlnzKnYnc3/9SfMBBiHseqkJTY1fxLw9BdIUQtfVWli3HvAVfaq4qlGruYfzsSJli774Mif3yHwqy7bVT3dbiRC8hXtJF1woPZ0MF0NAIAABAAAIAAAAA0LNcJRwRbkVtUVgnWSu8dHbl7Ohu3nlgQ3Xkd88PlYJ4rjwxO0Ch+hgzbViYvFa3QQ+auu6fTA5LNYBiaaEqlhI06JbgdCwnUrcrALVWpjqUeTnlida23cUnSq3PRk0OFhDpXnnGCRvEzZABAVbZfRuyVuW4lkZOdbBFCCKEcfQAn5IjMmmj8MAAAAABJRU5ErkJggg==",
+    player = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAABq0lEQVR42u2bQXLDMAwDJUz//2Xn1EsnmYnTSASF3XOakIApV4I9BgAAAAAApDE7Fn1d1/WyoTknBmwWvbMZ8zTRu5mhBPFXfN/RBqwSy9EEpYjvaoKSxHc0QWniu5mgRPGdTFCq+C6/r+TmHeqw3Qek8NO18Gc7W9fNluVRxKdivXOksPK7Yyfgjji/n+0wEdwDEg24e2V+ujTc/buKiWECWILW3hjdQxkmAAMwADAAA8ap2bD7ZowJSDRg1wZp14aPCRgcR2+7F6w8DY17Mu4/Qn07D6jaMbcNZDqGL9wDMMDzoKyyDiU37/D7Sr4CHSZQp5z7d13+dFL40jGk0WkJWLeETCfGkJ3iSZ2aBXfJhnlLEgOy3xMGAAAAAEjdB1TGi+V5BJlurRmTIL3WDCF+bb1C/Nq6hfi19Qvxa/sQ4tf2M5PDE4c6Z2VTTuFJVd2zognn1Gp3D0p9HtSlPiF+bZ3iv57afsXVH3IWBAsNSFt+vtm3WH5q62YJ4uFcDAAMwADAAAwADMAAwAAMgNHs0URemiuegFciI/7GJeiv2IgPAAAAAADwnAd+O/CB7RDucQAAAABJRU5ErkJggg==",
+    misc = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAABWklEQVR42u3cu3KAMAxEUaHh/3+ZdKnSMJPBepzb0dlasCV5cQQAAAAA4FOuyZN7nuf5neh1lZxrbgj+X88E+DD4lUUY+wW8FYcASyEAAaSh5dfQtynk6XX+zXjTxnl2vCl7OTveDCnk0fHeEyfeibvDIKv2cT7bhLsFYGQdQATt6H/b/Cq9TCphAhAABCDAnqyjWDaXm4JcMZXOLW+6OgYAANRpxnXwbo5NQ7t4N0cK0Mm7ua4Q2yaCZhwBCIBoZEuptkZX3DPGeUNj8E8gBOAN3S3Cbd3nDY3N584tvaGTGndtvaFTRLh4N1XCoRUBAhAABNh4Npy8m0u/AN5NAADgR+1Y7E1NwY+jp2wp+GdF0As6LAIBQjOOAHBv6Kh7Rdd5Qzsbx1L2whu6WgT3hgZv6LhzZPeG8oZCO7qJN1UlrBVBABCAADiU7aUgn02105uuzgEAAADwLT9Wirh1NjhPtwAAAABJRU5ErkJggg==",
+    teleport = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAACd0lEQVR42u1dQXIDMQgLmv7/y9tLTp1pm2xsSwLxgDVINjbYsI9HJBKJRCIRipSLotd1XW8bV1Uh4BDYrqTUFOBViahpwKsRUVOBVyGipgPPJgIBn6tfBXjuaign8N8BhDGmJAGfALHSeBU9jhJw1+idBqvpJGMo4xiooCOmgn9n3B0HiWKCr5SXYeldDCOUs5SnbcC03EvbSNgx0FKwF3E99/VcQQLierj61onZv9qYv8Y8OdaKMbcTsAoQ5p3wThvhsPHeHUddv+17wKcz8HoK+xs79wOozv7V31fVF4qzfxdYiinp45FwZAEBO5ezm2v79NtQcj/qpxab+wCHXJJK7ip7gBsB07Ke228DFcLyVWmGU+mKlRhYuqDfDHTLuFoS8B/IbiRkEw4BISASAkJAm3O2W5yCTsGOZQ2CyiU1A7xdem4NxByDHWVSswl33AMc2gqouEmMfI0m5EYhVzO1uyhOTPfsAV3jAMUnIIpPZTDFVajqC+WL73oK+xs7g0R0fqs/omNW6gM+G/NrQrjf+hT0ChiuT1lOrO7EAR3igI6r4NTehvhlrr14pF0ZVU+cnhUdesatXO1I10SuXsgZnWsfrUJGbRUwInp6laQKCSzwJQIxNgns8ZGcjWmlfAdXxHQ9qZKcVCV5sgOVW4cvdGwD5tReDV17sbn0tkPnhngOjQXRvSuheldHdG8Nqd5SE53z8w73D3CJMN8F06WJOJzC/FdBdergDrdcy8oqSYVcFRwTXiuqJFUShbYVMj/Bdv1xRP6mmhXgUaAxLg5wK9Bo/Udt1Z+wpUCjwZUout7LutxHo+PluNNjgDTti0QikUiEJN+pDOzI1BYgJwAAAABJRU5ErkJggg==",
+    servers = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAABKklEQVR42u3cQQ6DMAxEUcfi/ldO95UqUAhxUN/ft4v5QIiBiQAAACW0kR/13rvofgTaWntMgODni2iCrxWRwn+Ws/xS+LUSUvi1ElI0taSjv/YsOFbd71pwL54BV/5E+OO5fOebjvzanbBFeMdFGAQQAAIIAAEE4OUCzJWKBdg5uwQRAAIIAAEEgAACcFOAne3cfHLGg2WMv9BwmPFseAkyv4llczGL8K6LsLNgzVQ4jZJrX9ZK8/za5yG+EXvDN2JEeAIIAAAAAPqCRKcvSF8Q9AWFviDoC9IXhNAXpC8I+oL0BUFfkO8DQAABIIAAEEAA9AXpC7JzdgkiAAQQAAIIAAEEQF+QviB9QaEvSF9QeGPCIqwvSF+QUbK+IH1B7nz0BekLAgD8Gx8tKrCTY2J7CQAAAABJRU5ErkJggg==",
+    config = "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAClUlEQVR42u1dy5LDMAiLNfn/X85e9tDZ2U7SGoyExblNMBjMQybHYTKZTCaTqYSGGsPXdV23ixpjWAEFgldUBLoKf+Z/toAEAbJaA3YQPrM1SLigzoQddj+zFWAX4bMq4ZRNYP45VBWiHuooKCrJUkrWoL7r1TNhR0FWgBWwRfTDemDbAjpFQe921d2hmBW1RDz32zUtU8CnpvyX8af/z1LADE8RyhgKfnRmgew8olt1US2IGOyCj/C1zDyju/ArMuNP5AT1ssM2HbGVuz9LWCuV8DgCyww1V4ZzmW7ila/oNY3qhKbaPczwFSGXEAUolX9XW9KdbOB4v1ZBp2J0weTOxhhjZpOe3TLN198ZmmhoYr4CMhd5/VL1MzLXD9YMsgs0cToK6iQsRj4RFelkmzrbmRTVxQPbLmOHJkbzh4x4nz1qWcHfU3mBJenqBEtJa8h88vBu50EWeACdmhuHYBNpqKCZs+Dp1WhrdNppipYJtUrobYODkCdjQ10NNVkBVoApXAEVydbdOxl5amcB7xa81TXV6OSkQnjR/H0TjuIwNL3UFYGlKNWlzvOpEqBYwmV/Xwo8PaMZUaWEFfw9lRfYdla2Etj4Q2QEsEuf4Olan8gNO91mYeQTqoAmlS7enfzAvLAIt5btGmefja69VpVc5FRMhFivO6XUgrrNamYbswYLt9Z9nlG7wLckE8vRM3djV5Qw2t8T7nJTnnEdUN+dysL39PRDrCnPPPZFdczO6GTOinyi2/wduXKJpyYKT0303NBG4+srcEYMbtTYUCugHyzFFmALMLVUwDdDm/wRn4XYU0Xc6rnbsGy7IHFo4hZnQIfRxY6C7IIMTWzzSfOZA5e9bG5ooi2gtmpqMplMJlMV/QBrJTy+7ROVrgAAAABJRU5ErkJggg==",
 }
 S._NavIconCache = {}
 
@@ -1006,7 +1016,8 @@ S._MakeMenuGif = function(parent)
     img.ImageRectSize = Vector2.new(cell, cell)
     img.ImageRectOffset = Vector2.new(0, 0)
     img.Size = UDim2.fromOffset(56, 56)
-
+    -- Bottom LEFT, above everything. Bottom-right is where the resize grip lives at ZIndex 1005,
+    -- so the gif was sitting underneath it and never showed.
     img.AnchorPoint = Vector2.new(0, 1)
     img.Position = UDim2.new(0, 10, 1, -10)
     img.ZIndex = 1100
@@ -1031,8 +1042,30 @@ S._MakeMenuGif = function(parent)
 end
 
 S._MakeNavIcon = function(parent, kind)
-    local asset = S._NavIcons[kind]
-    if not asset then return nil end
+    local path = S._NavIconFiles[kind]
+    local getter = getcustomasset or getsynasset
+
+    if not path or type(getter) ~= "function" then return nil end
+    if type(isfile) == "function" and not isfile(path) then
+        local decoder = type(crypt) == "table" and type(crypt.base64) == "table" and crypt.base64.decode
+            or (type(syn) == "table" and type(syn.crypt) == "table" and type(syn.crypt.base64) == "table" and syn.crypt.base64.decode)
+            or base64_decode
+        if type(writefile) ~= "function" or type(decoder) ~= "function" or not S._NavIconData[kind] then return nil end
+        pcall(function()
+            if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder("InertiaAssets") then
+                makefolder("InertiaAssets")
+            end
+        end)
+        local wrote = pcall(writefile, path, decoder(S._NavIconData[kind]))
+        if not wrote or not isfile(path) then return nil end
+    end
+    local asset = S._NavIconCache[kind]
+    if not asset then
+        local ok, result = pcall(getter, path)
+        if not ok or type(result) ~= "string" then return nil end
+        asset = result
+        S._NavIconCache[kind] = asset
+    end
 
     local slot = Instance.new("Frame")
     slot.Name = "NavIconSlot"
@@ -4205,48 +4238,6 @@ do
     end
 end
 
-local SECTION_ICONS = {
-    ["AI Chat"] = "rbxassetid://127255077587058",
-    ["Alerts"] = "rbxassetid://97392696311902",
-    ["Automated"] = "rbxassetid://80451686744860",
-    ["Avatar (Local)"] = "rbxassetid://136485052187963",
-    ["Color & Stretch"] = "rbxassetid://86350350950064",
-    ["Combat"] = "rbxassetid://81872698913435",
-    ["Config"] = "rbxassetid://80758916183665",
-    ["Custom Assets (GitHub)"] = "rbxassetid://97261141732706",
-    ["Custom Shader Pack"] = "rbxassetid://85538382643347",
-    ["Desync"] = "rbxassetid://96340135183647",
-    ["ESP"] = "rbxassetid://100033680381365",
-    ["Fly"] = "rbxassetid://126985561580989",
-    ["Gun Fire"] = "rbxassetid://130551565616516",
-    ["Home"] = "rbxassetid://98755624629571",
-    ["Item Chams"] = "rbxassetid://101768155599700",
-    ["Knife Effects"] = "rbxassetid://138635884129147",
-    ["Knife Exploits"] = "rbxassetid://81872698913435",
-    ["Misc"] = "rbxassetid://140019550645825",
-    ["Motion"] = "rbxassetid://139192589041315",
-    ["Movement"] = "rbxassetid://139192589041315",
-    ["Murderer Aimbot"] = "rbxassetid://87563802520297",
-    ["Performance"] = "rbxassetid://110273524101447",
-    ["Player"] = "rbxassetid://136485052187963",
-    ["Protection"] = "rbxassetid://110987169760162",
-    ["Server Actions"] = "rbxassetid://92188766517878",
-    ["Servers"] = "rbxassetid://92188766517878",
-    ["Shader Presets"] = "rbxassetid://130278807964710",
-    ["Silent Aim"] = "rbxassetid://134242818164054",
-    ["Skins"] = "rbxassetid://106579555405966",
-    ["Social"] = "rbxassetid://103005444008339",
-    ["Sound Mutes"] = "rbxassetid://89344380902620",
-    ["Teleport"] = "rbxassetid://79308213542922",
-    ["View"] = "rbxassetid://99244790601968",
-    ["Visuals"] = "rbxassetid://100033680381365",
-    ["Void Reset"] = "rbxassetid://137726256442333",
-    ["Wings"] = "rbxassetid://91872927606406",
-    ["Wings & Aura"] = "rbxassetid://91872927606406",
-}
-local ICON_CHEVRON = "rbxassetid://134243273101015"
-local ICON_FALLBACK = "rbxassetid://73685402843600"
-
 local function mkSection(parent, title, order)
 
     for _, existing in ipairs(parent:GetChildren()) do
@@ -4282,40 +4273,37 @@ local function mkSection(parent, title, order)
     hdrRow.LayoutOrder = 0
     hdrRow.BackgroundTransparency = 1
     hdrRow.Size = UDim2.new(1, 0, 0, 18)
-    local tick = Instance.new("ImageLabel")
-    tick.Name = "SectionIcon"
+    local tick = Instance.new("Frame")
     tick.Parent = hdrRow
-    tick.BackgroundTransparency = 1
-    tick.Image = SECTION_ICONS[title] or ICON_FALLBACK
-    tick.ImageColor3 = T.Accent; pcall(function() tick:SetAttribute("ThemeColorRole_ImageColor3", "Accent") end)
-    tick.AnchorPoint = Vector2.new(0, 0.5)
-    tick.Position = UDim2.new(0, 0, 0.5, 0)
-    tick.Size = UDim2.fromOffset(14, 14)
-
+    tick.BorderSizePixel = 0
+    tick.BackgroundColor3 = T.Accent; pcall(function() tick:SetAttribute("ThemeColorRole_BackgroundColor3", "Accent") end)
+    tick.Position = UDim2.new(0, 0, 0.5, -4)
+    tick.Size = UDim2.new(0, 2, 0, 8)
+    Corner(tick, 2)
     local hdr = Instance.new("TextLabel")
     hdr.Parent = hdrRow
     hdr.BackgroundTransparency = 1
-    hdr.Position = UDim2.new(0, 21, 0, 0)
-    hdr.Size = UDim2.new(1, -21, 1, 0)
+    hdr.Position = UDim2.new(0, 10, 0, 0)
+    hdr.Size = UDim2.new(1, -10, 1, 0)
     hdr.Font = FB
     hdr.TextSize = 13
     hdr.TextColor3 = T.Tx3; pcall(function() hdr:SetAttribute("ThemeColorRole_TextColor3", "Tx3") end)
     hdr.TextXAlignment = Enum.TextXAlignment.Left
     bindLocalizedText(hdr, title, title, true)
 
-    local chevron = Instance.new("ImageLabel")
+    local chevron = Instance.new("TextLabel")
     chevron.Name = "Chevron"
     chevron.Parent = hdrRow
     chevron.AnchorPoint = Vector2.new(1, 0.5)
-    chevron.Position = UDim2.new(1, -2, 0.5, 0)
-    chevron.Size = UDim2.fromOffset(13, 13)
+    chevron.Position = UDim2.new(1, -4, 0.5, 0)
+    chevron.Size = UDim2.fromOffset(12, 12)
     chevron.BackgroundTransparency = 1
-    chevron.Image = ICON_CHEVRON
-    chevron.ImageColor3 = T.Tx4
-    chevron.ImageTransparency = 0.25
-    pcall(function() chevron:SetAttribute("ThemeColorRole_ImageColor3", "Tx4") end)
-
-    chevron.Rotation = 0
+    chevron.Font = FB
+    chevron.TextSize = 12
+    chevron.Text = ">"
+    chevron.Rotation = 90
+    chevron.TextColor3 = T.Tx4
+    pcall(function() chevron:SetAttribute("ThemeColorRole_TextColor3", "Tx4") end)
 
     local hit = Instance.new("TextButton")
     hit.Name = "HeaderHit"
@@ -4336,7 +4324,7 @@ local function mkSection(parent, title, order)
         card:SetAttribute("InertiaCollapsed", on)
         card.ClipsDescendants = true
         TweenService:Create(chevron, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            { Rotation = on and -90 or 0 }):Play()
+            { Rotation = on and 0 or 90 }):Play()
 
         local function rows(visible)
             for _, ch in ipairs(inner:GetChildren()) do
@@ -4404,7 +4392,7 @@ local function mkSection(parent, title, order)
         collapsed = true
         card:SetAttribute("InertiaCollapsed", true)
         card.ClipsDescendants = true
-        chevron.Rotation = -90
+        chevron.Rotation = 0
         for _, ch in ipairs(inner:GetChildren()) do
             if ch ~= hdrRow and ch:IsA("GuiObject") then ch.Visible = false end
         end
@@ -6691,6 +6679,9 @@ end, 6)
             if not (preset and model and root) then return end
             preloadWingEffect(effectName, preset)
 
+            -- Default to a torso-sized box. GetBoundingBox on a Model with no parts returns the
+            -- world origin and a zero size WITHOUT erroring, so the pcall alone is not a guard --
+            -- taking it would put the wings at 0,0,0 instead of on the player.
             local boundsCF, boundsSize = root.CFrame, Vector3.new(5.5, 4, 1)
             pcall(function()
                 local cf, sz = model:GetBoundingBox()
@@ -6712,10 +6703,19 @@ end, 6)
             carrierWeld.C0 = root.CFrame:ToObjectSpace(carrier.CFrame)
             carrierWeld.Parent = carrier
 
+            -- Laid out as an actual pair of wings rather than a clump around the chest. Measured on a
+            -- live R15 character in torso space: the torso is 2 studs wide, and the old spread came
+            -- out at 1.8 total -- narrower than the body it was supposed to be growing out of.
+            --
+            -- +Z is BEHIND the character. LookVector is the CFrame's NEGATIVE Z axis, so the old
+            -- carrier sat at z = -0.51, i.e. in FRONT of the chest. That is the "positioned like
+            -- crap" everyone could see: a puff of particles over the sternum.
             local spread = math.clamp(boundsSize.X * 0.6, 2.2, 3.4)
             local lift = math.clamp(boundsSize.Y * 0.35, 0.9, 1.8)
             local back = 0.85
 
+            -- Inner pair low and close, outer pair wide and high, tips higher still: a fanned wing
+            -- silhouette read from the middle outwards.
             local slotFrames = {
                 Center     = CFrame.new(0, 0.15, back * 0.7),
                 Left       = CFrame.new(-spread * 0.34, lift * 0.15, back),
@@ -6812,6 +6812,9 @@ end, 6)
             local effectName = PULSE_WING_FX[S.VFXWingEffect] and S.VFXWingEffect or "Off"
             if effectName == "Off" then return end
 
+            -- The chosen effect IS the wings. There used to be a toolbox wing model downloaded on
+            -- top of this, so you got a rig AND a cloud of particles at once -- two unrelated things
+            -- fighting over the same space, which is what made it look scattered. One thing now.
             local holder = Instance.new("Model")
             holder.Name = "InertiaWings"
             holder.Parent = char
@@ -13591,7 +13594,10 @@ do
         if crc.PlayerDataChanged and crc.PlayerDataChanged.Event then
             tc(crc.PlayerDataChanged.Event:Connect(pull))
         end
-
+        -- Poll as well as listen. crc.PlayerData is the game's own live table, so reading it is just
+        -- a table read -- but PlayerDataChanged does not fire for every transition that matters
+        -- (a sheriff dying and the gun being picked up is the obvious one), and when it stays quiet
+        -- the role cache goes stale and the chams keep showing the previous round's colours.
         while S.Gui and S.Gui.Parent do
             task.wait(0.25)
             pcall(pull)
@@ -19101,6 +19107,8 @@ do
         ), CFrame.Angles(rnd() * 6.2832, rnd() * 6.2832, rnd() * 6.2832)
     end
 
+    -- The root we actually moved. Without this, a respawn between the offset and the restore writes
+    -- the OLD character's CFrame onto the NEW one and teleports you for real.
     local appliedTo = nil
 
     local function restoreNow()
@@ -19118,7 +19126,9 @@ do
     S._DesyncRestoreNow = restoreNow
 
     tc(RunService.Heartbeat:Connect(function()
-
+        -- Belt and braces: if the render step was skipped (alt-tab, a frame spike, a stall) the
+        -- offset would still be sitting on the character. Undo any leftover before applying a new
+        -- one, so a missed restore can never accumulate into an actual teleport.
         restoreNow()
         if not S.Desync then return end
         local char = LP.Character
